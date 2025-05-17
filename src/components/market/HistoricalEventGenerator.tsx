@@ -45,15 +45,45 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   // Streaming state
-  const { content: streamingContent, isStreaming, startStreaming, addChunk, stopStreaming } = useStreamingContent();
+  const { content: streamingContent, isStreaming, startStreaming, addChunk, stopStreaming, rawBuffer, displayPosition } = useStreamingContent();
   const [showRawResponse, setShowRawResponse] = useState(true); // Show raw response by default
   const { user } = useCurrentUser();
 
-  // Debug state
+  // Debug settings and logs
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [rawChunkLogs, setRawChunkLogs] = useState<{timestamp: number, size: number, content: string}[]>([]);
+  const [showFullRawData, setShowFullRawData] = useState(false);
+  const [streamStats, setStreamStats] = useState({
+    chunkCount: 0,
+    totalBytes: 0,
+    startTime: 0,
+    lastUpdate: 0
+  });
+  
   const addDebugLog = (message: string) => {
     console.log(`[HistoricalEventGenerator] ${message}`);
-    setDebugLogs(prev => [...prev.slice(-20), message]); // Keep last 20 logs
+    setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
+
+  const addRawChunkLog = (content: string) => {
+    const now = Date.now();
+    setRawChunkLogs(prev => {
+      // Keep only last 20 chunks
+      const newLogs = [...prev.slice(-19), {
+        timestamp: now,
+        size: content.length,
+        content: content
+      }];
+      return newLogs;
+    });
+    
+    // Update stats
+    setStreamStats(prev => ({
+      chunkCount: prev.chunkCount + 1,
+      totalBytes: prev.totalBytes + content.length,
+      startTime: prev.startTime || now,
+      lastUpdate: now
+    }));
   };
 
   // Fetch available models when the component mounts and user has an API key
@@ -160,8 +190,15 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsLoading(true);
     startStreaming(); // Start streaming and clear previous content
     
-    // Clear debug logs
+    // Reset debug stats and logs
     setDebugLogs([]);
+    setRawChunkLogs([]);
+    setStreamStats({
+      chunkCount: 0,
+      totalBytes: 0,
+      startTime: Date.now(),
+      lastUpdate: Date.now()
+    });
     
     try {
       const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
@@ -220,10 +257,11 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         throw new Error("Response body is null");
       }
 
-      // Process the stream with improved error handling and logging
+      // Process the stream with improved debugging
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let chunkCounter = 0;
 
       addDebugLog("Starting to process stream...");
 
@@ -238,18 +276,27 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         
         // Decode the chunk and log raw data
         const chunkText = decoder.decode(value, { stream: true });
+        chunkCounter++;
         
         // Log complete raw chunk data for debugging
-        console.log("STREAMING: Raw SSE chunk:", chunkText);
-        addDebugLog(`Raw chunk received (${chunkText.length} bytes)`);
+        console.log(`STREAMING [${chunkCounter}]: Raw SSE chunk (${chunkText.length} bytes):`, chunkText);
+        addDebugLog(`[${chunkCounter}] Raw chunk received: ${chunkText.length} bytes`);
+        addRawChunkLog(chunkText);
         
-        // Process the chunk to extract content - simplified processing
+        // Process the chunk to extract content - with enhanced debugging
         try {
-          // Split by newlines and find data lines
+          // DEBUG: Log raw lines for inspection
           const lines = chunkText.split('\n');
-          for (const line of lines) {
+          console.log(`STREAMING: Chunk has ${lines.length} lines`);
+          
+          // Process each line separately for clearer debugging
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            console.log(`STREAMING: Line ${i+1}/${lines.length}: "${line}"`);
+            
             if (line.startsWith('data: ')) {
               const data = line.substring(6); // Remove "data: " prefix
+              console.log(`STREAMING: Found data line: "${data}"`);
               
               // Skip "[DONE]" which indicates end of stream
               if (data === '[DONE]') {
@@ -260,7 +307,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
               try {
                 // Parse the JSON data
                 const parsedData = JSON.parse(data);
-                console.log("STREAMING: Parsed SSE data:", JSON.stringify(parsedData, null, 2));
+                console.log(`STREAMING: Successfully parsed JSON data:`, JSON.stringify(parsedData, null, 2));
                 
                 // Check for errors in the response
                 if (parsedData.choices && 
@@ -270,8 +317,6 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                     const error = parsedData.choices[0].error;
                     console.error("STREAMING: Error in response:", error);
                     addDebugLog(`API Error: ${error.code} - ${error.message}`);
-                    
-                    // Don't break the stream, just log the error and continue
                     continue;
                 }
                 
@@ -280,9 +325,12 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                     parsedData.choices[0] && 
                     parsedData.choices[0].delta) {
                     
-                    // Check for content in either field
-                    const deltaContent = parsedData.choices[0].delta.content || '';
-                    const deltaReasoning = parsedData.choices[0].delta.reasoning || '';
+                    // Check for content in delta fields
+                    const delta = parsedData.choices[0].delta;
+                    console.log("STREAMING: Delta object:", JSON.stringify(delta, null, 2));
+                    
+                    const deltaContent = delta.content || '';
+                    const deltaReasoning = delta.reasoning || '';
                     
                     // Use whichever field has content
                     const content = deltaContent || deltaReasoning;
@@ -291,19 +339,28 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                         fullContent += content;
                         
                         // Log exact content for debugging
-                        console.log(`STREAMING: Content delta: "${content}"`);
-                        addDebugLog(`Content received: "${content.substring(0, 20)}${content.length > 20 ? "..." : ""}"`);
+                        console.log(`STREAMING: Content delta (${content.length} chars): "${content}"`);
+                        addDebugLog(`Content received (${content.length} chars): "${content.substring(0, 20)}${content.length > 20 ? "..." : ""}"`);
                         
                         // Add the chunk directly to the streaming display
                         addChunk(content);
+                        
+                        // Force a delay between chunks (debugging only - remove in production!)
+                        // This is just to test if timing is affecting display
+                        // await new Promise(resolve => setTimeout(resolve, 50));
                     } else {
-                        console.log("STREAMING: No content in delta:", JSON.stringify(parsedData.choices[0]?.delta || {}, null, 2));
+                        console.log("STREAMING: No content in delta:", JSON.stringify(delta, null, 2));
+                        addDebugLog("Delta contained no content");
                     }
+                } else {
+                    console.log("STREAMING: No delta found in choices");
                 }
               } catch (parseError) {
-                console.error("STREAMING: Error parsing SSE JSON:", parseError, "Raw data:", data);
+                console.error(`STREAMING: Error parsing SSE JSON: ${parseError}`, "Raw data:", data);
                 addDebugLog(`Parse error: ${parseError.message}`);
               }
+            } else if (line.trim() !== '') {
+              console.log(`STREAMING: Line doesn't start with 'data: ' - "${line}"`);
             }
           }
         } catch (processError) {
@@ -460,6 +517,11 @@ ${streamingContent}`;
     }
   };
 
+  // Calculate streaming stats
+  const elapsedMs = streamStats.lastUpdate - streamStats.startTime;
+  const avgChunkSize = streamStats.totalBytes / (streamStats.chunkCount || 1);
+  const chunkRate = streamStats.chunkCount / (elapsedMs / 1000 || 1);
+
   return (
     <Card className="p-6">
       <h3 className="text-lg font-semibold mb-4">Generate Historical Event Comparison</h3>
@@ -536,6 +598,41 @@ ${streamingContent}`;
                 </div>
               )}
             </div>
+
+            {/* Debug Options */}
+            <div className="space-y-3 p-3 bg-secondary/20 border border-secondary/30 rounded-md">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Debugging Options</h4>
+                <Switch 
+                  checked={showFullRawData}
+                  onCheckedChange={setShowFullRawData}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-1 bg-secondary/10 rounded">
+                  <span className="font-medium">Chunks:</span> {streamStats.chunkCount}
+                </div>
+                <div className="p-1 bg-secondary/10 rounded">
+                  <span className="font-medium">Bytes:</span> {streamStats.totalBytes}
+                </div>
+                <div className="p-1 bg-secondary/10 rounded">
+                  <span className="font-medium">Avg size:</span> {Math.round(avgChunkSize)} bytes
+                </div>
+                <div className="p-1 bg-secondary/10 rounded">
+                  <span className="font-medium">Rate:</span> {chunkRate.toFixed(1)}/s
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-1 bg-secondary/10 rounded">
+                  <span className="font-medium">Buffer size:</span> {rawBuffer?.length || 0}
+                </div>
+                <div className="p-1 bg-secondary/10 rounded">
+                  <span className="font-medium">Display pos:</span> {displayPosition || 0}
+                </div>
+              </div>
+            </div>
             
             <div className="flex items-center justify-between mb-2">
               <Label htmlFor="show-raw-response" className="text-sm">Show Raw Response</Label>
@@ -561,7 +658,7 @@ ${streamingContent}`;
               )}
             </Button>
             
-            {/* Debug logs section */}
+            {/* Debug logs section - Enhanced */}
             <div className="mt-4 bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs font-mono">
               <div className="flex justify-between items-center mb-1">
                 <h4 className="font-medium">Stream Debug ({debugLogs.length} logs)</h4>
@@ -586,10 +683,78 @@ ${streamingContent}`;
               </div>
             </div>
             
+            {/* Raw Chunks Section - NEW */}
+            <div className="mt-4 bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs font-mono">
+              <div className="flex justify-between items-center mb-1">
+                <h4 className="font-medium">Raw Chunks ({rawChunkLogs.length})</h4>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setRawChunkLogs([])}
+                  className="h-6 text-xs"
+                >
+                  Clear
+                </Button>
+              </div>
+              <div className="max-h-32 overflow-auto">
+                {rawChunkLogs.length === 0 ? (
+                  <p className="text-muted-foreground">No chunks yet</p>
+                ) : (
+                  rawChunkLogs.map((chunk, i) => (
+                    <div key={i} className="py-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                      <div className="flex justify-between">
+                        <span className="font-semibold">Chunk #{i+1}</span>
+                        <span>{new Date(chunk.timestamp).toLocaleTimeString()} • {chunk.size} bytes</span>
+                      </div>
+                      {showFullRawData ? (
+                        <pre className="mt-1 p-1 bg-gray-100 dark:bg-gray-800 rounded overflow-x-auto whitespace-pre-wrap break-all text-[10px]">
+                          {chunk.content}
+                        </pre>
+                      ) : (
+                        <pre className="mt-1 p-1 bg-gray-100 dark:bg-gray-800 rounded overflow-x-auto text-[10px]">
+                          {chunk.content.substring(0, 50)}
+                          {chunk.content.length > 50 ? "..." : ""}
+                        </pre>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            {/* Direct text display - NEW - bypasses ReactMarkdown */}
             {showRawResponse && (
               <div className="mt-4">
                 <div className="flex justify-between items-center mb-2">
-                  <h4 className="text-sm font-medium">Raw Response</h4>
+                  <h4 className="text-sm font-medium">Direct Text Display</h4>
+                  <div className="text-xs text-muted-foreground">
+                    {streamingContent.length} chars, buffer: {rawBuffer?.length || 0}, display: {displayPosition || 0}
+                  </div>
+                </div>
+                
+                <div className="relative rounded-md border p-4 bg-gray-50 dark:bg-gray-900 w-full overflow-y-auto h-[200px]">
+                  <pre className="text-sm whitespace-pre-wrap break-words w-full max-w-full">
+                    {streamingContent || "(No content yet)"}
+                  </pre>
+                  
+                  {isStreaming && (
+                    <div className="absolute bottom-2 right-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-75" />
+                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Using StreamingContentDisplay */}
+            {showRawResponse && (
+              <div className="mt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-sm font-medium">Raw Response (StreamingContentDisplay)</h4>
                   {streamingContent && !isStreaming && (
                     <Button
                       onClick={parseRawResponseToStructured}
@@ -614,17 +779,9 @@ ${streamingContent}`;
                   content={streamingContent} 
                   isStreaming={isStreaming}
                   maxHeight="200px"
+                  rawBuffer={rawBuffer}
+                  displayPosition={displayPosition}
                 />
-
-                {/* Also show raw text for debugging */}
-                <details className="mt-2">
-                  <summary className="text-xs text-muted-foreground cursor-pointer">
-                    Show raw text ({streamingContent.length} chars)
-                  </summary>
-                  <pre className="text-xs mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded border overflow-auto max-h-32">
-                    {streamingContent || "(empty)"}
-                  </pre>
-                </details>
               </div>
             )}
 

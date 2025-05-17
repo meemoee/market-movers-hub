@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -7,8 +7,8 @@ interface StreamingContentDisplayProps {
   content: string;
   isStreaming: boolean;
   maxHeight?: string | number;
-  rawBuffer?: string;  // Optional access to raw buffer for debugging
-  displayPosition?: number; // Optional access to display position for debugging
+  rawBuffer?: string;  // Access to raw buffer for debugging
+  displayPosition?: number; // Access to display position for debugging
 }
 
 export function StreamingContentDisplay({ 
@@ -23,26 +23,27 @@ export function StreamingContentDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const shouldScrollRef = useRef<boolean>(true);
   
-  // State to show debug info (always visible for debugging)
-  const [showDebugInfo, setShowDebugInfo] = useState(true);
+  // Debug counters and metrics
+  const renderCountRef = useRef<number>(0);
+  const lastContentRef = useRef<string>("");
   
-  // Debug state to count content updates
-  const [updateCount, setUpdateCount] = useState(0);
-  const prevContentRef = useRef<string>("");
-  
-  // Track content length changes
+  // Track content updates for debugging
   useEffect(() => {
-    if (content !== prevContentRef.current) {
-      setUpdateCount(prev => prev + 1);
-      prevContentRef.current = content;
-      console.log(`StreamingContentDisplay: Content updated, length: ${content.length} (update #${updateCount + 1})`);
+    if (content !== lastContentRef.current) {
+      renderCountRef.current += 1;
+      console.log(`StreamingContentDisplay: Content update #${renderCountRef.current}, length changed from ${lastContentRef.current.length} to ${content.length} (delta: ${content.length - lastContentRef.current.length})`);
+      lastContentRef.current = content;
     }
   }, [content]);
 
-  // Scroll to bottom when content changes if auto-scroll is enabled
+  // CRITICAL: Scroll to bottom when content changes if auto-scroll is enabled
   useEffect(() => {
-    if (contentRef.current && containerRef.current && shouldScrollRef.current) {
+    if (containerRef.current && shouldScrollRef.current) {
+      const prevScroll = containerRef.current.scrollTop;
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      const newScroll = containerRef.current.scrollTop;
+      
+      console.log(`StreamingContentDisplay: Scrolled from ${prevScroll} to ${newScroll}, height: ${containerRef.current.scrollHeight}`);
     }
   }, [content]);
 
@@ -55,6 +56,8 @@ export function StreamingContentDisplay({
       const { scrollTop, scrollHeight, clientHeight } = container;
       const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50;
       shouldScrollRef.current = isAtBottom;
+      
+      console.log(`StreamingContentDisplay: User scroll - ${scrollTop}/${scrollHeight}, auto-scroll: ${isAtBottom}`);
     };
     
     container.addEventListener('scroll', handleScroll);
@@ -68,6 +71,16 @@ export function StreamingContentDisplay({
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   };
+  
+  // Show raw text for debugging
+  const plainTextContent = content || "(No content)";
+  const debugInfo = {
+    contentLength: content.length,
+    bufferLength: rawBuffer?.length || 0,
+    displayPosition: displayPosition || 0,
+    renderCount: renderCountRef.current,
+    isStreaming,
+  };
 
   return (
     <div className="relative">
@@ -76,53 +89,32 @@ export function StreamingContentDisplay({
         className="rounded-md border p-4 bg-accent/5 w-full max-w-full overflow-y-auto"
         style={{ height: maxHeight, maxHeight }}
       >
-        {/* Main content display - using pre instead of ReactMarkdown for debugging */}
+        {/* Debug bar at the top */}
+        <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <div>Content: {debugInfo.contentLength} chars</div>
+            <div>Buffer: {debugInfo.bufferLength} chars</div>
+            <div>Position: {debugInfo.displayPosition}/{debugInfo.bufferLength}</div>
+            <div>Renders: {debugInfo.renderCount}</div>
+            <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
+            <div>Delta: {debugInfo.bufferLength - debugInfo.displayPosition}</div>
+          </div>
+        </div>
+        
+        {/* Raw text display first */}
+        <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
+          <pre className="whitespace-pre-wrap break-words">{plainTextContent}</pre>
+        </div>
+        
+        {/* Main content display with ReactMarkdown */}
         <div 
           ref={contentRef}
           className="text-sm whitespace-pre-wrap break-words w-full max-w-full"
         >
-          {content ? (
-            <>
-              {/* For debugging, show raw text first */}
-              <pre className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
-                {content.substring(0, 200)}{content.length > 200 ? "..." : ""}
-              </pre>
-              
-              {/* Then show the markdown rendering */}
-              <ReactMarkdown>
-                {content}
-              </ReactMarkdown>
-            </>
-          ) : isStreaming ? (
-            <span className="text-muted-foreground italic">Waiting for content...</span>
-          ) : (
-            <span className="text-muted-foreground">No content to display</span>
-          )}
+          <ReactMarkdown>
+            {content}
+          </ReactMarkdown>
         </div>
-        
-        {/* Debug information overlay (always visible) */}
-        {showDebugInfo && (
-          <div className="mt-4 p-2 border-t border-dashed border-gray-500 text-xs">
-            <div className="font-mono">
-              <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
-              <div>Content length: {content.length} chars</div>
-              <div>Content updates: {updateCount}</div>
-              {rawBuffer !== undefined && (
-                <div>Raw buffer: {rawBuffer.length} chars</div>
-              )}
-              {displayPosition !== undefined && (
-                <div>Display position: {displayPosition}/{rawBuffer?.length || 0}</div>
-              )}
-              <div>
-                Segments: {content.split('\n\n').length}, 
-                Lines: {content.split('\n').length}
-              </div>
-              <div className="mt-1">
-                First 50 chars: "{content.substring(0, 50)}{content.length > 50 ? "..." : ""}"
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       
       {/* Streaming indicators */}
