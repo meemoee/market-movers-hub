@@ -1,3 +1,4 @@
+
 import { Send } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -60,7 +61,7 @@ export default function RightSidebar() {
     setStreamError(null);
     
     // Retry the last user message if available
-    const lastUserMessage = messages.findLast(m => m.type === 'user');
+    const lastUserMessage = messages.filter(m => m.type === 'user').pop();
     if (lastUserMessage?.content) {
       handleChatMessage(lastUserMessage.content);
     } else {
@@ -94,12 +95,13 @@ export default function RightSidebar() {
       const startTime = Date.now();
       console.log(`REQUEST_START: ${new Date().toISOString()}`);
       
+      // Fix: Remove abortSignal from the options and use signal in body instead
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        },
-        abortSignal: abortControllerRef.current.signal
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+          signal: abortControllerRef.current.signal
+        }
       })
 
       console.log(`REQUEST_COMPLETE: ${new Date().toISOString()}, elapsed: ${Date.now() - startTime}ms`);
