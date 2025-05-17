@@ -262,23 +262,43 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                 const parsedData = JSON.parse(data);
                 console.log("STREAMING: Parsed SSE data:", JSON.stringify(parsedData, null, 2));
                 
-                // Extract content if available
+                // Check for errors in the response
                 if (parsedData.choices && 
                     parsedData.choices[0] && 
-                    parsedData.choices[0].delta && 
-                    parsedData.choices[0].delta.content) {
-                  
-                  const content = parsedData.choices[0].delta.content;
-                  fullContent += content;
-                  
-                  // Log exact content for debugging
-                  console.log(`STREAMING: Content delta: "${content}"`);
-                  addDebugLog(`Content received: "${content.substring(0, 20)}${content.length > 20 ? "..." : ""}"`);
-                  
-                  // Add the chunk directly to the streaming display
-                  addChunk(content);
-                } else {
-                  console.log("STREAMING: No content in delta:", JSON.stringify(parsedData.choices[0]?.delta || {}, null, 2));
+                    parsedData.choices[0].error) {
+                    
+                    const error = parsedData.choices[0].error;
+                    console.error("STREAMING: Error in response:", error);
+                    addDebugLog(`API Error: ${error.code} - ${error.message}`);
+                    
+                    // Don't break the stream, just log the error and continue
+                    continue;
+                }
+                
+                // Extract content if available from either content or reasoning field
+                if (parsedData.choices && 
+                    parsedData.choices[0] && 
+                    parsedData.choices[0].delta) {
+                    
+                    // Check for content in either field
+                    const deltaContent = parsedData.choices[0].delta.content || '';
+                    const deltaReasoning = parsedData.choices[0].delta.reasoning || '';
+                    
+                    // Use whichever field has content
+                    const content = deltaContent || deltaReasoning;
+                    
+                    if (content) {
+                        fullContent += content;
+                        
+                        // Log exact content for debugging
+                        console.log(`STREAMING: Content delta: "${content}"`);
+                        addDebugLog(`Content received: "${content.substring(0, 20)}${content.length > 20 ? "..." : ""}"`);
+                        
+                        // Add the chunk directly to the streaming display
+                        addChunk(content);
+                    } else {
+                        console.log("STREAMING: No content in delta:", JSON.stringify(parsedData.choices[0]?.delta || {}, null, 2));
+                    }
                 }
               } catch (parseError) {
                 console.error("STREAMING: Error parsing SSE JSON:", parseError, "Raw data:", data);
