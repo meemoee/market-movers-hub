@@ -21,42 +21,88 @@ export function StreamingContentDisplay({
   // Refs for DOM elements
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const plainTextRef = useRef<HTMLPreElement>(null);
   const shouldScrollRef = useRef<boolean>(true);
+  const visibleContentRef = useRef<string>('');
   
   // Debug counters and metrics
   const renderCountRef = useRef<number>(0);
   const lastContentRef = useRef<string>("");
-  const lastContentLengthRef = useRef<number>(0);
   
-  // Track content updates for debugging with more detail
+  // CRITICAL: Direct DOM manipulation for typewriter effect
+  useEffect(() => {
+    if (!isStreaming || !content || !plainTextRef.current) return;
+    
+    // Store the full content for reference
+    const fullContent = content;
+    
+    // Reset visible content when streaming starts
+    if (visibleContentRef.current.length > fullContent.length) {
+      visibleContentRef.current = '';
+    }
+    
+    // Don't re-render if we're already showing all content
+    if (visibleContentRef.current === fullContent) {
+      return;
+    }
+
+    let currentPosition = visibleContentRef.current.length;
+    const targetElement = plainTextRef.current;
+    
+    console.log(`DIRECT_DOM: Starting typewriter from position ${currentPosition}/${fullContent.length}`);
+    
+    // Function to add characters with small delay
+    const addCharacters = () => {
+      // Don't continue if component unmounted or streaming stopped
+      if (!plainTextRef.current || !isStreaming) return;
+      
+      // Calculate how many characters to show next (5 characters at a time)
+      const charsToAdd = 5;
+      const nextPosition = Math.min(currentPosition + charsToAdd, fullContent.length);
+      
+      // Update the visible content
+      visibleContentRef.current = fullContent.substring(0, nextPosition);
+      
+      // Update DOM directly
+      if (plainTextRef.current) {
+        plainTextRef.current.textContent = visibleContentRef.current;
+      }
+      
+      // Log progress occasionally
+      if (nextPosition % 20 === 0 || nextPosition === fullContent.length) {
+        console.log(`DIRECT_DOM: Updated to position ${nextPosition}/${fullContent.length}`);
+      }
+      
+      // Scroll if needed
+      if (containerRef.current && shouldScrollRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      }
+      
+      // Continue if we haven't reached the end
+      currentPosition = nextPosition;
+      if (currentPosition < fullContent.length && isStreaming) {
+        setTimeout(addCharacters, 10); // 10ms delay between updates
+      } else {
+        console.log(`DIRECT_DOM: Finished typewriter at position ${currentPosition}`);
+      }
+    };
+    
+    // Start adding characters
+    addCharacters();
+  }, [content, isStreaming]);
+  
+  // Track content updates for debugging
   useEffect(() => {
     if (content !== lastContentRef.current) {
       renderCountRef.current += 1;
-      const prevLength = lastContentRef.current.length;
-      const newLength = content.length;
-      const difference = newLength - prevLength;
+      console.log(`STREAM_DISPLAY: New content update #${renderCountRef.current}, length: ${content.length}`);
       
-      console.log(`STREAM_DISPLAY: Content update #${renderCountRef.current}`);
-      console.log(`STREAM_DISPLAY: Length changed from ${prevLength} to ${newLength} (delta: ${difference})`);
-      
-      if (difference > 0 && difference < 100) {
-        // Show the actual new content that was added for debugging
-        console.log(`STREAM_DISPLAY: New content added: "${content.substring(prevLength)}"`);
+      // Check if content was significantly increased
+      if (content.length > lastContentRef.current.length + 50) {
+        console.log(`STREAM_DISPLAY: Large content increase: +${content.length - lastContentRef.current.length} chars`);
       }
       
       lastContentRef.current = content;
-      lastContentLengthRef.current = newLength;
-    }
-  }, [content]);
-
-  // CRITICAL: Scroll to bottom when content changes if auto-scroll is enabled
-  useEffect(() => {
-    if (containerRef.current && shouldScrollRef.current) {
-      const prevScroll = containerRef.current.scrollTop;
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      const newScroll = containerRef.current.scrollTop;
-      
-      console.log(`STREAM_DISPLAY: Scrolled from ${prevScroll} to ${newScroll}, height: ${containerRef.current.scrollHeight}`);
     }
   }, [content]);
 
@@ -69,8 +115,6 @@ export function StreamingContentDisplay({
       const { scrollTop, scrollHeight, clientHeight } = container;
       const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50;
       shouldScrollRef.current = isAtBottom;
-      
-      console.log(`STREAM_DISPLAY: User scroll - ${scrollTop}/${scrollHeight}, auto-scroll: ${isAtBottom}`);
     };
     
     container.addEventListener('scroll', handleScroll);
@@ -85,14 +129,14 @@ export function StreamingContentDisplay({
     }
   };
   
-  // Show raw text for debugging
-  const plainTextContent = content || "(No content)";
+  // Debug info
   const debugInfo = {
     contentLength: content.length,
     bufferLength: rawBuffer?.length || 0,
     displayPosition: displayPosition || 0,
     renderCount: renderCountRef.current,
     isStreaming,
+    visibleLength: visibleContentRef.current.length
   };
 
   return (
@@ -103,30 +147,37 @@ export function StreamingContentDisplay({
         style={{ height: maxHeight, maxHeight }}
       >
         {/* Debug bar at the top */}
-        <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs font-mono">
+        <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs font-mono text-gray-300">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <div>Content: {debugInfo.contentLength} chars</div>
             <div>Buffer: {debugInfo.bufferLength} chars</div>
             <div>Position: {debugInfo.displayPosition}/{debugInfo.bufferLength}</div>
+            <div>Visible: {debugInfo.visibleLength} chars</div>
             <div>Renders: {debugInfo.renderCount}</div>
             <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
-            <div>Delta: {debugInfo.bufferLength - debugInfo.displayPosition}</div>
           </div>
         </div>
         
-        {/* Direct raw text display for immediate feedback */}
-        <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
-          <pre className="whitespace-pre-wrap break-words">{plainTextContent}</pre>
+        {/* Direct text display (manipulated by DOM) */}
+        <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32 text-gray-300">
+          <pre 
+            ref={plainTextRef} 
+            className="whitespace-pre-wrap break-words"
+          >
+            {visibleContentRef.current || "(No content yet)"}
+          </pre>
         </div>
         
-        {/* Main content display with ReactMarkdown */}
+        {/* Main content display with ReactMarkdown (only updated after streaming) */}
         <div 
           ref={contentRef}
-          className="text-sm whitespace-pre-wrap break-words w-full max-w-full"
+          className="text-sm whitespace-pre-wrap break-words w-full max-w-full text-gray-300"
         >
-          <ReactMarkdown>
-            {content}
-          </ReactMarkdown>
+          {!isStreaming && (
+            <ReactMarkdown>
+              {content}
+            </ReactMarkdown>
+          )}
         </div>
       </div>
       
