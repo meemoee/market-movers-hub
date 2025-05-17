@@ -1,7 +1,9 @@
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Loader2, RefreshCw } from 'lucide-react';
+import { Button } from "@/components/ui/button";
 
 interface StreamingContentDisplayProps {
   content: string;
@@ -28,6 +30,32 @@ export function StreamingContentDisplay({
   // Debug counters and metrics
   const renderCountRef = useRef<number>(0);
   const lastContentRef = useRef<string>("");
+  const lastUpdateTimeRef = useRef<number>(Date.now());
+  
+  // State for health check
+  const [streamHealth, setStreamHealth] = useState<'healthy' | 'stalled' | 'error'>('healthy');
+  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Function to check stream health
+  const checkStreamHealth = () => {
+    if (!isStreaming) return;
+    
+    const now = Date.now();
+    const timeSinceUpdate = now - lastUpdateTimeRef.current;
+    
+    if (timeSinceUpdate > 5000 && visibleContentRef.current.length === 0) {
+      console.log(`STREAM_HEALTH: No content received after ${timeSinceUpdate}ms`);
+      setStreamHealth('stalled');
+    }
+  };
+  
+  // Health check timer
+  useEffect(() => {
+    if (isStreaming) {
+      const timer = setInterval(checkStreamHealth, 2000);
+      return () => clearInterval(timer);
+    }
+  }, [isStreaming]);
   
   // CRITICAL: Direct DOM manipulation for typewriter effect
   useEffect(() => {
@@ -66,6 +94,13 @@ export function StreamingContentDisplay({
       // Update DOM directly
       if (plainTextRef.current) {
         plainTextRef.current.textContent = visibleContentRef.current;
+        // Update health check timestamp
+        lastUpdateTimeRef.current = Date.now();
+        
+        // Reset health to healthy when we receive content
+        if (streamHealth !== 'healthy' && visibleContentRef.current.length > 0) {
+          setStreamHealth('healthy');
+        }
       }
       
       // Log progress occasionally
@@ -89,7 +124,7 @@ export function StreamingContentDisplay({
     
     // Start adding characters
     addCharacters();
-  }, [content, isStreaming]);
+  }, [content, isStreaming, streamHealth]);
   
   // Track content updates for debugging
   useEffect(() => {
@@ -103,6 +138,8 @@ export function StreamingContentDisplay({
       }
       
       lastContentRef.current = content;
+      // Update health check timestamp whenever we get new content
+      lastUpdateTimeRef.current = Date.now();
     }
   }, [content]);
 
@@ -129,6 +166,16 @@ export function StreamingContentDisplay({
     }
   };
   
+  // Force content display in case of stalled stream
+  const forceDisplayFullContent = () => {
+    if (plainTextRef.current && rawBuffer) {
+      plainTextRef.current.textContent = rawBuffer;
+      visibleContentRef.current = rawBuffer;
+      setStreamHealth('healthy');
+      console.log(`STREAM_DISPLAY: Forced display of full content (${rawBuffer.length} chars)`);
+    }
+  };
+  
   // Debug info
   const debugInfo = {
     contentLength: content.length,
@@ -136,7 +183,8 @@ export function StreamingContentDisplay({
     displayPosition: displayPosition || 0,
     renderCount: renderCountRef.current,
     isStreaming,
-    visibleLength: visibleContentRef.current.length
+    visibleLength: visibleContentRef.current.length,
+    health: streamHealth
   };
 
   return (
@@ -155,6 +203,7 @@ export function StreamingContentDisplay({
             <div>Visible: {debugInfo.visibleLength} chars</div>
             <div>Renders: {debugInfo.renderCount}</div>
             <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
+            <div>Health: {debugInfo.health}</div>
           </div>
         </div>
         
@@ -181,23 +230,53 @@ export function StreamingContentDisplay({
         </div>
       </div>
       
-      {/* Streaming indicators */}
+      {/* Streaming indicators with health status */}
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
-              Streaming...
+              {streamHealth === 'healthy' ? 'Streaming...' : 
+               streamHealth === 'stalled' ? 'Stream stalled...' : 
+               'Error streaming'}
             </span>
             <div className="flex space-x-1">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-75" />
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
+              <div className={`w-2 h-2 rounded-full ${
+                streamHealth === 'healthy' ? 'bg-primary animate-pulse' : 
+                streamHealth === 'stalled' ? 'bg-yellow-500 animate-ping' :
+                'bg-destructive'
+              }`} />
+              <div className={`w-2 h-2 rounded-full ${
+                streamHealth === 'healthy' ? 'bg-primary animate-pulse delay-75' : 
+                streamHealth === 'stalled' ? 'bg-yellow-500 animate-ping delay-75' :
+                'bg-destructive delay-75'
+              }`} />
+              <div className={`w-2 h-2 rounded-full ${
+                streamHealth === 'healthy' ? 'bg-primary animate-pulse delay-150' : 
+                streamHealth === 'stalled' ? 'bg-yellow-500 animate-ping delay-150' :
+                'bg-destructive delay-150'
+              }`} />
             </div>
           </div>
         </div>
       )}
       
-      {!shouldScrollRef.current && isStreaming && (
+      {/* Recovery options for stalled streams */}
+      {streamHealth === 'stalled' && isStreaming && (
+        <div className="absolute bottom-2 left-2 flex gap-2">
+          <Button 
+            onClick={forceDisplayFullContent}
+            size="sm"
+            variant="destructive"
+            className="text-xs py-1 px-2 h-auto"
+          >
+            Force Display
+            <RefreshCw className="ml-1 h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      
+      {/* Auto-scroll button */}
+      {!shouldScrollRef.current && isStreaming && streamHealth === 'healthy' && (
         <button 
           onClick={scrollToBottom}
           className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
