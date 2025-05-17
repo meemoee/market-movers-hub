@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-// Adjust this to control how fast content appears to stream
-const ARTIFICIAL_DELAY = 2; // milliseconds between character displays (reduced for faster display)
-const CHUNK_SIZE = 15; // Number of characters to reveal at once
-const POLLING_INTERVAL = 50; // milliseconds to check for updates
+// Adjust these constants to control streaming behavior
+const ARTIFICIAL_DELAY = 10; // milliseconds between character displays (increased for visibility)
+const CHUNK_SIZE = 5; // Number of characters to reveal at once (reduced for more granular updates)
+const POLLING_INTERVAL = 20; // milliseconds to check for updates (more frequent)
+const MAX_CATCH_UP_RATE = 50; // Maximum characters to show at once during catch-up
+const DEBUG_INTERVAL = 1000; // How often to print debug info
 
 /**
  * Custom hook for handling streaming content with real-time updates
@@ -30,9 +32,16 @@ export function useStreamingContent() {
   // Ref to hold interval IDs
   const intervalRef = useRef<number | null>(null);
   const typewriterIntervalRef = useRef<number | null>(null);
-
-  // Track last update for debugging
+  const debugIntervalRef = useRef<number | null>(null);
+  
+  // Track timing information for debugging
   const lastUpdateRef = useRef<number>(0);
+  const lastTypewriterUpdateRef = useRef<number>(0);
+  const streamStartTimeRef = useRef<number>(0);
+  
+  // Track interval execution counts
+  const typewriterTickCountRef = useRef<number>(0);
+  const pollingTickCountRef = useRef<number>(0);
   
   // Debug state to keep track of chunks received
   const chunksRef = useRef<{timestamp: number, size: number, content: string}[]>([]);
@@ -42,38 +51,57 @@ export function useStreamingContent() {
   
   // Start streaming with reset state
   const startStreaming = useCallback(() => {
-    console.log(`STREAMING: Starting streaming with new buffer...`);
+    console.log(`STREAMING: Starting streaming with new buffer at ${new Date().toISOString()}`);
     
     // Clear existing content and reset refs
     contentBuffer.current = '';
     displayPositionRef.current = 0;
     processedCharsRef.current = 0;
+    typewriterTickCountRef.current = 0;
+    pollingTickCountRef.current = 0;
     setContent('');
     chunksRef.current = [];
+    streamStartTimeRef.current = Date.now();
     
     // Clear any existing intervals
     if (intervalRef.current) {
+      console.log('STREAMING: Clearing existing polling interval');
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
     
     if (typewriterIntervalRef.current) {
+      console.log('STREAMING: Clearing existing typewriter interval');
       clearInterval(typewriterIntervalRef.current);
       typewriterIntervalRef.current = null;
+    }
+    
+    if (debugIntervalRef.current) {
+      clearInterval(debugIntervalRef.current);
+      debugIntervalRef.current = null;
     }
     
     // Update streaming state
     isStreamingRef.current = true;
     setIsStreaming(true);
     
-    // Start the typewriter effect interval with faster updates
+    console.log(`STREAMING: Setting up typewriter interval with delay=${ARTIFICIAL_DELAY}ms, chunk=${CHUNK_SIZE}`);
+    
+    // Start the typewriter effect interval with controlled updates
     typewriterIntervalRef.current = window.setInterval(() => {
+      typewriterTickCountRef.current++;
+      const now = Date.now();
+      const timeSinceLastTypewriter = now - lastTypewriterUpdateRef.current;
+
       // If we've caught up to the buffer, do nothing
       if (displayPositionRef.current >= contentBuffer.current.length) {
+        if (typewriterTickCountRef.current % 10 === 0) {
+          console.log(`TYPEWRITER[${typewriterTickCountRef.current}]: No update needed, already at position ${displayPositionRef.current}`);
+        }
         return;
       }
       
-      // Show CHUNK_SIZE characters at once for faster updates
+      // Show CHUNK_SIZE characters at once for controlled updates
       const prevPosition = displayPositionRef.current;
       const nextPosition = Math.min(
         prevPosition + CHUNK_SIZE,
@@ -86,37 +114,58 @@ export function useStreamingContent() {
       // Get the segment to display
       const visibleContent = contentBuffer.current.substring(0, nextPosition);
       
-      // Update visible content - Force update React state
+      // Update visible content
       setContent(visibleContent);
       
       const charsAdded = nextPosition - prevPosition;
-      console.log(`TYPEWRITER: Added ${charsAdded} chars (${prevPosition} → ${nextPosition}). Content length now ${visibleContent.length}`);
+      console.log(`TYPEWRITER[${typewriterTickCountRef.current}]: Added ${charsAdded} chars (${prevPosition} → ${nextPosition}). Content length now ${visibleContent.length}`);
       
-      lastUpdateRef.current = Date.now();
+      // Track the update timing
+      lastTypewriterUpdateRef.current = now;
+      lastUpdateRef.current = now;
     }, ARTIFICIAL_DELAY);
     
     // Regular polling interval to ensure content updates if typewriter falls behind
     intervalRef.current = window.setInterval(() => {
+      pollingTickCountRef.current++;
+      
       if (isStreamingRef.current && displayPositionRef.current < contentBuffer.current.length) {
         const now = Date.now();
         const timeSinceLastUpdate = now - lastUpdateRef.current;
         
         // If it's been too long since the typewriter ran, force an update
         if (timeSinceLastUpdate > 200) {
-          console.log(`STREAMING: Force update after delay of ${timeSinceLastUpdate}ms`);
+          console.log(`POLLING[${pollingTickCountRef.current}]: Force update after delay of ${timeSinceLastUpdate}ms`);
           
-          // Force display a larger chunk of content
+          // Force display a calculated chunk based on how far behind we are
+          const displayLag = contentBuffer.current.length - displayPositionRef.current;
+          const catchUpSize = Math.min(MAX_CATCH_UP_RATE, Math.ceil(displayLag / 4));
+          
           const nextPosition = Math.min(
-            displayPositionRef.current + 50, // Show more during a delay
+            displayPositionRef.current + catchUpSize,
             contentBuffer.current.length
           );
+          
+          console.log(`POLLING: Catching up ${catchUpSize} chars (lag=${displayLag}), position: ${displayPositionRef.current} → ${nextPosition}`);
           
           displayPositionRef.current = nextPosition;
           setContent(contentBuffer.current.substring(0, nextPosition));
           lastUpdateRef.current = now;
+        } else if (pollingTickCountRef.current % 10 === 0) {
+          // Periodic status update for debugging
+          console.log(`POLLING[${pollingTickCountRef.current}]: Position ${displayPositionRef.current}/${contentBuffer.current.length}, lag=${contentBuffer.current.length - displayPositionRef.current}`);
         }
       }
-    }, POLLING_INTERVAL); // Check more frequently
+    }, POLLING_INTERVAL);
+    
+    // Set up debug interval to print status periodically
+    debugIntervalRef.current = window.setInterval(() => {
+      if (isStreamingRef.current) {
+        const runtime = Date.now() - streamStartTimeRef.current;
+        console.log(`STREAMING_DEBUG: Runtime=${(runtime/1000).toFixed(1)}s, Buffer=${contentBuffer.current.length}, Display=${displayPositionRef.current}, Typewriter ticks=${typewriterTickCountRef.current}, Polling ticks=${pollingTickCountRef.current}`);
+      }
+    }, DEBUG_INTERVAL);
+    
   }, []);
   
   // Add a chunk to the stream with improved debugging
@@ -149,40 +198,65 @@ export function useStreamingContent() {
     
     // Calculate how far behind the display is
     const displayLag = contentBuffer.current.length - displayPositionRef.current;
+    console.log(`STREAMING: Current display lag: ${displayLag} characters`);
     
-    // For the very first chunk or if significantly behind, update immediately
-    if (oldLength === 0 || displayLag > 500) {
-      // Get ahead by processing a chunk immediately
-      let newPosition;
-      
-      if (oldLength === 0) {
-        // For first chunk, show some content immediately
-        newPosition = Math.min(30, contentBuffer.current.length);
-      } else {
-        // For catching up when behind, move forward significantly
-        newPosition = displayPositionRef.current + Math.floor(displayLag / 2);
-      }
-      
-      // Update position
-      displayPositionRef.current = newPosition;
+    // For the very first chunk, show some content immediately to provide feedback
+    if (oldLength === 0) {
+      // For first chunk, show a small portion immediately
+      const firstChunkPreview = Math.min(10, contentBuffer.current.length);
+      displayPositionRef.current = firstChunkPreview;
       
       // Force immediate update for UI
-      const visibleContent = contentBuffer.current.substring(0, newPosition);
+      const visibleContent = contentBuffer.current.substring(0, firstChunkPreview);
       setContent(visibleContent);
       
-      console.log(`STREAMING: Force-updated position to ${newPosition}/${contentBuffer.current.length} (lag was ${displayLag})`);
+      console.log(`STREAMING: First chunk - showing preview of ${firstChunkPreview} chars`);
       
       lastUpdateRef.current = Date.now();
-    } else {
-      // Otherwise let the typewriter handle it
-      console.log(`STREAMING: Regular flow, position: ${displayPositionRef.current}/${contentBuffer.current.length}, lag: ${displayLag}`);
+      lastTypewriterUpdateRef.current = Date.now();
+    }
+    
+    // Check if the typewriter interval is actually running by validating the tick count
+    if (typewriterTickCountRef.current === 0 && chunksRef.current.length > 3) {
+      console.warn(`STREAMING: WARNING - Typewriter may not be running! Tick count is still 0 after ${chunksRef.current.length} chunks`);
+      
+      // Try restarting the typewriter interval
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+      }
+      
+      console.log(`STREAMING: Restarting typewriter interval`);
+      typewriterIntervalRef.current = window.setInterval(() => {
+        typewriterTickCountRef.current++;
+        
+        // Only continue if there's content to display
+        if (displayPositionRef.current >= contentBuffer.current.length) {
+          return;
+        }
+        
+        // Show characters at a controlled pace
+        const prevPosition = displayPositionRef.current;
+        const nextPosition = Math.min(
+          prevPosition + CHUNK_SIZE,
+          contentBuffer.current.length
+        );
+        
+        displayPositionRef.current = nextPosition;
+        const visibleContent = contentBuffer.current.substring(0, nextPosition);
+        setContent(visibleContent);
+        
+        console.log(`TYPEWRITER[${typewriterTickCountRef.current}](restarted): ${prevPosition} → ${nextPosition}`);
+        lastTypewriterUpdateRef.current = Date.now();
+        lastUpdateRef.current = Date.now();
+      }, ARTIFICIAL_DELAY);
     }
   }, []);
   
   // Stop streaming and ensure full content is displayed immediately
   const stopStreaming = useCallback(() => {
-    console.log(`STREAMING: Stopping streaming... Final buffer length: ${contentBuffer.current.length}`);
-    console.log(`STREAMING: Received ${chunksRef.current.length} chunks in total`);
+    const runtime = Date.now() - streamStartTimeRef.current;
+    console.log(`STREAMING: Stopping streaming after ${(runtime/1000).toFixed(1)}s... Final buffer length: ${contentBuffer.current.length}`);
+    console.log(`STREAMING: Received ${chunksRef.current.length} chunks, Typewriter ticks: ${typewriterTickCountRef.current}, Polling ticks: ${pollingTickCountRef.current}`);
     
     // Log all chunks for debugging
     chunksRef.current.forEach((chunk, i) => {
@@ -204,12 +278,73 @@ export function useStreamingContent() {
       typewriterIntervalRef.current = null;
     }
     
+    if (debugIntervalRef.current) {
+      clearInterval(debugIntervalRef.current);
+      debugIntervalRef.current = null;
+    }
+    
     // Force display of all content immediately
     setContent(contentBuffer.current);
     displayPositionRef.current = contentBuffer.current.length;
     
     console.log(`STREAMING: Set final content (${contentBuffer.current.length} characters)`);
   }, []);
+  
+  // Use requestAnimationFrame for smoother updates - experimental alternative to intervals
+  useEffect(() => {
+    let animationFrameId: number | null = null;
+    let lastFrameTime = 0;
+    const frameBudget = 1000 / 30; // target ~30fps
+    
+    const updateFrame = (timestamp: number) => {
+      // Only run this during streaming
+      if (!isStreamingRef.current) {
+        animationFrameId = null;
+        return;
+      }
+      
+      // Calculate time since last frame
+      const elapsed = timestamp - lastFrameTime;
+      
+      // If it's time for an update (based on our frame budget)
+      if (elapsed > frameBudget && displayPositionRef.current < contentBuffer.current.length) {
+        // Show some characters
+        const prevPosition = displayPositionRef.current;
+        const nextPosition = Math.min(
+          prevPosition + CHUNK_SIZE,
+          contentBuffer.current.length
+        );
+        
+        if (nextPosition > prevPosition) {
+          displayPositionRef.current = nextPosition;
+          setContent(contentBuffer.current.substring(0, nextPosition));
+          // Log less frequently to avoid console spam
+          if (Math.random() < 0.1) {
+            console.log(`RAF: Updated ${prevPosition} → ${nextPosition}`);
+          }
+          lastUpdateRef.current = Date.now();
+        }
+        
+        lastFrameTime = timestamp;
+      }
+      
+      // Continue the animation loop
+      animationFrameId = requestAnimationFrame(updateFrame);
+    };
+    
+    // Start the animation frame loop when streaming begins
+    if (isStreaming && !animationFrameId) {
+      console.log('STREAMING: Starting requestAnimationFrame loop');
+      animationFrameId = requestAnimationFrame(updateFrame);
+    }
+    
+    // Clean up the animation frame when streaming ends or component unmounts
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [isStreaming]);
   
   // Clean up on unmount
   useEffect(() => {
@@ -219,6 +354,9 @@ export function useStreamingContent() {
       }
       if (typewriterIntervalRef.current) {
         clearInterval(typewriterIntervalRef.current);
+      }
+      if (debugIntervalRef.current) {
+        clearInterval(debugIntervalRef.current);
       }
     };
   }, []);

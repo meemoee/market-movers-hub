@@ -99,11 +99,11 @@ export function StreamingContentDisplay({
     <div className="relative">
       <div 
         ref={containerRef}
-        className="rounded-md border p-4 bg-accent/5 w-full max-w-full overflow-y-auto"
+        className="rounded-md border p-4 bg-gray-900 w-full max-w-full overflow-y-auto"
         style={{ height: maxHeight, maxHeight }}
       >
         {/* Debug bar at the top */}
-        <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
+        <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs font-mono">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <div>Content: {debugInfo.contentLength} chars</div>
             <div>Buffer: {debugInfo.bufferLength} chars</div>
@@ -115,7 +115,7 @@ export function StreamingContentDisplay({
         </div>
         
         {/* Direct raw text display for immediate feedback */}
-        <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
+        <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
           <pre className="whitespace-pre-wrap break-words">{plainTextContent}</pre>
         </div>
         

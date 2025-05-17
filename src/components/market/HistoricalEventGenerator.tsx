@@ -262,10 +262,11 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       const decoder = new TextDecoder();
       let buffer = '';
       let chunkCounter = 0;
+      let lastProcessTime = Date.now();
 
       addDebugLog("Starting to process stream...");
 
-      // Improved SSE handling with buffer for partial messages
+      // Improved SSE handling with more detailed logging
       while (true) {
         const { done, value } = await reader.read();
         
@@ -274,7 +275,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
           // Process any remaining buffer content
           if (buffer.trim().length > 0) {
             addDebugLog(`Processing final buffer content (${buffer.length} bytes)`);
-            processSSEBuffer(buffer);
+            await processSSEBuffer(buffer, true);
           }
           break;
         }
@@ -284,13 +285,19 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         chunkCounter++;
         buffer += chunkText;
         
-        // Log every received chunk
-        console.log(`STREAMING [${chunkCounter}]: Raw SSE chunk received: ${chunkText.length} bytes`);
-        addDebugLog(`[${chunkCounter}] Raw chunk: ${chunkText.length} bytes`);
+        // Log every received chunk with more detail
+        const now = Date.now();
+        const timeSinceLastChunk = now - lastProcessTime;
+        lastProcessTime = now;
+        
+        console.log(`STREAMING [${chunkCounter}]: Raw SSE chunk received: ${chunkText.length} bytes, ${timeSinceLastChunk}ms since last chunk`);
+        console.log(`STREAMING [${chunkCounter}]: Raw chunk content: "${chunkText}"`);
+        
+        addDebugLog(`[${chunkCounter}] Raw chunk: ${chunkText.length} bytes, interval: ${timeSinceLastChunk}ms`);
         addRawChunkLog(chunkText);
         
         // Process complete SSE messages from the buffer
-        processSSEBuffer(buffer);
+        await processSSEBuffer(buffer, false);
         
         // Keep only incomplete messages in the buffer
         const lastNewlineIndex = buffer.lastIndexOf('\n\n');
@@ -310,18 +317,23 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       stopStreaming(); // Stop streaming and ensure full content is displayed
     }
     
-    // Helper function to process SSE buffer and extract messages
-    function processSSEBuffer(buffer: string) {
+    // Helper function to process SSE buffer and extract messages with improved logging
+    async function processSSEBuffer(buffer: string, isFinal: boolean) {
       // Split by double newlines which separate SSE messages
       const events = buffer.split('\n\n');
       
-      for (let i = 0; i < events.length - 1; i++) {  // Skip potentially incomplete last event
+      if (events.length > 1) {
+        console.log(`STREAMING: Processing ${events.length-1} complete events from buffer`);
+      }
+      
+      for (let i = 0; i < events.length - 1; i++) {
         const event = events[i].trim();
         
         if (!event) continue;
         
         // Log each complete event for debugging
         console.log(`STREAMING: Processing SSE event #${i+1}/${events.length-1}: ${event.length} bytes`);
+        console.log(`STREAMING: Raw event: "${event}"`);
         
         // Process each line in the event
         const lines = event.split('\n');
@@ -356,12 +368,60 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                 if (content) {
                   // Log and add the extracted content
                   console.log(`STREAMING: Content extracted (${content.length} bytes): "${content}"`);
-                  addChunk(content);
+                  
+                  // Add small delay to avoid overwhelming the typewriter effect
+                  // This helps ensure the typewriter has time to process between chunks
+                  if (content.length > 50) {
+                    const segmentSize = 50;
+                    for (let j = 0; j < content.length; j += segmentSize) {
+                      const segment = content.substring(j, j + segmentSize);
+                      addChunk(segment);
+                      
+                      // Small delay between segments to help typewriter effect
+                      if (j + segmentSize < content.length) {
+                        await new Promise(r => setTimeout(r, 5));
+                      }
+                    }
+                  } else {
+                    addChunk(content);
+                  }
                 }
             }
           } catch (e) {
             console.error("STREAMING: JSON parse error:", e, "Raw data:", dataContent);
             addDebugLog(`Parse error: ${e.message}`);
+          }
+        }
+      }
+      
+      // If this is the final processing and there's one event left, process it too
+      if (isFinal && events.length > 0) {
+        const finalEvent = events[events.length - 1].trim();
+        if (finalEvent) {
+          console.log(`STREAMING: Processing final incomplete event: ${finalEvent.length} bytes`);
+          
+          // Try to extract any data lines
+          const lines = finalEvent.split('\n');
+          let dataContent = '';
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              dataContent += line.substring(6);
+            }
+          }
+          
+          if (dataContent) {
+            try {
+              const parsedData = JSON.parse(dataContent);
+              
+              if (parsedData.choices?.[0]?.delta?.content) {
+                const content = parsedData.choices[0].delta.content;
+                console.log(`STREAMING: Final content extracted (${content.length} bytes)`);
+                addChunk(content);
+              }
+            } catch (e) {
+              console.log(`STREAMING: Could not parse final fragment as JSON: ${e.message}`);
+            }
           }
         }
       }
