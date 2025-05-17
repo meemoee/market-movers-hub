@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 // Adjust this to control how fast content appears to stream
-const ARTIFICIAL_DELAY = 5; // milliseconds between character displays (reduced for faster display)
+const ARTIFICIAL_DELAY = 2; // milliseconds between character displays (reduced for faster display)
+const CHUNK_SIZE = 15; // Number of characters to reveal at once
+const POLLING_INTERVAL = 50; // milliseconds to check for updates
 
 /**
  * Custom hook for handling streaming content with real-time updates
@@ -64,48 +66,48 @@ export function useStreamingContent() {
     isStreamingRef.current = true;
     setIsStreaming(true);
     
-    // Start the typewriter effect interval - SIMPLIFIED FOR DEBUGGING
+    // Start the typewriter effect interval with faster updates
     typewriterIntervalRef.current = window.setInterval(() => {
       // If we've caught up to the buffer, do nothing
       if (displayPositionRef.current >= contentBuffer.current.length) {
         return;
       }
       
-      // Show MORE characters at once for faster debugging
+      // Show CHUNK_SIZE characters at once for faster updates
+      const prevPosition = displayPositionRef.current;
       const nextPosition = Math.min(
-        displayPositionRef.current + 15, // Show more characters at once for debugging
+        prevPosition + CHUNK_SIZE,
         contentBuffer.current.length
       );
-      
-      // DEBUG
-      const prevPosition = displayPositionRef.current;
-      const charsToAdd = nextPosition - prevPosition;
       
       // Update display position
       displayPositionRef.current = nextPosition;
       
-      // Update visible content - FORCE TRIGGER setContent each time for debugging
+      // Get the segment to display
       const visibleContent = contentBuffer.current.substring(0, nextPosition);
+      
+      // Update visible content - Force update React state
       setContent(visibleContent);
       
-      console.log(`TYPEWRITER: Added ${charsToAdd} chars (${prevPosition} → ${nextPosition}). Content length now ${visibleContent.length}`);
+      const charsAdded = nextPosition - prevPosition;
+      console.log(`TYPEWRITER: Added ${charsAdded} chars (${prevPosition} → ${nextPosition}). Content length now ${visibleContent.length}`);
       
       lastUpdateRef.current = Date.now();
     }, ARTIFICIAL_DELAY);
     
-    // Also set a regular polling interval to update content if chunks are delayed
+    // Regular polling interval to ensure content updates if typewriter falls behind
     intervalRef.current = window.setInterval(() => {
-      // Only update if streaming is active and there's new content
       if (isStreamingRef.current && displayPositionRef.current < contentBuffer.current.length) {
         const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdateRef.current;
         
         // If it's been too long since the typewriter ran, force an update
-        if (now - lastUpdateRef.current > 200) {
-          console.log('STREAMING: Forcing update due to delay');
+        if (timeSinceLastUpdate > 200) {
+          console.log(`STREAMING: Force update after delay of ${timeSinceLastUpdate}ms`);
           
-          // Force display a chunk of content
+          // Force display a larger chunk of content
           const nextPosition = Math.min(
-            displayPositionRef.current + 50, // Show even more content during a delay
+            displayPositionRef.current + 50, // Show more during a delay
             contentBuffer.current.length
           );
           
@@ -114,7 +116,7 @@ export function useStreamingContent() {
           lastUpdateRef.current = now;
         }
       }
-    }, 200); // Check more frequently
+    }, POLLING_INTERVAL); // Check more frequently
   }, []);
   
   // Add a chunk to the stream with improved debugging
@@ -124,12 +126,16 @@ export function useStreamingContent() {
       return;
     }
     
-    // Record chunk details for debugging
-    chunksRef.current.push({
-      timestamp: Date.now(),
+    // Log this chunk arrival with timestamp for debugging
+    const now = Date.now();
+    const chunkInfo = {
+      timestamp: now,
       size: chunk.length,
       content: chunk
-    });
+    };
+    
+    // Record chunk details for debugging
+    chunksRef.current.push(chunkInfo);
     
     // Add the chunk to the buffer
     const oldLength = contentBuffer.current.length;
@@ -138,32 +144,38 @@ export function useStreamingContent() {
     // Track processed characters
     processedCharsRef.current += chunk.length;
     
-    console.log(`STREAMING: [${new Date().toISOString().substring(11, 23)}] Added chunk (${chunk.length} chars). Buffer: ${oldLength} → ${contentBuffer.current.length}`);
-    console.log(`STREAMING: Chunk content: "${chunk}"`);
+    console.log(`STREAMING: [${new Date(now).toISOString().substring(11, 23)}] Added chunk #${chunksRef.current.length} (${chunk.length} chars). Buffer: ${oldLength} → ${contentBuffer.current.length}`);
+    console.log(`STREAMING: Chunk preview: "${chunk.substring(0, Math.min(50, chunk.length))}${chunk.length > 50 ? '...' : ''}"`);
     
-    // Immediate update for very first chunk and ALSO for subsequent chunks when behind
-    if (oldLength === 0 || displayPositionRef.current < oldLength - 50) {
-      // Either initial chunk OR we're getting behind - update faster
-      const initialDisplayLength = Math.min(chunk.length + (displayPositionRef.current || 0), contentBuffer.current.length);
-      displayPositionRef.current = initialDisplayLength;
+    // Calculate how far behind the display is
+    const displayLag = contentBuffer.current.length - displayPositionRef.current;
+    
+    // For the very first chunk or if significantly behind, update immediately
+    if (oldLength === 0 || displayLag > 500) {
+      // Get ahead by processing a chunk immediately
+      let newPosition;
+      
+      if (oldLength === 0) {
+        // For first chunk, show some content immediately
+        newPosition = Math.min(30, contentBuffer.current.length);
+      } else {
+        // For catching up when behind, move forward significantly
+        newPosition = displayPositionRef.current + Math.floor(displayLag / 2);
+      }
+      
+      // Update position
+      displayPositionRef.current = newPosition;
       
       // Force immediate update for UI
-      const visibleContent = contentBuffer.current.substring(0, initialDisplayLength);
+      const visibleContent = contentBuffer.current.substring(0, newPosition);
       setContent(visibleContent);
-      console.log(`STREAMING: Force-updated to position ${initialDisplayLength}, content length: ${visibleContent.length}`);
+      
+      console.log(`STREAMING: Force-updated position to ${newPosition}/${contentBuffer.current.length} (lag was ${displayLag})`);
       
       lastUpdateRef.current = Date.now();
     } else {
-      // We're keeping up, let the typewriter interval handle it
-      console.log(`STREAMING: Let typewriter handle update, position: ${displayPositionRef.current}/${contentBuffer.current.length}`);
-    }
-    
-    // DEBUGGING: Force sync state if too far behind
-    if (contentBuffer.current.length > displayPositionRef.current + 200) {
-      console.log(`STREAMING: WARNING - Display position (${displayPositionRef.current}) too far behind buffer (${contentBuffer.current.length}), forcing catch-up`);
-      displayPositionRef.current = contentBuffer.current.length;
-      setContent(contentBuffer.current);
-      lastUpdateRef.current = Date.now();
+      // Otherwise let the typewriter handle it
+      console.log(`STREAMING: Regular flow, position: ${displayPositionRef.current}/${contentBuffer.current.length}, lag: ${displayLag}`);
     }
   }, []);
   

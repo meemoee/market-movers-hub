@@ -257,119 +257,49 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         throw new Error("Response body is null");
       }
 
-      // Process the stream with improved debugging
+      // Setup stream processing
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let fullContent = "";
+      let buffer = '';
       let chunkCounter = 0;
 
       addDebugLog("Starting to process stream...");
 
-      // Simplified direct streaming approach
+      // Improved SSE handling with buffer for partial messages
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) {
           addDebugLog("Stream complete");
+          // Process any remaining buffer content
+          if (buffer.trim().length > 0) {
+            addDebugLog(`Processing final buffer content (${buffer.length} bytes)`);
+            processSSEBuffer(buffer);
+          }
           break;
         }
         
-        // Decode the chunk and log raw data
+        // Decode the chunk and add to buffer
         const chunkText = decoder.decode(value, { stream: true });
         chunkCounter++;
+        buffer += chunkText;
         
-        // Log complete raw chunk data for debugging
-        console.log(`STREAMING [${chunkCounter}]: Raw SSE chunk (${chunkText.length} bytes):`, chunkText);
-        addDebugLog(`[${chunkCounter}] Raw chunk received: ${chunkText.length} bytes`);
+        // Log every received chunk
+        console.log(`STREAMING [${chunkCounter}]: Raw SSE chunk received: ${chunkText.length} bytes`);
+        addDebugLog(`[${chunkCounter}] Raw chunk: ${chunkText.length} bytes`);
         addRawChunkLog(chunkText);
         
-        // Process the chunk to extract content - with enhanced debugging
-        try {
-          // DEBUG: Log raw lines for inspection
-          const lines = chunkText.split('\n');
-          console.log(`STREAMING: Chunk has ${lines.length} lines`);
-          
-          // Process each line separately for clearer debugging
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            console.log(`STREAMING: Line ${i+1}/${lines.length}: "${line}"`);
-            
-            if (line.startsWith('data: ')) {
-              const data = line.substring(6); // Remove "data: " prefix
-              console.log(`STREAMING: Found data line: "${data}"`);
-              
-              // Skip "[DONE]" which indicates end of stream
-              if (data === '[DONE]') {
-                console.log("STREAMING: Received [DONE] message");
-                continue;
-              }
-              
-              try {
-                // Parse the JSON data
-                const parsedData = JSON.parse(data);
-                console.log(`STREAMING: Successfully parsed JSON data:`, JSON.stringify(parsedData, null, 2));
-                
-                // Check for errors in the response
-                if (parsedData.choices && 
-                    parsedData.choices[0] && 
-                    parsedData.choices[0].error) {
-                    
-                    const error = parsedData.choices[0].error;
-                    console.error("STREAMING: Error in response:", error);
-                    addDebugLog(`API Error: ${error.code} - ${error.message}`);
-                    continue;
-                }
-                
-                // Extract content if available from either content or reasoning field
-                if (parsedData.choices && 
-                    parsedData.choices[0] && 
-                    parsedData.choices[0].delta) {
-                    
-                    // Check for content in delta fields
-                    const delta = parsedData.choices[0].delta;
-                    console.log("STREAMING: Delta object:", JSON.stringify(delta, null, 2));
-                    
-                    const deltaContent = delta.content || '';
-                    const deltaReasoning = delta.reasoning || '';
-                    
-                    // Use whichever field has content
-                    const content = deltaContent || deltaReasoning;
-                    
-                    if (content) {
-                        fullContent += content;
-                        
-                        // Log exact content for debugging
-                        console.log(`STREAMING: Content delta (${content.length} chars): "${content}"`);
-                        addDebugLog(`Content received (${content.length} chars): "${content.substring(0, 20)}${content.length > 20 ? "..." : ""}"`);
-                        
-                        // Add the chunk directly to the streaming display
-                        addChunk(content);
-                        
-                        // Force a delay between chunks (debugging only - remove in production!)
-                        // This is just to test if timing is affecting display
-                        // await new Promise(resolve => setTimeout(resolve, 50));
-                    } else {
-                        console.log("STREAMING: No content in delta:", JSON.stringify(delta, null, 2));
-                        addDebugLog("Delta contained no content");
-                    }
-                } else {
-                    console.log("STREAMING: No delta found in choices");
-                }
-              } catch (parseError) {
-                console.error(`STREAMING: Error parsing SSE JSON: ${parseError}`, "Raw data:", data);
-                addDebugLog(`Parse error: ${parseError.message}`);
-              }
-            } else if (line.trim() !== '') {
-              console.log(`STREAMING: Line doesn't start with 'data: ' - "${line}"`);
-            }
-          }
-        } catch (processError) {
-          console.error("STREAMING: Error processing chunk:", processError);
-          addDebugLog(`Processing error: ${processError.message}`);
+        // Process complete SSE messages from the buffer
+        processSSEBuffer(buffer);
+        
+        // Keep only incomplete messages in the buffer
+        const lastNewlineIndex = buffer.lastIndexOf('\n\n');
+        if (lastNewlineIndex !== -1) {
+          buffer = buffer.substring(lastNewlineIndex + 2);
         }
       }
 
-      addDebugLog(`Generation complete. Total content: ${fullContent.length} chars`);
+      addDebugLog(`Stream processing complete. Total chunks: ${chunkCounter}`);
       toast.success("Historical event generated successfully!");
     } catch (error: any) {
       console.error("Error generating historical event:", error);
@@ -378,6 +308,63 @@ Be thorough in your analysis and explain your reasoning clearly.`;
     } finally {
       setIsLoading(false);
       stopStreaming(); // Stop streaming and ensure full content is displayed
+    }
+    
+    // Helper function to process SSE buffer and extract messages
+    function processSSEBuffer(buffer: string) {
+      // Split by double newlines which separate SSE messages
+      const events = buffer.split('\n\n');
+      
+      for (let i = 0; i < events.length - 1; i++) {  // Skip potentially incomplete last event
+        const event = events[i].trim();
+        
+        if (!event) continue;
+        
+        // Log each complete event for debugging
+        console.log(`STREAMING: Processing SSE event #${i+1}/${events.length-1}: ${event.length} bytes`);
+        
+        // Process each line in the event
+        const lines = event.split('\n');
+        
+        let dataContent = '';
+        // Collect all data: lines as they might be split across multiple lines
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            dataContent += line.substring(6);
+          }
+        }
+        
+        // Process the collected data content
+        if (dataContent) {
+          if (dataContent === '[DONE]') {
+            console.log("STREAMING: [DONE] marker received");
+            continue;
+          }
+          
+          try {
+            const parsedData = JSON.parse(dataContent);
+            console.log("STREAMING: Parsed JSON data:", JSON.stringify(parsedData, null, 2));
+            
+            // Extract content from choices[0].delta.content if available
+            if (parsedData.choices && 
+                parsedData.choices[0] && 
+                parsedData.choices[0].delta) {
+                
+                const delta = parsedData.choices[0].delta;
+                const content = delta.content || delta.reasoning || '';
+                
+                if (content) {
+                  // Log and add the extracted content
+                  console.log(`STREAMING: Content extracted (${content.length} bytes): "${content}"`);
+                  addChunk(content);
+                }
+            }
+          } catch (e) {
+            console.error("STREAMING: JSON parse error:", e, "Raw data:", dataContent);
+            addDebugLog(`Parse error: ${e.message}`);
+          }
+        }
+      }
     }
   };
 

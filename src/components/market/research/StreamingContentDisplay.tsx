@@ -26,13 +26,26 @@ export function StreamingContentDisplay({
   // Debug counters and metrics
   const renderCountRef = useRef<number>(0);
   const lastContentRef = useRef<string>("");
+  const lastContentLengthRef = useRef<number>(0);
   
-  // Track content updates for debugging
+  // Track content updates for debugging with more detail
   useEffect(() => {
     if (content !== lastContentRef.current) {
       renderCountRef.current += 1;
-      console.log(`StreamingContentDisplay: Content update #${renderCountRef.current}, length changed from ${lastContentRef.current.length} to ${content.length} (delta: ${content.length - lastContentRef.current.length})`);
+      const prevLength = lastContentRef.current.length;
+      const newLength = content.length;
+      const difference = newLength - prevLength;
+      
+      console.log(`STREAM_DISPLAY: Content update #${renderCountRef.current}`);
+      console.log(`STREAM_DISPLAY: Length changed from ${prevLength} to ${newLength} (delta: ${difference})`);
+      
+      if (difference > 0 && difference < 100) {
+        // Show the actual new content that was added for debugging
+        console.log(`STREAM_DISPLAY: New content added: "${content.substring(prevLength)}"`);
+      }
+      
       lastContentRef.current = content;
+      lastContentLengthRef.current = newLength;
     }
   }, [content]);
 
@@ -43,7 +56,7 @@ export function StreamingContentDisplay({
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
       const newScroll = containerRef.current.scrollTop;
       
-      console.log(`StreamingContentDisplay: Scrolled from ${prevScroll} to ${newScroll}, height: ${containerRef.current.scrollHeight}`);
+      console.log(`STREAM_DISPLAY: Scrolled from ${prevScroll} to ${newScroll}, height: ${containerRef.current.scrollHeight}`);
     }
   }, [content]);
 
@@ -57,7 +70,7 @@ export function StreamingContentDisplay({
       const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50;
       shouldScrollRef.current = isAtBottom;
       
-      console.log(`StreamingContentDisplay: User scroll - ${scrollTop}/${scrollHeight}, auto-scroll: ${isAtBottom}`);
+      console.log(`STREAM_DISPLAY: User scroll - ${scrollTop}/${scrollHeight}, auto-scroll: ${isAtBottom}`);
     };
     
     container.addEventListener('scroll', handleScroll);
@@ -101,7 +114,7 @@ export function StreamingContentDisplay({
           </div>
         </div>
         
-        {/* Raw text display first */}
+        {/* Direct raw text display for immediate feedback */}
         <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
           <pre className="whitespace-pre-wrap break-words">{plainTextContent}</pre>
         </div>
