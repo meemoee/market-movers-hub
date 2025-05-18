@@ -20,9 +20,6 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { AnalysisDisplay } from "@/components/market/research/AnalysisDisplay";
 
-// Import the Supabase URL and anon key directly from the client configuration
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
-
 interface OpenRouterModel {
   id: string;
   name: string;
@@ -348,11 +345,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         return;
       }
 
-      // Use the imported Supabase URL instead of environment variables
-      const supabaseUrl = "https://lfmkoismabbhujycnqpn.supabase.co";
-      
       addDebugLog(`Starting historical event generation with model: ${selectedModel}`);
-      addDebugLog(`Using Supabase URL: ${supabaseUrl}`);
 
       // Set up request timeout
       const controller = new AbortController();
@@ -363,11 +356,10 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       }, 15000);
 
       // Call our edge function which will stream from OpenRouter
-      // Use the hardcoded URL instead of environment variables
-      const response = await fetch(`${supabaseUrl}/functions/v1/generate-historical-event`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-historical-event`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc`,
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
