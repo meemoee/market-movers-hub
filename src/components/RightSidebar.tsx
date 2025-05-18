@@ -95,7 +95,7 @@ export default function RightSidebar() {
       const startTime = Date.now();
       console.log(`REQUEST_START: ${new Date().toISOString()}`);
       
-      // Fix: Remove abortSignal from the options and use signal in body instead
+      // Pass signal in the body instead of as an option
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
@@ -117,7 +117,7 @@ export default function RightSidebar() {
         throw new Error('No response body received')
       }
       
-      // Process the SSE stream
+      // Process the SSE stream with improved handling
       const stream = new ReadableStream({
         start(controller) {
           const textDecoder = new TextDecoder()
@@ -125,23 +125,32 @@ export default function RightSidebar() {
           let receivedFirstChunk = false;
           let chunkCounter = 0;
           let buffer = '';
+          let lastEventTime = Date.now();
           
           console.log('Starting to read stream from Edge Function');
           
-          // Function to process SSE events and extract delta content
+          // Improved function to process SSE events and extract delta content
           const processEvent = (event: string) => {
             if (event.trim() === '') return;
             
+            // Log full event for debugging if it's short, otherwise log a summary
+            if (event.length < 100) {
+              console.log(`SSE Event (full): ${event}`);
+            } else {
+              console.log(`SSE Event: ${event.substring(0, 50)}... (${event.length} chars)`);
+            }
+            
             if (event.startsWith('data: ')) {
-              const jsonStr = event.slice(6).trim()
+              const jsonStr = event.slice(6).trim();
+              lastEventTime = Date.now();
               
               if (jsonStr === '[DONE]') {
-                console.log('Stream complete [DONE] marker received')
-                return
+                console.log('Stream complete [DONE] marker received');
+                return;
               }
               
               try {
-                const parsed = JSON.parse(jsonStr)
+                const parsed = JSON.parse(jsonStr);
                 
                 // Check if this contains an error
                 if (parsed.error) {
@@ -150,21 +159,28 @@ export default function RightSidebar() {
                   return;
                 }
                 
-                const content = parsed.choices?.[0]?.delta?.content
+                const content = parsed.choices?.[0]?.delta?.content;
                 
                 if (content) {
                   receivedFirstChunk = true;
+                  console.log(`Content chunk received: ${content.length} chars, preview: "${content.substring(0, 20)}${content.length > 20 ? '...' : ''}"`);
+                  
                   // Add the chunk to our streaming content
-                  addChunk(content)
+                  addChunk(content);
+                } else {
+                  console.log('Received SSE event with no content delta');
                 }
               } catch (e) {
-                console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
+                console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr);
               }
             } else if (event.startsWith(':')) {
-              // Heartbeat event, log but don't process
+              // Heartbeat event
               console.log('Received heartbeat');
+              lastEventTime = Date.now(); // Update last event time on heartbeats too
+            } else {
+              console.log(`Received unknown event format: ${event}`);
             }
-          }
+          };
           
           // Push function to process chunks
           function push() {
@@ -176,13 +192,30 @@ export default function RightSidebar() {
             reader.read().then(({done, value}) => {
               if (done) {
                 console.log('Stream reader complete');
+                // Try to process any remaining buffer content
+                if (buffer.trim()) {
+                  console.log(`Processing final buffer content: ${buffer.length} chars`);
+                  const events = buffer.split('\n\n');
+                  events.forEach(event => {
+                    if (event.trim()) {
+                      processEvent(event.trim());
+                    }
+                  });
+                }
                 controller.close();
                 return;
               }
               
               chunkCounter++;
               const chunk = textDecoder.decode(value, { stream: true });
-              console.log(`Received chunk #${chunkCounter} of ${chunk.length} bytes`);
+              const now = Date.now();
+              console.log(`Received chunk #${chunkCounter} of ${chunk.length} bytes at ${new Date().toISOString()}`);
+              
+              // Check for inactivity
+              const timeSinceLastEvent = now - lastEventTime;
+              if (chunkCounter > 1 && timeSinceLastEvent > 5000) {
+                console.warn(`No events processed for ${timeSinceLastEvent}ms`);
+              }
               
               // Combine with any previous buffer and split by SSE delimiter
               buffer += chunk;
@@ -191,7 +224,7 @@ export default function RightSidebar() {
               // Process all complete events (all but the last one)
               for (let i = 0; i < events.length - 1; i++) {
                 if (events[i].trim()) {
-                  console.log(`Processing event #${i+1} of ${events.length-1}`);
+                  console.log(`Processing event #${i+1} of ${events.length-1} from chunk #${chunkCounter}`);
                   processEvent(events[i].trim());
                 }
               }

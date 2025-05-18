@@ -63,8 +63,8 @@ serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'Hunchex Analysis',
       },
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
@@ -120,11 +120,16 @@ serve(async (req) => {
       try {
         let chunkCount = 0;
         let lastChunkTime = Date.now();
+        let totalContentBytes = 0;
         
         // Send an initial empty data message to establish the connection
         const initialChunk = new TextEncoder().encode('data: {"choices":[{"delta":{"content":""}}]}\n\n');
         await writer.write(initialChunk);
         console.log('Sent initial connection chunk');
+        
+        // Immediate heartbeat to confirm stream is working
+        const heartbeatChunk = new TextEncoder().encode(': heartbeat\n\n');
+        await writer.write(heartbeatChunk);
         
         while (true) {
           const { done, value } = await reader.read();
@@ -132,6 +137,9 @@ serve(async (req) => {
           
           if (done) {
             console.log('Stream finished normally after', chunkCount, 'chunks');
+            // Ensure we send a final properly formatted SSE event
+            const finalHeartbeat = new TextEncoder().encode(': final\n\n');
+            await writer.write(finalHeartbeat);
             // Send a final "DONE" marker
             const doneChunk = new TextEncoder().encode('data: [DONE]\n\n');
             await writer.write(doneChunk);
@@ -141,13 +149,28 @@ serve(async (req) => {
           
           chunkCount++;
           lastChunkTime = now;
+          totalContentBytes += value.length;
           
           // Log the raw chunk for debugging
           const chunkText = new TextDecoder().decode(value);
           console.log(`Raw chunk ${chunkCount}: ${value.length} bytes, content length: ${chunkText.length}`);
           
-          // Ensure chunk ends with double newline for proper SSE format
+          // CRITICAL: Ensure chunk is properly formatted as SSE events
           let processedChunk = chunkText;
+          
+          // Make sure each event has proper formatting - add "data: " prefix if missing
+          const lines = processedChunk.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim() && !lines[i].startsWith('data: ') && !lines[i].startsWith(':')) {
+              // Line might be JSON without "data: " prefix
+              if (lines[i].startsWith('{') || lines[i].includes('"choices"')) {
+                lines[i] = 'data: ' + lines[i];
+              }
+            }
+          }
+          processedChunk = lines.join('\n');
+          
+          // Ensure chunk ends with double newline for proper SSE format
           if (!processedChunk.endsWith('\n\n')) {
             if (processedChunk.endsWith('\n')) {
               processedChunk += '\n';
@@ -161,7 +184,7 @@ serve(async (req) => {
           
           // Log chunk info periodically
           if (chunkCount % 10 === 0) {
-            console.log(`Processed ${chunkCount} chunks so far`);
+            console.log(`Processed ${chunkCount} chunks (${totalContentBytes} bytes) so far`);
           }
           
           // Insert heartbeat events if there's too much time between chunks

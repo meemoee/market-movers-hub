@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, RefreshCw } from 'lucide-react';
@@ -25,25 +25,49 @@ export function StreamingContentDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const plainTextRef = useRef<HTMLPreElement>(null);
   const shouldScrollRef = useRef<boolean>(true);
-  const visibleContentRef = useRef<string>('');
   
-  // Debug counters and metrics
-  const renderCountRef = useRef<number>(0);
-  const lastContentRef = useRef<string>("");
-  const lastUpdateTimeRef = useRef<number>(Date.now());
+  // Stable ref that won't be reset by React re-renders
+  const stableStateRef = useRef<{
+    visibleContent: string;
+    lastUpdateTime: number;
+    renderCount: number;
+    lastContent: string;
+    typewriterActive: boolean;
+    currentPosition: number;
+    typewriterTimerId: number | null;
+    isFirstRender: boolean;
+  }>({
+    visibleContent: '',
+    lastUpdateTime: Date.now(),
+    renderCount: 0,
+    lastContent: "",
+    typewriterActive: false,
+    currentPosition: 0,
+    typewriterTimerId: null,
+    isFirstRender: true
+  });
   
   // State for health check
   const [streamHealth, setStreamHealth] = useState<'healthy' | 'stalled' | 'error'>('healthy');
-  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // CRITICAL: Initialize plainTextRef content on first render to prevent React from clearing it
+  useLayoutEffect(() => {
+    if (plainTextRef.current && stableStateRef.current.isFirstRender) {
+      if (plainTextRef.current.textContent === null || plainTextRef.current.textContent === '') {
+        plainTextRef.current.textContent = ''; // Ensure it's initialized
+      }
+      stableStateRef.current.isFirstRender = false;
+    }
+  }, []);
   
   // Function to check stream health
   const checkStreamHealth = () => {
     if (!isStreaming) return;
     
     const now = Date.now();
-    const timeSinceUpdate = now - lastUpdateTimeRef.current;
+    const timeSinceUpdate = now - stableStateRef.current.lastUpdateTime;
     
-    if (timeSinceUpdate > 5000 && visibleContentRef.current.length === 0) {
+    if (timeSinceUpdate > 5000 && stableStateRef.current.visibleContent.length === 0) {
       console.log(`STREAM_HEALTH: No content received after ${timeSinceUpdate}ms`);
       setStreamHealth('stalled');
     }
@@ -57,55 +81,59 @@ export function StreamingContentDisplay({
     }
   }, [isStreaming]);
   
-  // CRITICAL: Direct DOM manipulation for typewriter effect
-  useEffect(() => {
+  // CRITICAL: Use useLayoutEffect for DOM manipulation to ensure it happens before browser paint
+  useLayoutEffect(() => {
     if (!isStreaming || !content || !plainTextRef.current) return;
     
     // Store the full content for reference
     const fullContent = content;
     
-    // Reset visible content when streaming starts
-    if (visibleContentRef.current.length > fullContent.length) {
-      visibleContentRef.current = '';
-    }
-    
     // Don't re-render if we're already showing all content
-    if (visibleContentRef.current === fullContent) {
+    if (stableStateRef.current.visibleContent === fullContent) {
       return;
     }
-
-    let currentPosition = visibleContentRef.current.length;
-    const targetElement = plainTextRef.current;
     
-    console.log(`DIRECT_DOM: Starting typewriter from position ${currentPosition}/${fullContent.length}`);
+    // If we already have a typewriter running, don't start a new one
+    if (stableStateRef.current.typewriterActive) {
+      console.log(`TYPEWRITER: Already active, updating target content to length ${fullContent.length}`);
+      return;
+    }
+    
+    console.log(`TYPEWRITER: Starting new typewriter effect from position ${stableStateRef.current.currentPosition}/${fullContent.length}`);
+    
+    // Mark typewriter as active
+    stableStateRef.current.typewriterActive = true;
     
     // Function to add characters with small delay
     const addCharacters = () => {
       // Don't continue if component unmounted or streaming stopped
-      if (!plainTextRef.current || !isStreaming) return;
+      if (!plainTextRef.current || !isStreaming) {
+        stableStateRef.current.typewriterActive = false;
+        return;
+      }
       
       // Calculate how many characters to show next (5 characters at a time)
       const charsToAdd = 5;
-      const nextPosition = Math.min(currentPosition + charsToAdd, fullContent.length);
+      const nextPosition = Math.min(stableStateRef.current.currentPosition + charsToAdd, fullContent.length);
       
-      // Update the visible content
-      visibleContentRef.current = fullContent.substring(0, nextPosition);
+      // Update the visible content in our stable ref
+      stableStateRef.current.visibleContent = fullContent.substring(0, nextPosition);
       
-      // Update DOM directly
+      // Update DOM directly - CRITICAL PART
       if (plainTextRef.current) {
-        plainTextRef.current.textContent = visibleContentRef.current;
+        plainTextRef.current.textContent = stableStateRef.current.visibleContent;
         // Update health check timestamp
-        lastUpdateTimeRef.current = Date.now();
+        stableStateRef.current.lastUpdateTime = Date.now();
         
         // Reset health to healthy when we receive content
-        if (streamHealth !== 'healthy' && visibleContentRef.current.length > 0) {
+        if (streamHealth !== 'healthy' && stableStateRef.current.visibleContent.length > 0) {
           setStreamHealth('healthy');
         }
       }
       
       // Log progress occasionally
       if (nextPosition % 20 === 0 || nextPosition === fullContent.length) {
-        console.log(`DIRECT_DOM: Updated to position ${nextPosition}/${fullContent.length}`);
+        console.log(`TYPEWRITER: Updated to position ${nextPosition}/${fullContent.length}`);
       }
       
       // Scroll if needed
@@ -114,32 +142,42 @@ export function StreamingContentDisplay({
       }
       
       // Continue if we haven't reached the end
-      currentPosition = nextPosition;
-      if (currentPosition < fullContent.length && isStreaming) {
-        setTimeout(addCharacters, 10); // 10ms delay between updates
+      stableStateRef.current.currentPosition = nextPosition;
+      if (nextPosition < fullContent.length && isStreaming) {
+        stableStateRef.current.typewriterTimerId = window.setTimeout(addCharacters, 10); // 10ms delay between updates
       } else {
-        console.log(`DIRECT_DOM: Finished typewriter at position ${currentPosition}`);
+        console.log(`TYPEWRITER: Finished typewriter at position ${nextPosition}`);
+        stableStateRef.current.typewriterActive = false;
       }
     };
     
     // Start adding characters
     addCharacters();
+    
+    // Cleanup function to stop typewriter when component unmounts or effect re-runs
+    return () => {
+      if (stableStateRef.current.typewriterTimerId !== null) {
+        clearTimeout(stableStateRef.current.typewriterTimerId);
+        stableStateRef.current.typewriterTimerId = null;
+      }
+      stableStateRef.current.typewriterActive = false;
+    };
   }, [content, isStreaming, streamHealth]);
   
   // Track content updates for debugging
   useEffect(() => {
-    if (content !== lastContentRef.current) {
-      renderCountRef.current += 1;
-      console.log(`STREAM_DISPLAY: New content update #${renderCountRef.current}, length: ${content.length}`);
+    if (content !== stableStateRef.current.lastContent) {
+      stableStateRef.current.renderCount += 1;
+      console.log(`STREAM_DISPLAY: New content update #${stableStateRef.current.renderCount}, length: ${content.length}`);
       
       // Check if content was significantly increased
-      if (content.length > lastContentRef.current.length + 50) {
-        console.log(`STREAM_DISPLAY: Large content increase: +${content.length - lastContentRef.current.length} chars`);
+      if (content.length > stableStateRef.current.lastContent.length + 50) {
+        console.log(`STREAM_DISPLAY: Large content increase: +${content.length - stableStateRef.current.lastContent.length} chars`);
       }
       
-      lastContentRef.current = content;
+      stableStateRef.current.lastContent = content;
       // Update health check timestamp whenever we get new content
-      lastUpdateTimeRef.current = Date.now();
+      stableStateRef.current.lastUpdateTime = Date.now();
     }
   }, [content]);
 
@@ -170,7 +208,8 @@ export function StreamingContentDisplay({
   const forceDisplayFullContent = () => {
     if (plainTextRef.current && rawBuffer) {
       plainTextRef.current.textContent = rawBuffer;
-      visibleContentRef.current = rawBuffer;
+      stableStateRef.current.visibleContent = rawBuffer;
+      stableStateRef.current.currentPosition = rawBuffer.length;
       setStreamHealth('healthy');
       console.log(`STREAM_DISPLAY: Forced display of full content (${rawBuffer.length} chars)`);
     }
@@ -181,10 +220,11 @@ export function StreamingContentDisplay({
     contentLength: content.length,
     bufferLength: rawBuffer?.length || 0,
     displayPosition: displayPosition || 0,
-    renderCount: renderCountRef.current,
+    renderCount: stableStateRef.current.renderCount,
     isStreaming,
-    visibleLength: visibleContentRef.current.length,
-    health: streamHealth
+    visibleLength: stableStateRef.current.visibleContent.length,
+    health: streamHealth,
+    typewriterActive: stableStateRef.current.typewriterActive
   };
 
   return (
@@ -199,11 +239,12 @@ export function StreamingContentDisplay({
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <div>Content: {debugInfo.contentLength} chars</div>
             <div>Buffer: {debugInfo.bufferLength} chars</div>
-            <div>Position: {debugInfo.displayPosition}/{debugInfo.bufferLength}</div>
-            <div>Visible: {debugInfo.visibleLength} chars</div>
+            <div>Position: {stableStateRef.current.currentPosition}/{debugInfo.bufferLength}</div>
+            <div>Visible: {stableStateRef.current.visibleContent.length} chars</div>
             <div>Renders: {debugInfo.renderCount}</div>
             <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
             <div>Health: {debugInfo.health}</div>
+            <div>Typewriter: {debugInfo.typewriterActive ? 'Active' : 'Idle'}</div>
           </div>
         </div>
         
@@ -213,7 +254,7 @@ export function StreamingContentDisplay({
             ref={plainTextRef} 
             className="whitespace-pre-wrap break-words"
           >
-            {visibleContentRef.current || "(No content yet)"}
+            {/* Content is managed directly via DOM manipulation */}
           </pre>
         </div>
         
