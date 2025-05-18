@@ -15,6 +15,11 @@ serve(async (req) => {
   }
 
   try {
+    console.log('[HistoricalEvent] Function called at', new Date().toISOString());
+    
+    // Log environment variable status (not the value itself for security)
+    console.log('[HistoricalEvent] OPENROUTER_API_KEY present in env:', !!OPENROUTER_API_KEY);
+    
     const { marketQuestion, modelId, enableWebSearch, maxSearchResults, userId } = await req.json();
     
     if (!marketQuestion) {
@@ -26,33 +31,46 @@ serve(async (req) => {
 
     // Determine which API key to use
     let apiKey = OPENROUTER_API_KEY;
+    let isUserApiKey = false;
 
     // If userId is provided, try to get their personal API key
     if (userId) {
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-        { auth: { persistSession: false } }
-      );
+      try {
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const supabaseAdmin = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          { auth: { persistSession: false } }
+        );
 
-      const { data, error } = await supabaseAdmin
-        .from('profiles')
-        .select('openrouter_api_key')
-        .eq('id', userId)
-        .single();
+        console.log('[HistoricalEvent] Attempting to fetch user API key for userId:', userId);
+        
+        const { data, error } = await supabaseAdmin
+          .from('profiles')
+          .select('openrouter_api_key')
+          .eq('id', userId)
+          .single();
 
-      if (!error && data?.openrouter_api_key) {
-        console.log('[HistoricalEvent] Using user-provided API key');
-        apiKey = data.openrouter_api_key;
-      } else if (error) {
-        console.error('[HistoricalEvent] Error fetching user API key:', error);
+        if (error) {
+          console.error('[HistoricalEvent] Error fetching user API key:', error);
+        } else if (data?.openrouter_api_key) {
+          console.log('[HistoricalEvent] Successfully retrieved user API key');
+          apiKey = data.openrouter_api_key;
+          isUserApiKey = true;
+        } else {
+          console.log('[HistoricalEvent] No API key found in user profile');
+        }
+      } catch (err) {
+        console.error('[HistoricalEvent] Exception while fetching user API key:', err);
       }
     }
 
     if (!apiKey) {
+      console.error('[HistoricalEvent] No API key available for OpenRouter - both env var and user profile are missing keys');
       throw new Error('No API key available for OpenRouter');
     }
+
+    console.log(`[HistoricalEvent] Using ${isUserApiKey ? 'user-provided' : 'environment'} API key`);
 
     // Construct the prompt for historical event generation
     const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
@@ -91,128 +109,138 @@ Be thorough in your analysis and explain your reasoning clearly.`;
     console.log(`[HistoricalEvent] [STREAM_START] OpenRouter request initiated at ${new Date().toISOString()}`);
     console.log(`[HistoricalEvent] Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
-    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:5173",
-        "X-Title": "Market Analysis App",
-      },
-      body: JSON.stringify(requestBody)
-    });
+    try {
+      const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://hunchex-ai.netlify.app", // Update to match actual deployed domain
+          "X-Title": "Market Analysis App",
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-    console.log(`[HistoricalEvent] [STREAM_RESPONSE] OpenRouter response received after ${Date.now() - startTime}ms, status: ${openRouterResponse.status}`);
-    
-    if (!openRouterResponse.ok) {
-      const errorText = await openRouterResponse.text();
-      console.error(`[HistoricalEvent] API Error: ${openRouterResponse.status} - ${errorText}`);
-      throw new Error(`Error ${openRouterResponse.status}: ${openRouterResponse.statusText}`);
-    }
+      console.log(`[HistoricalEvent] [STREAM_RESPONSE] OpenRouter response received after ${Date.now() - startTime}ms, status: ${openRouterResponse.status}`);
+      
+      if (!openRouterResponse.ok) {
+        const errorText = await openRouterResponse.text();
+        console.error(`[HistoricalEvent] API Error: ${openRouterResponse.status} - ${errorText}`);
+        throw new Error(`Error ${openRouterResponse.status}: ${openRouterResponse.statusText} - ${errorText}`);
+      }
 
-    // Improved TransformStream with detailed chunk tracking and logging
-    let buffer = "";
-    let chunkCounter = 0;
-    let eventCounter = 0;
-    let lastLogTime = Date.now();
-    let totalBytesProcessed = 0;
-    
-    const transformStream = new TransformStream({
-      start() {
-        console.log(`[HistoricalEvent] [STREAM_PROCESSOR] Transform stream initialized at ${new Date().toISOString()}`);
-      },
+      if (!openRouterResponse.body) {
+        console.error('[HistoricalEvent] No response body from OpenRouter API');
+        throw new Error('No response body received from OpenRouter API');
+      }
+
+      // Improved TransformStream with detailed chunk tracking and logging
+      let buffer = "";
+      let chunkCounter = 0;
+      let eventCounter = 0;
+      let lastLogTime = Date.now();
+      let totalBytesProcessed = 0;
       
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk);
-        buffer += text;
+      const transformStream = new TransformStream({
+        start() {
+          console.log(`[HistoricalEvent] [STREAM_PROCESSOR] Transform stream initialized at ${new Date().toISOString()}`);
+        },
         
-        chunkCounter++;
-        totalBytesProcessed += text.length;
-        
-        // Log every chunk with detailed metrics
-        console.log(`[HistoricalEvent] [STREAM_CHUNK #${chunkCounter}] Size: ${text.length} bytes, Buffer size: ${buffer.length}, Timestamp: ${new Date().toISOString()}`);
-        console.log(`[HistoricalEvent] [STREAM_CHUNK #${chunkCounter}] Raw content preview: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
-        
-        // Process complete SSE events
-        const parts = buffer.split("\n\n");
-        // Keep the last (possibly incomplete) part in the buffer
-        buffer = parts.pop() || "";
-        
-        // Process each complete part
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
-          if (part.startsWith("data: ")) {
-            const dataStr = part.slice(6).trim();
-            console.log(`[HistoricalEvent] [STREAM_EVENT #${i+1}] Processing event from chunk #${chunkCounter}, data: ${dataStr.substring(0, 30)}${dataStr.length > 30 ? '...' : ''}`);
-            
-            if (dataStr === "[DONE]") {
-              console.log(`[HistoricalEvent] [STREAM_COMPLETE] Stream finished marker received at ${new Date().toISOString()}`);
-              continue;
-            }
-            
-            try {
-              const parsed = JSON.parse(dataStr);
-              console.log(`[HistoricalEvent] [STREAM_PARSED #${i+1}] Successfully parsed JSON from event, sending downstream`);
-              
-              // Forward the event without modification to preserve streaming
-              const outputEvent = `data: ${JSON.stringify(parsed)}\n\n`;
-              controller.enqueue(new TextEncoder().encode(outputEvent));
-              eventCounter++;
-            } catch (err) {
-              console.error(`[HistoricalEvent] [STREAM_ERROR] Error parsing SSE event #${i+1} from chunk #${chunkCounter}:`, err);
-              console.log(`[HistoricalEvent] [STREAM_ERROR] Problematic data: ${dataStr}`);
-            }
-          }
-        }
-        
-        // Log timing metrics periodically
-        const now = Date.now();
-        if (now - lastLogTime > 1000) { // Log every second
-          console.log(`[HistoricalEvent] [STREAM_STATS] Processed ${chunkCounter} chunks, ${totalBytesProcessed} bytes in the last ${(now - lastLogTime)/1000}s, ${eventCounter} events forwarded`);
-          lastLogTime = now;
-        }
-      },
-      
-      flush(controller) {
-        console.log(`[HistoricalEvent] [STREAM_FLUSH] Processing final buffer of size ${buffer.length} at ${new Date().toISOString()}`);
-        
-        if (buffer.trim()) {
-          const parts = buffer.split("\n\n");
+        transform(chunk, controller) {
+          const text = new TextDecoder().decode(chunk);
+          buffer += text;
           
+          chunkCounter++;
+          totalBytesProcessed += text.length;
+          
+          // Log every chunk with detailed metrics
+          console.log(`[HistoricalEvent] [STREAM_CHUNK #${chunkCounter}] Size: ${text.length} bytes, Buffer size: ${buffer.length}, Timestamp: ${new Date().toISOString()}`);
+          console.log(`[HistoricalEvent] [STREAM_CHUNK #${chunkCounter}] Raw content preview: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
+          
+          // Process complete SSE events
+          const parts = buffer.split("\n\n");
+          // Keep the last (possibly incomplete) part in the buffer
+          buffer = parts.pop() || "";
+          
+          // Process each complete part
           for (let i = 0; i < parts.length; i++) {
-            const part = parts[i].trim();
-            if (part && part.startsWith("data: ")) {
+            const part = parts[i];
+            if (part.startsWith("data: ")) {
               const dataStr = part.slice(6).trim();
-              console.log(`[HistoricalEvent] [STREAM_FLUSH] Processing final event #${i+1}, data: ${dataStr.substring(0, 30)}${dataStr.length > 30 ? '...' : ''}`);
+              console.log(`[HistoricalEvent] [STREAM_EVENT #${i+1}] Processing event from chunk #${chunkCounter}, data: ${dataStr.substring(0, 30)}${dataStr.length > 30 ? '...' : ''}`);
+              
+              if (dataStr === "[DONE]") {
+                console.log(`[HistoricalEvent] [STREAM_COMPLETE] Stream finished marker received at ${new Date().toISOString()}`);
+                continue;
+              }
               
               try {
                 const parsed = JSON.parse(dataStr);
+                console.log(`[HistoricalEvent] [STREAM_PARSED #${i+1}] Successfully parsed JSON from event, sending downstream`);
+                
+                // Forward the event without modification to preserve streaming
                 const outputEvent = `data: ${JSON.stringify(parsed)}\n\n`;
                 controller.enqueue(new TextEncoder().encode(outputEvent));
                 eventCounter++;
               } catch (err) {
-                console.error("[HistoricalEvent] [STREAM_FLUSH] Error parsing final SSE chunk:", err);
+                console.error(`[HistoricalEvent] [STREAM_ERROR] Error parsing SSE event #${i+1} from chunk #${chunkCounter}:`, err);
+                console.log(`[HistoricalEvent] [STREAM_ERROR] Problematic data: ${dataStr}`);
               }
             }
           }
-        }
+          
+          // Log timing metrics periodically
+          const now = Date.now();
+          if (now - lastLogTime > 1000) { // Log every second
+            console.log(`[HistoricalEvent] [STREAM_STATS] Processed ${chunkCounter} chunks, ${totalBytesProcessed} bytes in the last ${(now - lastLogTime)/1000}s, ${eventCounter} events forwarded`);
+            lastLogTime = now;
+          }
+        },
         
-        console.log(`[HistoricalEvent] [STREAM_COMPLETE] Transform stream finished, processed ${chunkCounter} total chunks, ${totalBytesProcessed} total bytes, ${eventCounter} events forwarded`);
-        buffer = "";
-      }
-    });
-
-    console.log(`[HistoricalEvent] [STREAM_PIPE] Starting to pipe response to transform stream at ${new Date().toISOString()}`);
+        flush(controller) {
+          console.log(`[HistoricalEvent] [STREAM_FLUSH] Processing final buffer of size ${buffer.length} at ${new Date().toISOString()}`);
+          
+          if (buffer.trim()) {
+            const parts = buffer.split("\n\n");
+            
+            for (let i = 0; i < parts.length; i++) {
+              const part = parts[i].trim();
+              if (part && part.startsWith("data: ")) {
+                const dataStr = part.slice(6).trim();
+                console.log(`[HistoricalEvent] [STREAM_FLUSH] Processing final event #${i+1}, data: ${dataStr.substring(0, 30)}${dataStr.length > 30 ? '...' : ''}`);
+                
+                try {
+                  const parsed = JSON.parse(dataStr);
+                  const outputEvent = `data: ${JSON.stringify(parsed)}\n\n`;
+                  controller.enqueue(new TextEncoder().encode(outputEvent));
+                  eventCounter++;
+                } catch (err) {
+                  console.error("[HistoricalEvent] [STREAM_FLUSH] Error parsing final SSE chunk:", err);
+                }
+              }
+            }
+          }
+          
+          console.log(`[HistoricalEvent] [STREAM_COMPLETE] Transform stream finished, processed ${chunkCounter} total chunks, ${totalBytesProcessed} total bytes, ${eventCounter} events forwarded`);
+          buffer = "";
+        }
+      });
     
-    // Return the streamed response
-    return new Response(openRouterResponse.body?.pipeThrough(transformStream), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    });
+      console.log(`[HistoricalEvent] [STREAM_PIPE] Starting to pipe response to transform stream at ${new Date().toISOString()}`);
+      
+      // Return the streamed response
+      return new Response(openRouterResponse.body.pipeThrough(transformStream), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        }
+      });
+    } catch (fetchError) {
+      console.error("[HistoricalEvent] Fetch error during OpenRouter request:", fetchError);
+      throw fetchError;
+    }
   } catch (error) {
     console.error("[HistoricalEvent] Function error:", error);
     return new Response(

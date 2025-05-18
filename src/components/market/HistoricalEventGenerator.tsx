@@ -48,6 +48,12 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const { content: streamingContent, isStreaming, startStreaming, addChunk, stopStreaming, rawBuffer, displayPosition } = useStreamingContent();
   const [showRawResponse, setShowRawResponse] = useState(true); // Show raw response by default
   const { user } = useCurrentUser();
+  
+  // Error handling and fallback state
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [useFallback, setUseFallback] = useState(false);
+  const maxRetries = 2;
 
   // Debug settings and logs
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -139,6 +145,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
+  // Handle similar events
   const handleSimilarityChange = (index: number, value: string) => {
     const newSimilarities = [...similarities];
     newSimilarities[index] = value;
@@ -175,6 +182,142 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
+  // Direct call to OpenRouter API (fallback mechanism)
+  const generateWithOpenRouterDirectly = async () => {
+    if (!user?.openrouter_api_key || !selectedModel) {
+      toast.error("OpenRouter API key or model is missing");
+      return;
+    }
+
+    addDebugLog(`Using fallback: Calling OpenRouter API directly with model: ${selectedModel}`);
+
+    try {
+      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
+
+Provide a detailed analysis of a historical event that has similarities to this market question. Include:
+
+1. The name of the historical event
+2. When it occurred (date or time period)
+3. A relevant image that illustrates this event (mention a URL to a relevant image)
+4. Several key similarities between this historical event and the current market question
+5. Several key differences between this historical event and the current market question
+
+Be thorough in your analysis and explain your reasoning clearly.`;
+
+      const requestBody: any = {
+        model: enableWebSearch ? `${selectedModel}:online` : selectedModel,
+        messages: [
+          { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
+          { role: "user", content: promptText }
+        ],
+        stream: true // Enable streaming
+      };
+      
+      // Add web search plugin if enabled
+      if (enableWebSearch) {
+        requestBody.plugins = [{ 
+          id: "web", 
+          max_results: maxSearchResults 
+        }];
+      }
+
+      addDebugLog("Starting direct OpenRouter API request");
+      
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${user.openrouter_api_key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "Market Analysis App"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API Error: ${response.status} - ${errorText}`);
+      }
+
+      if (!response.body) {
+        throw new Error("Response body is null");
+      }
+
+      // Process streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      addDebugLog("Processing direct OpenRouter stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          addDebugLog("Direct OpenRouter stream complete");
+          if (buffer.trim().length > 0) {
+            processSSEBuffer(buffer, true);
+          }
+          break;
+        }
+        
+        const chunkText = decoder.decode(value, { stream: true });
+        buffer += chunkText;
+        addRawChunkLog(chunkText);
+        
+        // Process SSE messages
+        processSSEBuffer(buffer, false);
+        
+        // Keep only incomplete messages in buffer
+        const lastNewlineIndex = buffer.lastIndexOf('\n\n');
+        if (lastNewlineIndex !== -1) {
+          buffer = buffer.substring(lastNewlineIndex + 2);
+        }
+      }
+
+      toast.success("Successfully generated historical event using fallback method");
+      
+    } catch (error: any) {
+      console.error("Error in direct OpenRouter call:", error);
+      addDebugLog(`Direct API Error: ${error.message}`);
+      toast.error(`OpenRouter API error: ${error.message}`);
+    }
+  };
+
+  // Process SSE buffer and extract content
+  const processSSEBuffer = (buffer: string, isFinal: boolean) => {
+    const events = buffer.split('\n\n');
+    
+    for (let i = 0; i < events.length - (isFinal ? 0 : 1); i++) {
+      const event = events[i].trim();
+      if (!event) continue;
+      
+      const lines = event.split('\n');
+      let dataContent = '';
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          dataContent += line.substring(6);
+        }
+      }
+      
+      if (dataContent) {
+        if (dataContent === '[DONE]') continue;
+        
+        try {
+          const parsedData = JSON.parse(dataContent);
+          
+          if (parsedData.choices?.[0]?.delta?.content) {
+            const content = parsedData.choices[0].delta.content;
+            addChunk(content);
+          }
+        } catch (e) {
+          console.error("Error parsing SSE data:", e);
+        }
+      }
+    }
+  };
+
   const generateHistoricalEvent = async () => {
     if (!selectedModel) {
       toast.error("Please select a model");
@@ -182,6 +325,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
 
     setIsLoading(true);
+    setErrorDetails(null);
     startStreaming(); // Start streaming and clear previous content
     
     // Reset debug stats and logs
@@ -195,7 +339,21 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     });
     
     try {
+      // If we're using fallback mode, call OpenRouter directly
+      if (useFallback) {
+        await generateWithOpenRouterDirectly();
+        return;
+      }
+
       addDebugLog(`Starting historical event generation with model: ${selectedModel}`);
+
+      // Set up request timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        addDebugLog("Request timed out after 15 seconds");
+        throw new Error("Request timed out after 15 seconds");
+      }, 15000);
 
       // Call our edge function which will stream from OpenRouter
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-historical-event`, {
@@ -210,13 +368,17 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
           enableWebSearch,
           maxSearchResults,
           userId: user?.id // Pass user ID to fetch their API key on the server
-        })
+        }),
+        signal: controller.signal
       });
+
+      // Clear the timeout since we got a response
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
         addDebugLog(`API Error: ${response.status} - ${errorText}`);
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
       }
 
       if (!response.body) {
@@ -230,13 +392,26 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       let buffer = '';
       let chunkCounter = 0;
       let lastProcessTime = Date.now();
+      let receivedContent = false;
+      const streamStartTime = Date.now();
 
       addDebugLog("Starting to process stream from edge function...");
+
+      // Set up a timer to detect if we're not receiving any content
+      const contentCheckId = setTimeout(() => {
+        if (!receivedContent) {
+          addDebugLog("No content received after 5 seconds, switching to fallback");
+          reader.cancel();
+          setRetryCount(prev => prev + 1);
+          throw new Error("No content received from edge function after 5 seconds");
+        }
+      }, 5000);
 
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) {
+          clearTimeout(contentCheckId);
           addDebugLog("Stream complete");
           if (buffer.trim().length > 0) {
             addDebugLog(`Processing final buffer content (${buffer.length} bytes)`);
@@ -244,6 +419,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
           }
           break;
         }
+        
+        // We received something, so clear the content check timeout
+        clearTimeout(contentCheckId);
         
         // Decode the chunk and add to buffer
         const chunkText = decoder.decode(value, { stream: true });
@@ -261,6 +439,11 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         // Process SSE messages
         await processSSEBuffer(buffer, false);
         
+        // If we've processed content, set the flag
+        if (rawBuffer && rawBuffer.length > 0) {
+          receivedContent = true;
+        }
+        
         // Keep only incomplete messages in the buffer
         const lastNewlineIndex = buffer.lastIndexOf('\n\n');
         if (lastNewlineIndex !== -1) {
@@ -270,100 +453,42 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
       addDebugLog(`Stream processing complete. Total chunks: ${chunkCounter}`);
       toast.success("Historical event generated successfully!");
+      
+      // Reset retry count on success
+      setRetryCount(0);
+      
     } catch (error: any) {
       console.error("Error generating historical event:", error);
       addDebugLog(`Error: ${error.message}`);
-      toast.error("Failed to generate historical event");
+      
+      // Handle errors and implement retries/fallback
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        setErrorDetails(`Request timed out. ${retryCount >= maxRetries ? 'Switching to fallback mode.' : 'Retrying...'}`);
+      } else {
+        setErrorDetails(`Error: ${error.message}. ${retryCount >= maxRetries ? 'Switching to fallback mode.' : 'Retrying...'}`);
+      }
+      
+      setRetryCount(prev => prev + 1);
+      
+      // If we've reached max retries, use fallback mode
+      if (retryCount >= maxRetries) {
+        addDebugLog(`Max retries (${maxRetries}) reached, activating fallback mode`);
+        setUseFallback(true);
+        toast.info("Switching to direct API mode due to edge function issues");
+        
+        // Automatically retry with fallback mode
+        setTimeout(() => {
+          if (selectedModel && user?.openrouter_api_key) {
+            addDebugLog("Auto-retrying with fallback mode");
+            generateWithOpenRouterDirectly();
+          }
+        }, 1000);
+      } else {
+        toast.error("Failed to generate historical event. Retrying...");
+      }
     } finally {
       setIsLoading(false);
       stopStreaming(); // Stop streaming and ensure full content is displayed
-    }
-    
-    // Helper function to process SSE buffer and extract messages with improved logging
-    async function processSSEBuffer(buffer: string, isFinal: boolean) {
-      // Split by double newlines which separate SSE messages
-      const events = buffer.split('\n\n');
-      
-      if (events.length > 1) {
-        addDebugLog(`Processing ${events.length-1} complete events from buffer`);
-      }
-      
-      for (let i = 0; i < events.length - 1; i++) {
-        const event = events[i].trim();
-        
-        if (!event) continue;
-        
-        // Process each line in the event
-        const lines = event.split('\n');
-        
-        let dataContent = '';
-        // Collect all data: lines as they might be split across multiple lines
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            dataContent += line.substring(6);
-          }
-        }
-        
-        // Process the collected data content
-        if (dataContent) {
-          if (dataContent === '[DONE]') {
-            addDebugLog("[DONE] marker received");
-            continue;
-          }
-          
-          try {
-            const parsedData = JSON.parse(dataContent);
-            
-            // Extract content from choices[0].delta.content if available
-            if (parsedData.choices && 
-                parsedData.choices[0] && 
-                parsedData.choices[0].delta) {
-                
-                const delta = parsedData.choices[0].delta;
-                const content = delta.content || delta.reasoning || '';
-                
-                if (content) {
-                  // Add the content directly to the stream display
-                  addChunk(content);
-                }
-            }
-          } catch (e: any) {
-            addDebugLog(`Parse error: ${e.message}`);
-          }
-        }
-      }
-      
-      // If this is the final processing and there's one event left, process it too
-      if (isFinal && events.length > 0) {
-        const finalEvent = events[events.length - 1].trim();
-        if (finalEvent) {
-          addDebugLog(`Processing final incomplete event: ${finalEvent.length} bytes`);
-          
-          // Try to extract any data lines
-          const lines = finalEvent.split('\n');
-          let dataContent = '';
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              dataContent += line.substring(6);
-            }
-          }
-          
-          if (dataContent) {
-            try {
-              const parsedData = JSON.parse(dataContent);
-              
-              if (parsedData.choices?.[0]?.delta?.content) {
-                const content = parsedData.choices[0].delta.content;
-                addDebugLog(`Final content extracted (${content.length} bytes)`);
-                addChunk(content);
-              }
-            } catch (e: any) {
-              addDebugLog(`Could not parse final fragment as JSON: ${e.message}`);
-            }
-          }
-        }
-      }
     }
   };
 
@@ -550,6 +675,30 @@ ${streamingContent}`;
           </div>
 
           <div className="space-y-4 mb-4">
+            {/* API Mode and Fallback Options */}
+            <div className="space-y-3 p-3 bg-secondary/30 rounded-md">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="fallback-mode-toggle" className="text-sm">
+                  {useFallback ? "Using Direct API Mode" : "Using Edge Function"}
+                </Label>
+                <Switch 
+                  id="fallback-mode-toggle"
+                  checked={useFallback}
+                  onCheckedChange={setUseFallback}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {useFallback 
+                  ? "Currently using direct API calls to OpenRouter (bypasses edge function)." 
+                  : "Currently using edge function to process API calls (recommended)."}
+              </p>
+              {errorDetails && (
+                <div className="mt-2 p-2 bg-destructive/10 rounded text-xs text-destructive border border-destructive/20">
+                  {errorDetails}
+                </div>
+              )}
+            </div>
+            
             {/* Web Search Options */}
             <div className="space-y-3 p-3 bg-secondary/30 rounded-md">
               <h4 className="font-medium">Web Search Options</h4>
@@ -640,7 +789,7 @@ ${streamingContent}`;
                   Generating...
                 </>
               ) : (
-                "Generate Historical Event"
+                `Generate Historical Event${useFallback ? " (Direct API)" : ""}`
               )}
             </Button>
             

@@ -57,3 +57,4 @@ verify_jwt = false
 [[functions]]
 name = "generate-historical-event"
 verify_jwt = false
+
