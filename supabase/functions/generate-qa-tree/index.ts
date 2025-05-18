@@ -174,6 +174,9 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
     console.log("Using question for analysis:", questionToUse.substring(0, 50));
 
     // For analysis, stream the response from OpenRouter.
+    const startTime = Date.now();
+    console.log(`[STREAM_START] OpenRouter request initiated at ${new Date().toISOString()}`);
+    
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -200,47 +203,105 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
       })
     });
     
+    console.log(`[STREAM_RESPONSE] OpenRouter response received after ${Date.now() - startTime}ms, status: ${analysisResponse.status}, headers: ${JSON.stringify([...analysisResponse.headers])}`);
+    
     if (!analysisResponse.ok) {
       console.error(`Analysis generation failed: ${analysisResponse.status}`);
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
     }
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available.
+    // Improved TransformStream with detailed chunk tracking and logging
     let buffer = "";
+    let chunkCounter = 0;
+    let lastLogTime = Date.now();
+    let totalBytesProcessed = 0;
+    
     const transformStream = new TransformStream({
+      start() {
+        console.log(`[STREAM_PROCESSOR] Transform stream initialized at ${new Date().toISOString()}`);
+      },
+      
       transform(chunk, controller) {
         const text = new TextDecoder().decode(chunk);
         buffer += text;
+        
+        chunkCounter++;
+        totalBytesProcessed += text.length;
+        
+        // Log every chunk with detailed metrics
+        console.log(`[STREAM_CHUNK #${chunkCounter}] Size: ${text.length} bytes, Buffer size: ${buffer.length}, Timestamp: ${new Date().toISOString()}`);
+        console.log(`[STREAM_CHUNK #${chunkCounter}] Raw content preview: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
+        
+        // Process complete SSE events
         const parts = buffer.split("\n\n");
         // Keep the last (possibly incomplete) part in the buffer.
         buffer = parts.pop() || "";
-        for (const part of parts) {
+        
+        // Process each complete part
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
           if (part.startsWith("data: ")) {
             const dataStr = part.slice(6).trim();
-            if (dataStr === "[DONE]") continue;
+            console.log(`[STREAM_EVENT #${i+1}] Processing event from chunk #${chunkCounter}, data: ${dataStr.substring(0, 30)}${dataStr.length > 30 ? '...' : ''}`);
+            
+            if (dataStr === "[DONE]") {
+              console.log(`[STREAM_COMPLETE] Stream finished marker received at ${new Date().toISOString()}`);
+              continue;
+            }
+            
             try {
               const parsed = JSON.parse(dataStr);
-              // Re-emit the SSE event unmodified.
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+              console.log(`[STREAM_PARSED #${i+1}] Successfully parsed JSON from event, sending downstream`);
+              
+              // Forward the event without modification to preserve streaming
+              const outputEvent = `data: ${JSON.stringify(parsed)}\n\n`;
+              controller.enqueue(new TextEncoder().encode(outputEvent));
             } catch (err) {
-              console.debug("Error parsing SSE chunk:", err);
+              console.error(`[STREAM_ERROR] Error parsing SSE event #${i+1} from chunk #${chunkCounter}:`, err);
+              console.log(`[STREAM_ERROR] Problematic data: ${dataStr}`);
             }
           }
         }
+        
+        // Log timing metrics periodically
+        const now = Date.now();
+        if (now - lastLogTime > 1000) { // Log every second
+          console.log(`[STREAM_STATS] Processed ${chunkCounter} chunks, ${totalBytesProcessed} bytes in the last ${(now - lastLogTime)/1000}s`);
+          lastLogTime = now;
+        }
       },
+      
       flush(controller) {
+        console.log(`[STREAM_FLUSH] Processing final buffer of size ${buffer.length} at ${new Date().toISOString()}`);
+        
         if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer.trim());
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
-          } catch (err) {
-            console.debug("Error parsing final SSE chunk:", err);
+          const parts = buffer.split("\n\n");
+          
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].trim();
+            if (part && part.startsWith("data: ")) {
+              const dataStr = part.slice(6).trim();
+              console.log(`[STREAM_FLUSH] Processing final event #${i+1}, data: ${dataStr.substring(0, 30)}${dataStr.length > 30 ? '...' : ''}`);
+              
+              try {
+                const parsed = JSON.parse(dataStr);
+                const outputEvent = `data: ${JSON.stringify(parsed)}\n\n`;
+                controller.enqueue(new TextEncoder().encode(outputEvent));
+              } catch (err) {
+                console.error("[STREAM_FLUSH] Error parsing final SSE chunk:", err);
+              }
+            }
           }
         }
+        
+        console.log(`[STREAM_COMPLETE] Transform stream finished, processed ${chunkCounter} total chunks, ${totalBytesProcessed} total bytes`);
         buffer = "";
       }
     });
 
+    console.log(`[STREAM_PIPE] Starting to pipe response to transform stream at ${new Date().toISOString()}`);
+    
+    // Return the streamed response
     return new Response(analysisResponse.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,

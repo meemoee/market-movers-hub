@@ -32,6 +32,9 @@ export function useStreamingContent() {
   // Track the last content update time for potential timeout detection
   const lastContentUpdateRef = useRef(Date.now());
   
+  // Debug counter for individual chunks
+  const chunkCounterRef = useRef(0);
+  
   // Counters for debugging
   const statsRef = useRef({
     chunkCount: 0,
@@ -40,7 +43,9 @@ export function useStreamingContent() {
     lastLogTime: Date.now(),
     processingTime: 0,
     processingCount: 0,
-    batchSizes: [] as number[]
+    batchSizes: [] as number[],
+    lastChunkTime: Date.now(),
+    chunkIntervals: [] as number[]
   });
   
   // Timer IDs
@@ -53,7 +58,7 @@ export function useStreamingContent() {
   });
   
   // Queue pending content updates
-  const pendingUpdatesRef = useRef<{ timestamp: number, content: string }[]>([]);
+  const pendingUpdatesRef = useRef<{ timestamp: number, content: string, chunkId: number }[]>([]);
   
   // Start streaming with reset state
   const startStreaming = useCallback(() => {
@@ -64,6 +69,7 @@ export function useStreamingContent() {
     displayPositionRef.current = 0;
     setContent('');
     pendingUpdatesRef.current = [];
+    chunkCounterRef.current = 0;
     
     // Reset stats
     statsRef.current = {
@@ -73,7 +79,9 @@ export function useStreamingContent() {
       lastLogTime: Date.now(),
       processingTime: 0,
       processingCount: 0,
-      batchSizes: []
+      batchSizes: [],
+      lastChunkTime: Date.now(),
+      chunkIntervals: []
     };
     
     // Stop any existing timers
@@ -118,7 +126,7 @@ export function useStreamingContent() {
         
         // Log every 10 updates
         if (statsRef.current.updateCount % 10 === 0) {
-          console.log(`[StreamingContent] Update #${statsRef.current.updateCount}: Position ${nextPosition}/${contentBuffer.current.length}`);
+          console.log(`[StreamingContent] Display update #${statsRef.current.updateCount}: Position ${nextPosition}/${contentBuffer.current.length}`);
         }
       }
       
@@ -143,6 +151,10 @@ export function useStreamingContent() {
         const avgBatchSize = statsRef.current.batchSizes.length > 0 ?
           statsRef.current.batchSizes.reduce((a, b) => a + b, 0) / statsRef.current.batchSizes.length : 0;
         
+        // Calculate average chunk interval
+        const avgChunkInterval = statsRef.current.chunkIntervals.length > 0 ?
+          statsRef.current.chunkIntervals.reduce((a, b) => a + b, 0) / statsRef.current.chunkIntervals.length : 0;
+        
         console.log(`[StreamingContent] STATS: 
           Runtime: ${(runTime/1000).toFixed(1)}s
           Buffer: ${contentBuffer.current.length} chars
@@ -151,6 +163,7 @@ export function useStreamingContent() {
           Chunks: ${statsRef.current.chunkCount}
           Avg processing: ${avgProcessingTime.toFixed(2)}ms
           Avg batch: ${avgBatchSize.toFixed(1)} chars
+          Avg chunk interval: ${avgChunkInterval.toFixed(1)}ms
           Pending updates: ${pendingUpdatesRef.current.length}
         `);
         
@@ -159,6 +172,7 @@ export function useStreamingContent() {
         statsRef.current.processingTime = 0;
         statsRef.current.processingCount = 0;
         statsRef.current.batchSizes = [];
+        statsRef.current.chunkIntervals = [];
       }
     }, DEBUG_INTERVAL);
     
@@ -188,7 +202,7 @@ export function useStreamingContent() {
     statsRef.current.batchSizes.push(totalChars);
     
     // Log the batch processing
-    console.log(`[StreamingContent] Processed batch of ${updates.length} updates (${totalChars} chars)`);
+    console.log(`[StreamingContent] Processed batch of ${updates.length} updates (${totalChars} chars), chunk IDs: [${updates.map(u => u.chunkId).join(', ')}]`);
     
     // Update last content update time
     lastContentUpdateRef.current = Date.now();
@@ -212,23 +226,34 @@ export function useStreamingContent() {
       return;
     }
     
+    // Track timing between chunks
+    const now = Date.now();
+    const timeSinceLastChunk = now - statsRef.current.lastChunkTime;
+    statsRef.current.chunkIntervals.push(timeSinceLastChunk);
+    statsRef.current.lastChunkTime = now;
+    
+    // Increment chunk counter for unique tracking
+    chunkCounterRef.current++;
+    const currentChunkId = chunkCounterRef.current;
+    
     // Queue the chunk for processing
     pendingUpdatesRef.current.push({
-      timestamp: Date.now(),
-      content: chunk
+      timestamp: now,
+      content: chunk,
+      chunkId: currentChunkId
     });
     
     // Update stats
     statsRef.current.chunkCount++;
     statsRef.current.totalBytes += chunk.length;
     
-    // For logging - only log every 5th chunk or large chunks
-    if (statsRef.current.chunkCount % 5 === 0 || chunk.length > 100) {
-      console.log(`[StreamingContent] Added chunk #${statsRef.current.chunkCount} (${chunk.length} chars). Buffer: ${contentBuffer.current.length}, pending: ${pendingUpdatesRef.current.length}`);
-    }
+    // Log detailed chunk information
+    console.log(`[StreamingContent] Added chunk #${currentChunkId} (${chunk.length} chars) at ${new Date(now).toISOString()}`);
+    console.log(`[StreamingContent] Chunk #${currentChunkId} content preview: "${chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`);
+    console.log(`[StreamingContent] Interval since last chunk: ${timeSinceLastChunk}ms, buffer length: ${contentBuffer.current.length}, pending: ${pendingUpdatesRef.current.length}`);
     
     // Update last content update time
-    lastContentUpdateRef.current = Date.now();
+    lastContentUpdateRef.current = now;
   }, []);
   
   // Stop streaming and ensure full content is displayed
