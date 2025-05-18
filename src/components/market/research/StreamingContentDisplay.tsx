@@ -25,16 +25,33 @@ export function StreamingContentDisplay({
     contentLength: 0,
     bufferLength: 0,
     displayPosition: 0,
-    renderCount: 0
+    renderCount: 0,
+    lastUpdateTime: Date.now(),
+    charsPerSecond: 0
   });
   
   // Track render count for debugging
   const renderCountRef = useRef(0);
+  const lastContentLengthRef = useRef(0);
+  const lastUpdateTimeRef = useRef(Date.now());
   
-  // Whenever content changes, scroll to bottom
+  // Whenever content changes, scroll to bottom and update debug stats
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+    
+    // Calculate streaming speed
+    const now = Date.now();
+    const timeDelta = now - lastUpdateTimeRef.current;
+    const contentDelta = content.length - lastContentLengthRef.current;
+    
+    // Only calculate speed if there's been a meaningful change
+    let charsPerSecond = debugInfo.charsPerSecond;
+    if (timeDelta > 0 && contentDelta > 0) {
+      charsPerSecond = Math.round((contentDelta / timeDelta) * 1000);
+      lastUpdateTimeRef.current = now;
+      lastContentLengthRef.current = content.length;
     }
     
     // Update debug info
@@ -43,7 +60,9 @@ export function StreamingContentDisplay({
       contentLength: content.length,
       bufferLength: rawBuffer?.length || 0,
       displayPosition: displayPosition || 0,
-      renderCount: renderCountRef.current
+      renderCount: renderCountRef.current,
+      lastUpdateTime: now,
+      charsPerSecond
     });
   }, [content, rawBuffer, displayPosition]);
 
@@ -57,7 +76,7 @@ export function StreamingContentDisplay({
         {isStreaming && (
           <div className="flex items-center space-x-2 mb-2 text-xs text-muted-foreground">
             <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span>Streaming...</span>
+            <span>Streaming{debugInfo.charsPerSecond > 0 ? ` (${debugInfo.charsPerSecond} chars/s)` : ''}...</span>
           </div>
         )}
         
@@ -74,8 +93,9 @@ export function StreamingContentDisplay({
           <div>Content: {debugInfo.contentLength} chars</div>
           <div>Buffer: {debugInfo.bufferLength} chars</div>
           <div>Display: {debugInfo.displayPosition} chars</div>
-          <div>Renders: {debugInfo.renderCount}</div>
           <div>Delta: {debugInfo.bufferLength - debugInfo.displayPosition} chars</div>
+          <div>Speed: {debugInfo.charsPerSecond} chars/s</div>
+          <div>Renders: {debugInfo.renderCount}</div>
         </div>
       )}
     </div>

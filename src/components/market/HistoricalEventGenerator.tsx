@@ -115,7 +115,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
       const data = await response.json();
       
-      // No longer filtering by structured_outputs since we use Gemini 2.5 Flash for parsing
       // Format all models for the dropdown
       const formattedModels = data.data.map((model: any) => ({
         id: model.id,
@@ -177,11 +176,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   };
 
   const generateHistoricalEvent = async () => {
-    if (!user?.openrouter_api_key) {
-      toast.error("You need to add your OpenRouter API key in account settings");
-      return;
-    }
-
     if (!selectedModel) {
       toast.error("Please select a model");
       return;
@@ -201,49 +195,22 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     });
     
     try {
-      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
+      addDebugLog(`Starting historical event generation with model: ${selectedModel}`);
 
-Provide a detailed analysis of a historical event that has similarities to this market question. Include:
-
-1. The name of the historical event
-2. When it occurred (date or time period)
-3. A relevant image that illustrates this event (mention a URL to a relevant image)
-4. Several key similarities between this historical event and the current market question
-5. Several key differences between this historical event and the current market question
-
-Be thorough in your analysis and explain your reasoning clearly.`;
-
-      // Base request body
-      const requestBody: any = {
-        model: enableWebSearch ? `${selectedModel}:online` : selectedModel,
-        messages: [
-          { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
-          { role: "user", content: promptText }
-        ],
-        stream: true // Enable streaming
-      };
-      
-      // Add web search plugin configuration if enabled with custom max results
-      if (enableWebSearch) {
-        requestBody.plugins = [
-          {
-            id: "web",
-            max_results: maxSearchResults
-          }
-        ];
-      }
-
-      addDebugLog(`Sending request to OpenRouter with model: ${requestBody.model}`);
-      console.log("STREAMING: Full request body:", JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
+      // Call our edge function which will stream from OpenRouter
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-historical-event`, {
+        method: 'POST',
         headers: {
-          "Authorization": `Bearer ${user.openrouter_api_key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": window.location.origin,
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          marketQuestion,
+          modelId: selectedModel,
+          enableWebSearch,
+          maxSearchResults,
+          userId: user?.id // Pass user ID to fetch their API key on the server
+        })
       });
 
       if (!response.ok) {
@@ -257,22 +224,20 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         throw new Error("Response body is null");
       }
 
-      // Setup stream processing
+      // Process streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let chunkCounter = 0;
       let lastProcessTime = Date.now();
 
-      addDebugLog("Starting to process stream...");
+      addDebugLog("Starting to process stream from edge function...");
 
-      // Improved SSE handling with more detailed logging
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) {
           addDebugLog("Stream complete");
-          // Process any remaining buffer content
           if (buffer.trim().length > 0) {
             addDebugLog(`Processing final buffer content (${buffer.length} bytes)`);
             await processSSEBuffer(buffer, true);
@@ -285,18 +250,15 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         chunkCounter++;
         buffer += chunkText;
         
-        // Log every received chunk with more detail
+        // Log chunk details
         const now = Date.now();
         const timeSinceLastChunk = now - lastProcessTime;
         lastProcessTime = now;
         
-        console.log(`STREAMING [${chunkCounter}]: Raw SSE chunk received: ${chunkText.length} bytes, ${timeSinceLastChunk}ms since last chunk`);
-        console.log(`STREAMING [${chunkCounter}]: Raw chunk content: "${chunkText}"`);
-        
         addDebugLog(`[${chunkCounter}] Raw chunk: ${chunkText.length} bytes, interval: ${timeSinceLastChunk}ms`);
         addRawChunkLog(chunkText);
         
-        // Process complete SSE messages from the buffer
+        // Process SSE messages
         await processSSEBuffer(buffer, false);
         
         // Keep only incomplete messages in the buffer
@@ -323,17 +285,13 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       const events = buffer.split('\n\n');
       
       if (events.length > 1) {
-        console.log(`STREAMING: Processing ${events.length-1} complete events from buffer`);
+        addDebugLog(`Processing ${events.length-1} complete events from buffer`);
       }
       
       for (let i = 0; i < events.length - 1; i++) {
         const event = events[i].trim();
         
         if (!event) continue;
-        
-        // Log each complete event for debugging
-        console.log(`STREAMING: Processing SSE event #${i+1}/${events.length-1}: ${event.length} bytes`);
-        console.log(`STREAMING: Raw event: "${event}"`);
         
         // Process each line in the event
         const lines = event.split('\n');
@@ -349,13 +307,12 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         // Process the collected data content
         if (dataContent) {
           if (dataContent === '[DONE]') {
-            console.log("STREAMING: [DONE] marker received");
+            addDebugLog("[DONE] marker received");
             continue;
           }
           
           try {
             const parsedData = JSON.parse(dataContent);
-            console.log("STREAMING: Parsed JSON data:", JSON.stringify(parsedData, null, 2));
             
             // Extract content from choices[0].delta.content if available
             if (parsedData.choices && 
@@ -366,29 +323,11 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                 const content = delta.content || delta.reasoning || '';
                 
                 if (content) {
-                  // Log and add the extracted content
-                  console.log(`STREAMING: Content extracted (${content.length} bytes): "${content}"`);
-                  
-                  // Add small delay to avoid overwhelming the typewriter effect
-                  // This helps ensure the typewriter has time to process between chunks
-                  if (content.length > 50) {
-                    const segmentSize = 50;
-                    for (let j = 0; j < content.length; j += segmentSize) {
-                      const segment = content.substring(j, j + segmentSize);
-                      addChunk(segment);
-                      
-                      // Small delay between segments to help typewriter effect
-                      if (j + segmentSize < content.length) {
-                        await new Promise(r => setTimeout(r, 5));
-                      }
-                    }
-                  } else {
-                    addChunk(content);
-                  }
+                  // Add the content directly to the stream display
+                  addChunk(content);
                 }
             }
-          } catch (e) {
-            console.error("STREAMING: JSON parse error:", e, "Raw data:", dataContent);
+          } catch (e: any) {
             addDebugLog(`Parse error: ${e.message}`);
           }
         }
@@ -398,7 +337,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       if (isFinal && events.length > 0) {
         const finalEvent = events[events.length - 1].trim();
         if (finalEvent) {
-          console.log(`STREAMING: Processing final incomplete event: ${finalEvent.length} bytes`);
+          addDebugLog(`Processing final incomplete event: ${finalEvent.length} bytes`);
           
           // Try to extract any data lines
           const lines = finalEvent.split('\n');
@@ -416,11 +355,11 @@ Be thorough in your analysis and explain your reasoning clearly.`;
               
               if (parsedData.choices?.[0]?.delta?.content) {
                 const content = parsedData.choices[0].delta.content;
-                console.log(`STREAMING: Final content extracted (${content.length} bytes)`);
+                addDebugLog(`Final content extracted (${content.length} bytes)`);
                 addChunk(content);
               }
-            } catch (e) {
-              console.log(`STREAMING: Could not parse final fragment as JSON: ${e.message}`);
+            } catch (e: any) {
+              addDebugLog(`Could not parse final fragment as JSON: ${e.message}`);
             }
           }
         }
@@ -705,7 +644,7 @@ ${streamingContent}`;
               )}
             </Button>
             
-            {/* Debug logs section - Enhanced */}
+            {/* Debug logs section */}
             <div className="mt-4 bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs font-mono">
               <div className="flex justify-between items-center mb-1">
                 <h4 className="font-medium">Stream Debug ({debugLogs.length} logs)</h4>
@@ -730,7 +669,7 @@ ${streamingContent}`;
               </div>
             </div>
             
-            {/* Raw Chunks Section - NEW */}
+            {/* Raw Chunks Section */}
             <div className="mt-4 bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs font-mono">
               <div className="flex justify-between items-center mb-1">
                 <h4 className="font-medium">Raw Chunks ({rawChunkLogs.length})</h4>
@@ -769,34 +708,6 @@ ${streamingContent}`;
               </div>
             </div>
             
-            {/* Direct text display - NEW - bypasses ReactMarkdown */}
-            {showRawResponse && (
-              <div className="mt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="text-sm font-medium">Direct Text Display</h4>
-                  <div className="text-xs text-muted-foreground">
-                    {streamingContent.length} chars, buffer: {rawBuffer?.length || 0}, display: {displayPosition || 0}
-                  </div>
-                </div>
-                
-                <div className="relative rounded-md border p-4 bg-gray-50 dark:bg-gray-900 w-full overflow-y-auto h-[200px]">
-                  <pre className="text-sm whitespace-pre-wrap break-words w-full max-w-full">
-                    {streamingContent || "(No content yet)"}
-                  </pre>
-                  
-                  {isStreaming && (
-                    <div className="absolute bottom-2 right-2">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-75" />
-                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
             {/* Using StreamingContentDisplay */}
             {showRawResponse && (
               <div className="mt-4">
@@ -832,6 +743,7 @@ ${streamingContent}`;
               </div>
             )}
 
+            {/* Form fields for event details */}
             <div className="grid gap-4">
               <div>
                 <label className="text-sm font-medium mb-1 block">Event Title</label>
