@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, RefreshCw } from 'lucide-react';
@@ -26,162 +26,235 @@ export function StreamingContentDisplay({
   const plainTextRef = useRef<HTMLPreElement>(null);
   const shouldScrollRef = useRef<boolean>(true);
   
-  // Stable ref that won't be reset by React re-renders
-  const stableStateRef = useRef<{
-    visibleContent: string;
+  // State for visible content
+  const [visibleContent, setVisibleContent] = useState<string>('');
+  
+  // Ref for content processing state that persists across renders
+  const stateRef = useRef<{
+    // Content state
+    nextUpdatePosition: number;
+    targetContent: string;
     lastUpdateTime: number;
+    
+    // Animation state
+    isAnimating: boolean;
+    animationFrameId: number | null;
+    
+    // Performance stats
     renderCount: number;
-    lastContent: string;
-    typewriterActive: boolean;
-    currentPosition: number;
-    typewriterTimerId: number | null;
-    isFirstRender: boolean;
+    updateCount: number;
+    
+    // Debug info
+    processedChars: number;
+    lastLogTime: number;
+    
+    // Error recovery
+    failedUpdates: number;
   }>({
-    visibleContent: '',
+    nextUpdatePosition: 0,
+    targetContent: '',
     lastUpdateTime: Date.now(),
+    isAnimating: false,
+    animationFrameId: null,
     renderCount: 0,
-    lastContent: "",
-    typewriterActive: false,
-    currentPosition: 0,
-    typewriterTimerId: null,
-    isFirstRender: true
+    updateCount: 0,
+    processedChars: 0,
+    lastLogTime: Date.now(),
+    failedUpdates: 0
   });
   
-  // State for health check
+  // Stream health monitoring state
   const [streamHealth, setStreamHealth] = useState<'healthy' | 'stalled' | 'error'>('healthy');
   
-  // CRITICAL: Initialize plainTextRef content on first render to prevent React from clearing it
-  useLayoutEffect(() => {
-    if (plainTextRef.current && stableStateRef.current.isFirstRender) {
-      if (plainTextRef.current.textContent === null || plainTextRef.current.textContent === '') {
-        plainTextRef.current.textContent = ''; // Ensure it's initialized
+  // Performance stats
+  const performanceRef = useRef<{
+    startTime: number;
+    frameCount: number;
+    lastFrameTime: number;
+    typewriterUpdates: number;
+    processingDuration: number;
+  }>({
+    startTime: Date.now(),
+    frameCount: 0,
+    lastFrameTime: 0,
+    typewriterUpdates: 0,
+    processingDuration: 0
+  });
+  
+  // Increment render counter
+  useEffect(() => {
+    stateRef.current.renderCount++;
+    console.log(`[StreamingDisplay] Render #${stateRef.current.renderCount}, content length: ${content?.length || 0}`);
+  });
+  
+  // Track content changes for debugging
+  useEffect(() => {
+    if (content !== stateRef.current.targetContent) {
+      const now = Date.now();
+      const prevLength = stateRef.current.targetContent.length;
+      const newLength = content?.length || 0;
+      const delta = newLength - prevLength;
+      
+      if (delta > 0) {
+        console.log(
+          `[StreamingDisplay] Content updated: +${delta} chars, ` +
+          `total: ${newLength}, ` + 
+          `time since last update: ${now - stateRef.current.lastUpdateTime}ms`
+        );
+        
+        // Update our target content
+        stateRef.current.targetContent = content;
+        stateRef.current.lastUpdateTime = now;
+        
+        // Reset health check
+        setStreamHealth('healthy');
       }
-      stableStateRef.current.isFirstRender = false;
+    }
+  }, [content]);
+  
+  // ===========================================
+  // IMPROVED TYPEWRITER IMPLEMENTATION
+  // ===========================================
+  // This uses requestAnimationFrame for smoother animation
+  // and is designed to be resilient against React re-renders
+  // ===========================================
+  
+  // Start the typewriter animation - uses requestAnimationFrame for smooth animation
+  const startTypewriterAnimation = useCallback(() => {
+    if (stateRef.current.isAnimating) return; // Don't start if already running
+    
+    console.log(`[StreamingDisplay] Starting typewriter animation`);
+    stateRef.current.isAnimating = true;
+    
+    // Define the animation frame function
+    const animate = () => {
+      const now = Date.now();
+      // Track frame rate
+      performanceRef.current.frameCount++;
+      if (now - performanceRef.current.lastFrameTime > 5000) {
+        const fps = performanceRef.current.frameCount / ((now - performanceRef.current.lastFrameTime) / 1000);
+        console.log(`[StreamingDisplay] Animation running at ${fps.toFixed(1)} FPS`);
+        performanceRef.current.frameCount = 0;
+        performanceRef.current.lastFrameTime = now;
+      }
+      
+      // Process typewriter update
+      const startProcess = performance.now();
+      processTypewriterUpdate();
+      const endProcess = performance.now();
+      performanceRef.current.processingDuration += (endProcess - startProcess);
+      
+      // Continue animation if we have content to display and we're streaming
+      if (
+        stateRef.current.nextUpdatePosition < stateRef.current.targetContent.length &&
+        isStreaming
+      ) {
+        stateRef.current.animationFrameId = requestAnimationFrame(animate);
+      } else {
+        console.log(`[StreamingDisplay] Stopping animation - position: ${stateRef.current.nextUpdatePosition}, target length: ${stateRef.current.targetContent.length}`);
+        stateRef.current.isAnimating = false;
+        stateRef.current.animationFrameId = null;
+      }
+    };
+    
+    // Start the animation
+    performanceRef.current.lastFrameTime = Date.now();
+    performanceRef.current.frameCount = 0;
+    stateRef.current.animationFrameId = requestAnimationFrame(animate);
+    
+    return () => {
+      // Cleanup function
+      if (stateRef.current.animationFrameId !== null) {
+        cancelAnimationFrame(stateRef.current.animationFrameId);
+        stateRef.current.animationFrameId = null;
+        stateRef.current.isAnimating = false;
+      }
+    };
+  }, [isStreaming]);
+  
+  // Process a single typewriter update - controlled amount of characters
+  const processTypewriterUpdate = useCallback(() => {
+    // Get current state
+    const { nextUpdatePosition, targetContent } = stateRef.current;
+    
+    // Don't update if we're already at the end
+    if (nextUpdatePosition >= targetContent.length) return;
+    
+    // Calculate how much to show - 5 chars at a time
+    const charsToAdd = 5;
+    const newPosition = Math.min(nextUpdatePosition + charsToAdd, targetContent.length);
+    
+    // Update the visible content with the next chunk
+    const newVisibleContent = targetContent.substring(0, newPosition);
+    setVisibleContent(newVisibleContent);
+    
+    // Update state
+    stateRef.current.nextUpdatePosition = newPosition;
+    stateRef.current.updateCount++;
+    
+    // Track performance
+    performanceRef.current.typewriterUpdates++;
+    
+    // Scroll if needed
+    if (containerRef.current && shouldScrollRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+    
+    // Log progress periodically
+    if (stateRef.current.updateCount % 10 === 0) {
+      const progress = Math.round((newPosition / Math.max(targetContent.length, 1)) * 100);
+      console.log(`[StreamingDisplay] Update #${stateRef.current.updateCount}: ${newPosition}/${targetContent.length} (${progress}%)`);
     }
   }, []);
   
-  // Function to check stream health
-  const checkStreamHealth = () => {
+  // ===========================================
+  // EFFECT HOOKS FOR MONITORING AND CONTROL
+  // ===========================================
+  
+  // Start/stop typewriter based on streaming state
+  useEffect(() => {
+    // Reset display and start fresh when streaming begins
+    if (isStreaming) {
+      console.log(`[StreamingDisplay] Streaming started, resetting display`);
+      stateRef.current.nextUpdatePosition = 0;
+      stateRef.current.targetContent = content || '';
+      setVisibleContent('');
+      performanceRef.current.startTime = Date.now();
+      performanceRef.current.typewriterUpdates = 0;
+      performanceRef.current.processingDuration = 0;
+      
+      return startTypewriterAnimation();
+    } else if (!isStreaming && content) {
+      // Show full content immediately when streaming ends
+      console.log(`[StreamingDisplay] Streaming ended, showing full content`);
+      setVisibleContent(content);
+      stateRef.current.nextUpdatePosition = content.length;
+      
+      // Log performance stats
+      const totalTime = Date.now() - performanceRef.current.startTime;
+      const processingTime = performanceRef.current.processingDuration;
+      console.log(`[StreamingDisplay] Performance: ${performanceRef.current.typewriterUpdates} updates in ${totalTime}ms, processing took ${processingTime.toFixed(2)}ms (${(processingTime/totalTime*100).toFixed(2)}%)`);
+    }
+  }, [isStreaming, content, startTypewriterAnimation]);
+  
+  // Monitor stream health
+  useEffect(() => {
     if (!isStreaming) return;
     
-    const now = Date.now();
-    const timeSinceUpdate = now - stableStateRef.current.lastUpdateTime;
+    const healthCheckInterval = setInterval(() => {
+      const now = Date.now();
+      const timeSinceUpdate = now - stateRef.current.lastUpdateTime;
+      
+      if (timeSinceUpdate > 5000 && stateRef.current.targetContent.length === 0) {
+        console.log(`[StreamingDisplay] Stream stalled: No content received after ${timeSinceUpdate}ms`);
+        setStreamHealth('stalled');
+      }
+    }, 1000);
     
-    if (timeSinceUpdate > 5000 && stableStateRef.current.visibleContent.length === 0) {
-      console.log(`STREAM_HEALTH: No content received after ${timeSinceUpdate}ms`);
-      setStreamHealth('stalled');
-    }
-  };
-  
-  // Health check timer
-  useEffect(() => {
-    if (isStreaming) {
-      const timer = setInterval(checkStreamHealth, 2000);
-      return () => clearInterval(timer);
-    }
+    return () => clearInterval(healthCheckInterval);
   }, [isStreaming]);
   
-  // CRITICAL: Use useLayoutEffect for DOM manipulation to ensure it happens before browser paint
-  useLayoutEffect(() => {
-    if (!isStreaming || !content || !plainTextRef.current) return;
-    
-    // Store the full content for reference
-    const fullContent = content;
-    
-    // Don't re-render if we're already showing all content
-    if (stableStateRef.current.visibleContent === fullContent) {
-      return;
-    }
-    
-    // If we already have a typewriter running, don't start a new one
-    if (stableStateRef.current.typewriterActive) {
-      console.log(`TYPEWRITER: Already active, updating target content to length ${fullContent.length}`);
-      return;
-    }
-    
-    console.log(`TYPEWRITER: Starting new typewriter effect from position ${stableStateRef.current.currentPosition}/${fullContent.length}`);
-    
-    // Mark typewriter as active
-    stableStateRef.current.typewriterActive = true;
-    
-    // Function to add characters with small delay
-    const addCharacters = () => {
-      // Don't continue if component unmounted or streaming stopped
-      if (!plainTextRef.current || !isStreaming) {
-        stableStateRef.current.typewriterActive = false;
-        return;
-      }
-      
-      // Calculate how many characters to show next (5 characters at a time)
-      const charsToAdd = 5;
-      const nextPosition = Math.min(stableStateRef.current.currentPosition + charsToAdd, fullContent.length);
-      
-      // Update the visible content in our stable ref
-      stableStateRef.current.visibleContent = fullContent.substring(0, nextPosition);
-      
-      // Update DOM directly - CRITICAL PART
-      if (plainTextRef.current) {
-        plainTextRef.current.textContent = stableStateRef.current.visibleContent;
-        // Update health check timestamp
-        stableStateRef.current.lastUpdateTime = Date.now();
-        
-        // Reset health to healthy when we receive content
-        if (streamHealth !== 'healthy' && stableStateRef.current.visibleContent.length > 0) {
-          setStreamHealth('healthy');
-        }
-      }
-      
-      // Log progress occasionally
-      if (nextPosition % 20 === 0 || nextPosition === fullContent.length) {
-        console.log(`TYPEWRITER: Updated to position ${nextPosition}/${fullContent.length}`);
-      }
-      
-      // Scroll if needed
-      if (containerRef.current && shouldScrollRef.current) {
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      }
-      
-      // Continue if we haven't reached the end
-      stableStateRef.current.currentPosition = nextPosition;
-      if (nextPosition < fullContent.length && isStreaming) {
-        stableStateRef.current.typewriterTimerId = window.setTimeout(addCharacters, 10); // 10ms delay between updates
-      } else {
-        console.log(`TYPEWRITER: Finished typewriter at position ${nextPosition}`);
-        stableStateRef.current.typewriterActive = false;
-      }
-    };
-    
-    // Start adding characters
-    addCharacters();
-    
-    // Cleanup function to stop typewriter when component unmounts or effect re-runs
-    return () => {
-      if (stableStateRef.current.typewriterTimerId !== null) {
-        clearTimeout(stableStateRef.current.typewriterTimerId);
-        stableStateRef.current.typewriterTimerId = null;
-      }
-      stableStateRef.current.typewriterActive = false;
-    };
-  }, [content, isStreaming, streamHealth]);
-  
-  // Track content updates for debugging
-  useEffect(() => {
-    if (content !== stableStateRef.current.lastContent) {
-      stableStateRef.current.renderCount += 1;
-      console.log(`STREAM_DISPLAY: New content update #${stableStateRef.current.renderCount}, length: ${content.length}`);
-      
-      // Check if content was significantly increased
-      if (content.length > stableStateRef.current.lastContent.length + 50) {
-        console.log(`STREAM_DISPLAY: Large content increase: +${content.length - stableStateRef.current.lastContent.length} chars`);
-      }
-      
-      stableStateRef.current.lastContent = content;
-      // Update health check timestamp whenever we get new content
-      stableStateRef.current.lastUpdateTime = Date.now();
-    }
-  }, [content]);
-
-  // Handle scroll events to detect if user has scrolled up
+  // Handle scroll events to detect if user has scrolled
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -195,7 +268,7 @@ export function StreamingContentDisplay({
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
-
+  
   // Force scroll to bottom
   const scrollToBottom = () => {
     if (containerRef.current) {
@@ -206,27 +279,28 @@ export function StreamingContentDisplay({
   
   // Force content display in case of stalled stream
   const forceDisplayFullContent = () => {
-    if (plainTextRef.current && rawBuffer) {
-      plainTextRef.current.textContent = rawBuffer;
-      stableStateRef.current.visibleContent = rawBuffer;
-      stableStateRef.current.currentPosition = rawBuffer.length;
+    if (rawBuffer) {
+      console.log(`[StreamingDisplay] Forcing full content display (${rawBuffer.length} chars)`);
+      setVisibleContent(rawBuffer);
+      stateRef.current.nextUpdatePosition = rawBuffer.length;
       setStreamHealth('healthy');
-      console.log(`STREAM_DISPLAY: Forced display of full content (${rawBuffer.length} chars)`);
     }
   };
   
   // Debug info
   const debugInfo = {
-    contentLength: content.length,
+    contentLength: content?.length || 0,
+    visibleLength: visibleContent.length,
     bufferLength: rawBuffer?.length || 0,
+    nextPosition: stateRef.current.nextUpdatePosition,
     displayPosition: displayPosition || 0,
-    renderCount: stableStateRef.current.renderCount,
+    renderCount: stateRef.current.renderCount,
+    updateCount: stateRef.current.updateCount,
     isStreaming,
-    visibleLength: stableStateRef.current.visibleContent.length,
     health: streamHealth,
-    typewriterActive: stableStateRef.current.typewriterActive
+    isAnimating: stateRef.current.isAnimating
   };
-
+  
   return (
     <div className="relative">
       <div 
@@ -239,22 +313,20 @@ export function StreamingContentDisplay({
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <div>Content: {debugInfo.contentLength} chars</div>
             <div>Buffer: {debugInfo.bufferLength} chars</div>
-            <div>Position: {stableStateRef.current.currentPosition}/{debugInfo.bufferLength}</div>
-            <div>Visible: {stableStateRef.current.visibleContent.length} chars</div>
+            <div>Position: {debugInfo.nextPosition}/{debugInfo.bufferLength}</div>
+            <div>Visible: {debugInfo.visibleLength} chars</div>
+            <div>Updates: {debugInfo.updateCount}</div>
             <div>Renders: {debugInfo.renderCount}</div>
             <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
             <div>Health: {debugInfo.health}</div>
-            <div>Typewriter: {debugInfo.typewriterActive ? 'Active' : 'Idle'}</div>
+            <div>Animating: {debugInfo.isAnimating ? 'Yes' : 'No'}</div>
           </div>
         </div>
         
-        {/* Direct text display (manipulated by DOM) */}
+        {/* Typewriter text display */}
         <div className="mb-4 p-2 bg-gray-800 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32 text-gray-300">
-          <pre 
-            ref={plainTextRef} 
-            className="whitespace-pre-wrap break-words"
-          >
-            {/* Content is managed directly via DOM manipulation */}
+          <pre className="whitespace-pre-wrap break-words">
+            {visibleContent}
           </pre>
         </div>
         
