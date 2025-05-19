@@ -12,7 +12,8 @@ export async function generateAnalysisWithStreaming(
   relatedMarkets?: any[],
   areasForResearch?: string[],
   focusText?: string,
-  previousAnalyses?: string[]
+  previousAnalyses?: string[],
+  modelOverride?: string
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -121,6 +122,10 @@ Present the analysis in a structured, concise format with clear sections and bul
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     
+    // Use the provided model or default to Gemini 2.5 Pro
+    const model = modelOverride || "google/gemini-2.5-pro-preview-03-25";
+    console.log(`Using model: ${model} for analysis generation`);
+    
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -131,7 +136,7 @@ Present the analysis in a structured, concise format with clear sections and bul
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-preview-03-25",
+        model: model,
         messages: [
           {
             role: "system",
@@ -293,7 +298,8 @@ export async function generateFinalAnalysisWithStreaming(
   relatedMarkets?: any[],
   areasForResearch?: string[],
   focusText?: string,
-  previousAnalyses?: string[]
+  previousAnalyses?: string[],
+  modelOverride?: string
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -384,6 +390,10 @@ Present the analysis in a structured, comprehensive format with clear sections a
       data: []
     };
     
+    // Use the provided model or default to Gemini 2.5 Pro
+    const model = modelOverride || "google/gemini-2.5-pro-preview-03-25";
+    console.log(`Using model: ${model} for final analysis generation`);
+    
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -394,7 +404,7 @@ Present the analysis in a structured, comprehensive format with clear sections a
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-preview-03-25",
+        model: model,
         messages: [
           {
             role: "system",
@@ -522,5 +532,162 @@ Your final analysis should:
   } catch (error) {
     console.error(`Error in streaming final analysis generation:`, error);
     throw error;
+  }
+}
+
+// Function to parse unstructured analysis into structured format using Gemini 2.5 Flash
+export async function parseAnalysisToStructuredFormat(
+  analysisText: string,
+  query: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  focusText?: string
+): Promise<any> {
+  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+  
+  if (!openRouterKey) {
+    throw new Error('OPENROUTER_API_KEY is not set in environment');
+  }
+  
+  console.log(`Parsing analysis to structured format using Gemini 2.5 Flash`);
+  
+  // Limit content length to avoid token limits
+  const contentLimit = 30000;
+  const truncatedAnalysis = analysisText.length > contentLimit 
+    ? analysisText.substring(0, contentLimit) + "... [content truncated]" 
+    : analysisText;
+  
+  // Add market context to the prompt
+  let contextInfo = '';
+  
+  if (marketPrice !== undefined) {
+    contextInfo += `\nCurrent market prediction: ${marketPrice}% probability\n`;
+  }
+  
+  if (relatedMarkets && relatedMarkets.length > 0) {
+    contextInfo += '\nRelated markets:\n';
+    relatedMarkets.forEach(market => {
+      if (market.question && market.probability !== undefined) {
+        const probability = Math.round(market.probability * 100);
+        contextInfo += `- ${market.question}: ${probability}% probability\n`;
+      }
+    });
+  }
+  
+  // Add focus text section if provided
+  let focusSection = '';
+  if (focusText && focusText.trim()) {
+    focusSection = `\nFOCUS AREA: "${focusText.trim()}"\n
+Your analysis must specifically address and deeply analyze this focus area. Connect all insights to this focus.`;
+  }
+  
+  const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.
+Your task is to analyze the provided analysis text and generate precise probability estimates based on concrete evidence.
+
+CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
+1. Historical Precedents: Always cite specific historical events, statistics, or past occurrences that inform your estimate
+2. Key Conditions: Identify and analyze the specific conditions that must be met for the event to occur
+3. Impact Factors: List the major factors that could positively or negatively impact the probability
+4. Evidence Quality: Assess the reliability and relevance of your sources
+5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
+6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
+7. Timeline Considerations: Account for time-dependent factors and how they affect probability
+${focusText ? `8. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
+
+Format your analysis as a JSON object with:
+{
+  "probability": "X%" (numerical percentage with % sign),
+  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
+  "reasoning": {
+    "evidenceFor": [
+      "Detailed point 1 supporting the event happening, with specific examples, statistics, or historical precedents${focusText ? ` that directly addresses the focus area: "${focusText}"` : ''}",
+      "Detailed point 2 supporting the event happening"
+      // Add multiple points as needed
+    ],
+    "evidenceAgainst": [
+      "Detailed point 1 against the event happening, with specific examples, statistics, or historical precedents${focusText ? ` that directly addresses the focus area: "${focusText}"` : ''}",
+      "Detailed point 2 against the event happening"
+      // Add multiple points as needed
+    ]
+  }
+}`;
+
+  const userPrompt = `Here is the analysis I've generated about the query: "${query}"
+
+ANALYSIS TEXT:
+---
+${truncatedAnalysis}
+---
+
+${contextInfo}
+${focusSection}
+
+Based on this analysis, please provide:
+1. A specific probability estimate for the query
+2. The key areas where more research is needed
+3. A detailed reasoning section with:
+   - Evidence FOR the event happening (with specific examples, statistics, historical precedents)
+   - Evidence AGAINST the event happening (with specific examples, statistics, historical precedents)
+
+Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
+
+  try {
+    // Use Gemini 2.5 Flash specifically for structured parsing
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+        "X-Title": "Market Research App",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-preview",
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: false,
+        temperature: 0.2,
+        response_format: { type: "json_object" }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+    }
+
+    // Parse the response
+    const responseData = await response.json();
+    
+    // Extract the structured content
+    const structuredContent = responseData.choices[0].message.content;
+    
+    // If it's a string (JSON string), parse it
+    let parsedContent;
+    if (typeof structuredContent === 'string') {
+      parsedContent = JSON.parse(structuredContent);
+    } else {
+      // If it's already an object, use it directly
+      parsedContent = structuredContent;
+    }
+    
+    console.log(`Successfully parsed analysis to structured format with probability: ${parsedContent.probability}`);
+    
+    return parsedContent;
+  } catch (error) {
+    console.error(`Error parsing analysis to structured format:`, error);
+    
+    // Return a basic error object
+    return {
+      probability: "Error: Failed to generate",
+      areasForResearch: ["Error occurred during structured parsing"],
+      reasoning: {
+        evidenceFor: ["Error parsing analysis"],
+        evidenceAgainst: ["Error parsing analysis"]
+      },
+      error: error.message
+    };
   }
 }
