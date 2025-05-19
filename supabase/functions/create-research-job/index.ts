@@ -1,7 +1,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { generateAnalysisWithStreaming, generateFinalAnalysisWithStreaming, parseAnalysisToStructuredFormat } from './analysis-utils.ts'
+import { generateAnalysisWithStreaming, generateFinalAnalysisWithStreaming } from './analysis-utils.ts'
 
 // Define CORS headers
 const corsHeaders = {
@@ -405,8 +405,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 relatedMarkets,
                 areasForResearch,
                 focusText,
-                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
-                undefined // Use default model for streaming
+                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
               );
               
               // Analysis has been streamed directly to database
@@ -579,8 +578,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           relatedMarkets,
           areasForResearch,
           focusText,
-          previousAnalyses,
-          undefined // Use default model for streaming
+          previousAnalyses
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -753,24 +751,64 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         - ${relatedMarkets.length} related markets
         - focusText: ${focusText || 'undefined'}`);
       
-      // Use our new parseAnalysisToStructuredFormat function to get structured insights
-      console.log(`Using Gemini 2.5 Flash to parse analysis into structured format`);
-      
-      // Parse the final analysis into structured format using Gemini 2.5 Flash
-      structuredInsights = await parseAnalysisToStructuredFormat(
-        finalAnalysis,
-        query,
-        marketPrice,
-        relatedMarkets,
-        focusText
+      // Call the extract-research-insights function to get structured insights (without streaming)
+      const extractInsightsResponse = await fetch(
+        `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify(insightsPayload)
+        }
       );
+      
+      if (!extractInsightsResponse.ok) {
+        throw new Error(`Failed to extract insights: ${extractInsightsResponse.statusText}`);
+      }
+      
+      // Parse the JSON response directly
+      structuredInsights = await extractInsightsResponse.json();
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.probability || "unknown"}`)
+        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`)
       });
       
-      console.log(`Successfully extracted structured insights with probability: ${structuredInsights.probability}`);
+      // Extract the actual insights from the OpenRouter response
+      if (structuredInsights.choices && 
+          structuredInsights.choices[0] && 
+          structuredInsights.choices[0].message && 
+          structuredInsights.choices[0].message.content) {
+        
+        // Get the actual insights content from the API response
+        try {
+          // If it's a string (JSON string), parse it
+          if (typeof structuredInsights.choices[0].message.content === 'string') {
+            structuredInsights = JSON.parse(structuredInsights.choices[0].message.content);
+          } else {
+            // If it's already an object, use it directly
+            structuredInsights = structuredInsights.choices[0].message.content;
+          }
+          
+          console.log(`Successfully extracted structured insights with probability: ${structuredInsights.probability}`);
+        } catch (parseError) {
+          console.error(`Error parsing insights JSON: ${parseError.message}`);
+          
+          // If parsing fails, store the raw content
+          structuredInsights = {
+            probability: "Error: Could not parse",
+            rawContent: structuredInsights.choices[0].message.content
+          };
+        }
+      } else {
+        console.error("Invalid structure in insights response:", structuredInsights);
+        structuredInsights = {
+          probability: "Error: Invalid response format",
+          error: "The AI response did not contain expected data"
+        };
+      }
       
     } catch (insightsError) {
       console.error(`Error extracting structured insights for job ${jobId}:`, insightsError);
