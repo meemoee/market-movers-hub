@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -52,7 +51,10 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const addDebugLog = (message: string) => {
-    console.log("DEBUG:", message);
+    // Log to console for immediate feedback during development
+    console.log(`[${new Date().toISOString()}] ${message}`);
+    
+    // Update the UI with the log message
     setDebugLogs(prev => [...prev, `[${new Date().toISOString()}] ${message}`]);
   };
 
@@ -165,6 +167,49 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
+  // Process a single SSE message
+  const processSSEMessage = (line: string) => {
+    if (line.startsWith('data: ')) {
+      const data = line.slice(6).trim(); // Remove 'data: ' prefix
+      
+      if (data === '[DONE]') {
+        addDebugLog('Received [DONE] marker');
+        setIsStreaming(false);
+        return;
+      }
+      
+      try {
+        const parsed = JSON.parse(data);
+        const content = parsed.choices?.[0]?.delta?.content;
+        
+        if (content) {
+          addDebugLog(`Received content chunk: ${content.length} chars`);
+          // Update UI immediately with each new chunk
+          setRawResponse(prev => prev + content);
+        }
+      } catch (e) {
+        // Handle raw text that isn't proper JSON format
+        if (data && typeof data === 'string') {
+          addDebugLog(`Received raw text: ${data.slice(0, 20)}...`);
+          // Update UI immediately with each raw text chunk
+          setRawResponse(prev => prev + data);
+        } else {
+          addDebugLog(`Error parsing JSON: ${e}, data: ${data}`);
+        }
+      }
+    } else if (line.startsWith('event: ')) {
+      const eventType = line.slice(7).trim();
+      
+      // Process the event in the next line if available
+      return { eventType };
+    } else if (line.startsWith('id: ') || line === '') {
+      // Ignore ID lines and empty lines
+      return;
+    } else {
+      addDebugLog(`Unknown line format: ${line}`);
+    }
+  };
+
   const generateHistoricalEvent = async () => {
     if (!selectedModel && !user?.openrouter_api_key) {
       toast.error("You need to add your OpenRouter API key in account settings");
@@ -234,91 +279,86 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       if (response.headers.get('content-type')?.includes('text/event-stream')) {
         addDebugLog('Got SSE response, processing stream');
         
-        // Process the SSE stream
-        const reader = response.body?.getReader();
+        // Set up a TextDecoder for converting Uint8Arrays to strings
         const decoder = new TextDecoder();
         
+        // Get a reader from the response body stream
+        const reader = response.body?.getReader();
         if (!reader) {
           throw new Error('Failed to get response reader');
         }
         
+        // Initialize variables for processing SSE
         let buffer = '';
+        let pendingEventType: string | null = null;
         
+        // Process the stream chunk by chunk
         try {
           while (true) {
             const { done, value } = await reader.read();
             
             if (done) {
+              // Handle any remaining data in the buffer
+              if (buffer.trim()) {
+                const result = processSSEMessage(buffer.trim());
+                if (result?.eventType && pendingEventType === null) {
+                  pendingEventType = result.eventType;
+                }
+              }
+              
               addDebugLog('Stream complete');
+              setIsStreaming(false);
               break;
             }
             
+            // Decode this chunk and add it to our buffer
             const chunk = decoder.decode(value, { stream: true });
             buffer += chunk;
             
-            // Process the SSE events - look for complete data: lines
+            // Process complete lines
             const lines = buffer.split('\n');
-            let newBuffer = '';
+            buffer = ''; // Reset buffer
             
             for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
+              const line = lines[i].trim();
               
-              // If it's not a complete line and it's the last line, add to buffer
-              if (i === lines.length - 1 && !line.endsWith('\n')) {
-                newBuffer = line;
+              // Skip empty lines
+              if (!line) continue;
+              
+              // If this is the last line and doesn't end with a newline
+              if (i === lines.length - 1 && !chunk.endsWith('\n')) {
+                buffer = line; // Keep it in the buffer for the next chunk
                 continue;
               }
               
-              if (line.startsWith('data: ')) {
+              // If we have a pending event type, this line should be the data for that event
+              if (pendingEventType && line.startsWith('data: ')) {
                 const data = line.slice(6).trim();
                 
-                if (data === '[DONE]') {
-                  addDebugLog('Received [DONE] marker');
+                if (pendingEventType === 'message') {
+                  addDebugLog(`Message event: ${data.length} chars`);
+                  // Update UI immediately with new content
+                  setRawResponse(prev => prev + data);
+                } else if (pendingEventType === 'error') {
+                  addDebugLog(`Error event: ${data}`);
+                  toast.error(`Error: ${data}`);
+                } else if (pendingEventType === 'done') {
+                  addDebugLog(`Done event: ${data}`);
                   setIsStreaming(false);
-                  continue;
                 }
                 
-                try {
-                  const parsed = JSON.parse(data);
-                  const content = parsed.choices?.[0]?.delta?.content;
-                  
-                  if (content) {
-                    addDebugLog(`Received content chunk: ${content.length} chars`);
-                    setRawResponse(prev => prev + content);
-                  }
-                } catch (e) {
-                  // Handle raw text that isn't proper JSON format
-                  if (data && typeof data === 'string') {
-                    addDebugLog(`Received raw text: ${data.slice(0, 20)}...`);
-                    setRawResponse(prev => prev + data);
-                  } else {
-                    addDebugLog(`Error parsing JSON: ${e}, data: ${data}`);
-                  }
-                }
-              } else if (line.startsWith('event: ')) {
-                const eventType = line.slice(7).trim();
-                const nextLine = lines[i + 1];
-                
-                if (nextLine?.startsWith('data: ')) {
-                  const eventData = nextLine.slice(6).trim();
-                  i++; // Skip the next line since we've processed it
-                  
-                  if (eventType === 'error') {
-                    addDebugLog(`Error event: ${eventData}`);
-                    toast.error(`Error: ${eventData}`);
-                  } else if (eventType === 'done') {
-                    addDebugLog(`Done event: ${eventData}`);
-                    setIsStreaming(false);
-                  } else if (eventType === 'message') {
-                    addDebugLog(`Message event: ${eventData.length} chars`);
-                    setRawResponse(prev => prev + eventData);
-                  }
+                pendingEventType = null; // Reset pending event
+              } else {
+                // Process this line normally
+                const result = processSSEMessage(line);
+                if (result?.eventType) {
+                  pendingEventType = result.eventType;
                 }
               }
             }
             
-            // Update buffer with any incomplete lines
-            buffer = newBuffer;
+            // Ensure UI updates between chunks by forcing a microtask
+            await new Promise(resolve => setTimeout(resolve, 0));
           }
         } catch (error: any) {
           if (error.name === 'AbortError') {
@@ -328,6 +368,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
           }
         } finally {
           setIsStreaming(false);
+          addDebugLog('Finished processing stream');
           toast.success('Historical event generated successfully!');
         }
       } else {
@@ -515,7 +556,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-sm font-medium block">Generated Response</label>
                   {isStreaming && (
-                    <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
+                    <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded animate-pulse">
                       Streaming...
                     </span>
                   )}
@@ -534,7 +575,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
             {debugLogs.length > 0 && (
               <div className="mt-4">
                 <details className="mb-2">
-                  <summary className="text-sm font-medium cursor-pointer">Debug Logs</summary>
+                  <summary className="text-sm font-medium cursor-pointer">Debug Logs ({debugLogs.length})</summary>
                   <div className="mt-2 p-2 bg-muted/50 rounded max-h-[200px] overflow-auto">
                     {debugLogs.map((log, i) => (
                       <div key={i} className="text-xs font-mono mb-1">
