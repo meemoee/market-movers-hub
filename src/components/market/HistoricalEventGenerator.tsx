@@ -34,6 +34,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [models, setModels] = useState<OpenRouterModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [eventTitle, setEventTitle] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -154,9 +155,12 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
 
     setIsLoading(true);
+    setIsStreaming(true);
+    setRawResponse("");
+    
     try {
       // Make request to our edge function
-      const { data, error } = await supabase.functions.invoke('generate-historical-event', {
+      const response = await supabase.functions.invoke('generate-historical-event', {
         body: {
           marketQuestion,
           model: selectedModel,
@@ -166,16 +170,40 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         }
       });
 
-      if (error) {
-        throw new Error(`Supabase function error: ${error.message}`);
+      if (response.error) {
+        throw new Error(`Supabase function error: ${response.error.message}`);
       }
-
-      if (!data?.data) {
-        throw new Error("Invalid response from generate-historical-event function");
+      
+      // Check if response is a ReadableStream
+      if (response.data.stream) {
+        // Handle streaming response
+        const reader = response.data.stream.getReader();
+        const decoder = new TextDecoder();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              break;
+            }
+            
+            // Decode the chunks and append to the raw response
+            const chunk = decoder.decode(value, { stream: true });
+            setRawResponse(prev => prev + chunk);
+          }
+        } catch (error) {
+          console.error("Error reading stream:", error);
+          toast.error(`Error reading stream: ${error.message}`);
+        }
+      } else {
+        // Handle non-streaming response (fallback)
+        if (response.data?.data) {
+          setRawResponse(response.data.data);
+        } else {
+          throw new Error("Invalid response format from generate-historical-event function");
+        }
       }
-
-      // Set the raw response in the textarea
-      setRawResponse(data.data);
       
       toast.success("Historical event generated successfully!");
     } catch (error: any) {
@@ -183,6 +211,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       toast.error(`Failed to generate historical event: ${error.message}`);
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -264,7 +293,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
             <Select
               value={selectedModel}
               onValueChange={setSelectedModel}
-              disabled={isFetchingModels}
+              disabled={isFetchingModels || isStreaming}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a model" />
@@ -301,6 +330,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   id="web-search-toggle"
                   checked={enableWebSearch}
                   onCheckedChange={setEnableWebSearch}
+                  disabled={isStreaming}
                 />
               </div>
               
@@ -321,6 +351,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                     step={1}
                     value={[maxSearchResults]}
                     onValueChange={([value]) => setMaxSearchResults(value)}
+                    disabled={isStreaming}
                   />
                 </div>
               )}
@@ -328,10 +359,15 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
             
             <Button 
               onClick={generateHistoricalEvent} 
-              disabled={isLoading || !selectedModel}
+              disabled={isLoading || !selectedModel || isStreaming}
               className="w-full"
             >
-              {isLoading ? (
+              {isStreaming ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Receiving Stream...
+                </>
+              ) : isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Generating...
@@ -342,14 +378,22 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
             </Button>
 
             {/* Raw Response Textarea */}
-            {rawResponse && (
+            {(rawResponse || isStreaming) && (
               <div className="mt-4">
-                <label className="text-sm font-medium mb-1 block">Generated Response</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-sm font-medium block">Generated Response</label>
+                  {isStreaming && (
+                    <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
+                      Streaming...
+                    </span>
+                  )}
+                </div>
                 <Textarea
                   value={rawResponse}
                   onChange={(e) => setRawResponse(e.target.value)}
                   className="w-full min-h-[200px] font-mono text-sm"
-                  placeholder="Generated response will appear here"
+                  placeholder={isStreaming ? "Receiving data..." : "Generated response will appear here"}
+                  readOnly={isStreaming}
                 />
               </div>
             )}
@@ -361,6 +405,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   value={eventTitle}
                   onChange={(e) => setEventTitle(e.target.value)}
                   placeholder="Historical event title"
+                  disabled={isStreaming}
                 />
               </div>
               
@@ -370,6 +415,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   value={eventDate}
                   onChange={(e) => setEventDate(e.target.value)}
                   placeholder="e.g., March 2008 or 1929-1932"
+                  disabled={isStreaming}
                 />
               </div>
               
@@ -379,6 +425,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
                   placeholder="URL to a relevant image"
+                  disabled={isStreaming}
                 />
                 {imageUrl && (
                   <div className="mt-2">
@@ -402,13 +449,14 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                       value={similarity}
                       onChange={(e) => handleSimilarityChange(index, e.target.value)}
                       placeholder={`Similarity ${index + 1}`}
+                      disabled={isStreaming}
                     />
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
                       onClick={() => removeSimilarity(index)}
-                      disabled={similarities.length <= 1}
+                      disabled={similarities.length <= 1 || isStreaming}
                     >
                       -
                     </Button>
@@ -420,6 +468,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   size="sm"
                   onClick={addSimilarity}
                   className="mt-1"
+                  disabled={isStreaming}
                 >
                   Add Similarity
                 </Button>
@@ -433,13 +482,14 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                       value={difference}
                       onChange={(e) => handleDifferenceChange(index, e.target.value)}
                       placeholder={`Difference ${index + 1}`}
+                      disabled={isStreaming}
                     />
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
                       onClick={() => removeDifference(index)}
-                      disabled={differences.length <= 1}
+                      disabled={differences.length <= 1 || isStreaming}
                     >
                       -
                     </Button>
@@ -451,6 +501,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   size="sm"
                   onClick={addDifference}
                   className="mt-1"
+                  disabled={isStreaming}
                 >
                   Add Difference
                 </Button>
@@ -459,7 +510,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
             <Button 
               onClick={saveHistoricalEvent}
-              disabled={isLoading || !eventTitle || !eventDate || !imageUrl}
+              disabled={isLoading || isStreaming || !eventTitle || !eventDate || !imageUrl}
               className="w-full"
               variant="default"
             >

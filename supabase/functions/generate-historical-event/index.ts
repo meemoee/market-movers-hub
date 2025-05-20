@@ -92,8 +92,8 @@ Make your response detailed and insightful, focusing on economic and market fact
       messages: [
         { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
         { role: "user", content: promptText }
-      ]
-      // Removed response_format: { type: "json_object" } to get raw text
+      ],
+      stream: true // Enable streaming
     }
     
     // Add web search plugin configuration if enabled with custom max results
@@ -106,8 +106,14 @@ Make your response detailed and insightful, focusing on economic and market fact
       ]
     }
 
-    console.log('Making request to OpenRouter API...')
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    console.log('Making streaming request to OpenRouter API...')
+    
+    // Create a new ReadableStream with a controller
+    const stream = new TransformStream()
+    const writer = stream.writable.getWriter()
+    
+    // Make the request to OpenRouter API with streaming
+    fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -116,32 +122,83 @@ Make your response detailed and insightful, focusing on economic and market fact
         "X-Title": "Market Analysis App",
       },
       body: JSON.stringify(requestBody)
+    }).then(async (response) => {
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`OpenRouter API error: ${response.status}`, errorText)
+        writer.write(encoder.encode(`event: error\ndata: OpenRouter API error: ${response.status} - ${errorText}\n\n`))
+        writer.close()
+        return
+      }
+      
+      if (!response.body) {
+        writer.write(encoder.encode(`event: error\ndata: No response body from OpenRouter\n\n`))
+        writer.close()
+        return
+      }
+      
+      console.log('Streaming response from OpenRouter API...')
+      
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            console.log('Stream complete')
+            writer.write(encoder.encode(`event: done\ndata: Stream complete\n\n`))
+            break
+          }
+          
+          const chunk = decoder.decode(value, { stream: true })
+          // Process the chunk - it contains multiple SSE lines
+          const lines = chunk.split('\n')
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6) // Remove 'data: ' prefix
+              
+              if (data === '[DONE]') {
+                writer.write(encoder.encode(`event: done\ndata: [DONE]\n\n`))
+                continue
+              }
+              
+              try {
+                const parsed = JSON.parse(data)
+                const content = parsed.choices?.[0]?.delta?.content
+                
+                if (content) {
+                  writer.write(encoder.encode(`event: message\ndata: ${content}\n\n`))
+                }
+              } catch (e) {
+                console.error('Error parsing JSON from stream:', e)
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error reading stream:', error)
+        writer.write(encoder.encode(`event: error\ndata: ${error.message}\n\n`))
+      } finally {
+        writer.close()
+      }
+    }).catch((error) => {
+      console.error('Fetch error:', error)
+      writer.write(encoder.encode(`event: error\ndata: ${error.message}\n\n`))
+      writer.close()
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`OpenRouter API error: ${response.status}`, errorText)
-      throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`)
-    }
-
-    const data = await response.json()
-    console.log('OpenRouter API responded successfully')
-    
-    // Extract the content from the response
-    const content = data.choices?.[0]?.message?.content
-    
-    if (!content) {
-      throw new Error('No content in OpenRouter response')
-    }
-    
-    // Return the content directly
-    return new Response(
-      JSON.stringify({ data: content }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
+    // Return the stream response
+    const encoder = new TextEncoder()
+    return new Response(stream.readable, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
       }
-    )
+    })
 
   } catch (error) {
     console.error('Error in generate-historical-event function:', error)
