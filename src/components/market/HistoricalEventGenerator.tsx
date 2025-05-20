@@ -43,10 +43,17 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [differences, setDifferences] = useState<string[]>(['']);
   // Raw response
   const [rawResponse, setRawResponse] = useState("");
+  // Debug info
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   // Web search options
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   const { user } = useCurrentUser();
+
+  const addDebugLog = (message: string) => {
+    console.log("DEBUG:", message);
+    setDebugLogs(prev => [...prev, `[${new Date().toISOString()}] ${message}`]);
+  };
 
   // Fetch available models when the component mounts and user has an API key
   useEffect(() => {
@@ -157,49 +164,118 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsLoading(true);
     setIsStreaming(true);
     setRawResponse("");
+    setDebugLogs([]);
     
     try {
+      addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
+      addDebugLog(`Using model: ${selectedModel}`);
+      
       // Make request to our edge function
-      const response = await supabase.functions.invoke('generate-historical-event', {
-        body: {
-          marketQuestion,
-          model: selectedModel,
-          enableWebSearch,
-          maxSearchResults,
-          userId: user?.id
-        }
+      const functionUrl = `${supabase.functions.url('generate-historical-event')}`;
+      addDebugLog(`Calling function at: ${functionUrl}`);
+      
+      const body = {
+        marketQuestion,
+        model: selectedModel,
+        enableWebSearch,
+        maxSearchResults,
+        userId: user?.id
+      };
+      
+      addDebugLog(`Request body: ${JSON.stringify(body)}`);
+      
+      // Direct fetch instead of using supabase.functions.invoke for better control
+      const response = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabase.auth.getSession().then(res => res.data.session?.access_token)}`,
+          "apikey": supabase.supabaseKey || ""
+        },
+        body: JSON.stringify(body)
       });
 
-      if (response.error) {
-        throw new Error(`Supabase function error: ${response.error.message}`);
+      addDebugLog(`Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        addDebugLog(`Error response: ${errorText}`);
+        throw new Error(`HTTP error: ${response.status} - ${errorText}`);
       }
       
-      // Check if response is a ReadableStream
-      if (response.data.stream) {
+      // Get content type to decide how to handle the response
+      const contentType = response.headers.get('content-type');
+      addDebugLog(`Response content type: ${contentType}`);
+      
+      if (contentType?.includes('text/event-stream')) {
         // Handle streaming response
-        const reader = response.data.stream.getReader();
+        addDebugLog('Handling streaming response');
+        const reader = response.body?.getReader();
+        
+        if (!reader) {
+          throw new Error("No reader available in the response");
+        }
+        
         const decoder = new TextDecoder();
         
+        // Process the stream
         try {
           while (true) {
             const { done, value } = await reader.read();
             
             if (done) {
+              addDebugLog('Stream complete');
               break;
             }
             
-            // Decode the chunks and append to the raw response
             const chunk = decoder.decode(value, { stream: true });
-            setRawResponse(prev => prev + chunk);
+            addDebugLog(`Raw chunk received: ${chunk.length} bytes`);
+            
+            // Process the SSE chunks
+            const events = chunk.split('\n\n');
+            
+            for (const event of events) {
+              if (!event.trim()) continue;
+              
+              const lines = event.split('\n');
+              let eventType = '';
+              let eventData = '';
+              
+              for (const line of lines) {
+                if (line.startsWith('event:')) {
+                  eventType = line.slice(6).trim();
+                } else if (line.startsWith('data:')) {
+                  eventData = line.slice(5).trim();
+                }
+              }
+              
+              addDebugLog(`Event type: ${eventType}, data: ${eventData}`);
+              
+              if (eventType === 'message') {
+                setRawResponse(prev => prev + eventData);
+              } else if (eventType === 'error') {
+                toast.error(`Error from server: ${eventData}`);
+              } else if (eventType === 'done') {
+                addDebugLog('Stream completed successfully');
+              } else if (eventType === 'log') {
+                addDebugLog(`Server log: ${eventData}`);
+              }
+            }
           }
-        } catch (error) {
-          console.error("Error reading stream:", error);
-          toast.error(`Error reading stream: ${error.message}`);
+        } catch (error: any) {
+          addDebugLog(`Error reading stream: ${error.message}`);
+          throw error;
         }
       } else {
         // Handle non-streaming response (fallback)
-        if (response.data?.data) {
-          setRawResponse(response.data.data);
+        addDebugLog('Handling non-streaming response');
+        const responseData = await response.json();
+        addDebugLog(`Response data: ${JSON.stringify(responseData)}`);
+        
+        if (responseData?.data) {
+          setRawResponse(responseData.data);
+        } else if (responseData?.error) {
+          throw new Error(responseData.error);
         } else {
           throw new Error("Invalid response format from generate-historical-event function");
         }
@@ -208,6 +284,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       toast.success("Historical event generated successfully!");
     } catch (error: any) {
       console.error("Error generating historical event:", error);
+      addDebugLog(`Error: ${error.message}`);
       toast.error(`Failed to generate historical event: ${error.message}`);
     } finally {
       setIsLoading(false);
@@ -395,6 +472,22 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                   placeholder={isStreaming ? "Receiving data..." : "Generated response will appear here"}
                   readOnly={isStreaming}
                 />
+              </div>
+            )}
+
+            {/* Debug Logs */}
+            {debugLogs.length > 0 && (
+              <div className="mt-4">
+                <details className="mb-2">
+                  <summary className="text-sm font-medium cursor-pointer">Debug Logs</summary>
+                  <div className="mt-2 p-2 bg-muted/50 rounded max-h-[200px] overflow-auto">
+                    {debugLogs.map((log, i) => (
+                      <div key={i} className="text-xs font-mono mb-1">
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
 

@@ -14,6 +14,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // Create encoder upfront to avoid scope issues
+  const encoder = new TextEncoder()
+
   try {
     // Parse request body
     const { 
@@ -106,7 +109,7 @@ Make your response detailed and insightful, focusing on economic and market fact
       ]
     }
 
-    console.log('Making streaming request to OpenRouter API...')
+    console.log('Making streaming request to OpenRouter API with body:', JSON.stringify(requestBody))
     
     // Create a new ReadableStream with a controller
     const stream = new TransformStream()
@@ -123,6 +126,9 @@ Make your response detailed and insightful, focusing on economic and market fact
       },
       body: JSON.stringify(requestBody)
     }).then(async (response) => {
+      console.log('OpenRouter response status:', response.status)
+      console.log('OpenRouter response headers:', Object.fromEntries(response.headers.entries()))
+      
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`OpenRouter API error: ${response.status}`, errorText)
@@ -132,6 +138,7 @@ Make your response detailed and insightful, focusing on economic and market fact
       }
       
       if (!response.body) {
+        console.error('No response body from OpenRouter')
         writer.write(encoder.encode(`event: error\ndata: No response body from OpenRouter\n\n`))
         writer.close()
         return
@@ -152,27 +159,36 @@ Make your response detailed and insightful, focusing on economic and market fact
           }
           
           const chunk = decoder.decode(value, { stream: true })
+          console.log('Raw chunk received:', chunk)
+          
           // Process the chunk - it contains multiple SSE lines
           const lines = chunk.split('\n')
           
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6) // Remove 'data: ' prefix
+              console.log('Processing data line:', data)
               
               if (data === '[DONE]') {
+                console.log('Received [DONE] marker')
                 writer.write(encoder.encode(`event: done\ndata: [DONE]\n\n`))
                 continue
               }
               
               try {
                 const parsed = JSON.parse(data)
+                console.log('Parsed JSON:', parsed)
+                
                 const content = parsed.choices?.[0]?.delta?.content
                 
                 if (content) {
+                  console.log('Sending content chunk:', content)
                   writer.write(encoder.encode(`event: message\ndata: ${content}\n\n`))
                 }
               } catch (e) {
-                console.error('Error parsing JSON from stream:', e)
+                console.error('Error parsing JSON from stream:', e, 'Raw data:', data)
+                // Still forward the raw data to client for debugging
+                writer.write(encoder.encode(`event: log\ndata: ${data}\n\n`))
               }
             }
           }
@@ -190,7 +206,6 @@ Make your response detailed and insightful, focusing on economic and market fact
     })
 
     // Return the stream response
-    const encoder = new TextEncoder()
     return new Response(stream.readable, {
       headers: {
         ...corsHeaders,
