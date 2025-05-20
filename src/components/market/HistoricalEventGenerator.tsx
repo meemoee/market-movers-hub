@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -170,10 +169,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
       addDebugLog(`Using model: ${selectedModel}`);
       
-      // Use environment variable URL for the edge function
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/generate-historical-event`;
-      addDebugLog(`Calling function at: ${functionUrl}`);
-      
       const body = {
         marketQuestion,
         model: selectedModel,
@@ -184,105 +179,73 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       
       addDebugLog(`Request body: ${JSON.stringify(body)}`);
       
-      // Get session token for authorization
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token || '';
-      
-      // Direct fetch with appropriate headers
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${accessToken}`,
-          "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-        },
-        body: JSON.stringify(body)
+      // Use Supabase client's invoke method to call the edge function
+      const { data: functionStream, error: functionError } = await supabase.functions.invoke('generate-historical-event', {
+        body: body,
+        responseType: 'stream',
       });
 
-      addDebugLog(`Response status: ${response.status}`);
+      if (functionError) {
+        addDebugLog(`Function error: ${functionError.message}`);
+        throw functionError;
+      }
+
+      addDebugLog(`Function call succeeded, processing stream response`);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        addDebugLog(`Error response: ${errorText}`);
-        throw new Error(`HTTP error: ${response.status} - ${errorText}`);
+      if (!functionStream) {
+        throw new Error("No response stream from function");
       }
       
-      // Get content type to decide how to handle the response
-      const contentType = response.headers.get('content-type');
-      addDebugLog(`Response content type: ${contentType}`);
+      // Process the stream
+      const reader = functionStream.getReader();
+      const decoder = new TextDecoder();
       
-      if (contentType?.includes('text/event-stream')) {
-        // Handle streaming response
-        addDebugLog('Handling streaming response');
-        const reader = response.body?.getReader();
-        
-        if (!reader) {
-          throw new Error("No reader available in the response");
-        }
-        
-        const decoder = new TextDecoder();
-        
-        // Process the stream
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            addDebugLog('Stream complete');
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          addDebugLog(`Raw chunk received: ${chunk.length} bytes`);
+          
+          // Process the SSE chunks
+          const events = chunk.split('\n\n');
+          
+          for (const event of events) {
+            if (!event.trim()) continue;
             
-            if (done) {
-              addDebugLog('Stream complete');
-              break;
+            const lines = event.split('\n');
+            let eventType = '';
+            let eventData = '';
+            
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventType = line.slice(6).trim();
+              } else if (line.startsWith('data:')) {
+                eventData = line.slice(5).trim();
+              }
             }
             
-            const chunk = decoder.decode(value, { stream: true });
-            addDebugLog(`Raw chunk received: ${chunk.length} bytes`);
+            addDebugLog(`Event type: ${eventType}, data: ${eventData}`);
             
-            // Process the SSE chunks
-            const events = chunk.split('\n\n');
-            
-            for (const event of events) {
-              if (!event.trim()) continue;
-              
-              const lines = event.split('\n');
-              let eventType = '';
-              let eventData = '';
-              
-              for (const line of lines) {
-                if (line.startsWith('event:')) {
-                  eventType = line.slice(6).trim();
-                } else if (line.startsWith('data:')) {
-                  eventData = line.slice(5).trim();
-                }
-              }
-              
-              addDebugLog(`Event type: ${eventType}, data: ${eventData}`);
-              
-              if (eventType === 'message') {
-                setRawResponse(prev => prev + eventData);
-              } else if (eventType === 'error') {
-                toast.error(`Error from server: ${eventData}`);
-              } else if (eventType === 'done') {
-                addDebugLog('Stream completed successfully');
-              } else if (eventType === 'log') {
-                addDebugLog(`Server log: ${eventData}`);
-              }
+            if (eventType === 'message') {
+              setRawResponse(prev => prev + eventData);
+            } else if (eventType === 'error') {
+              toast.error(`Error from server: ${eventData}`);
+            } else if (eventType === 'done') {
+              addDebugLog('Stream completed successfully');
+            } else if (eventType === 'log') {
+              addDebugLog(`Server log: ${eventData}`);
             }
           }
-        } catch (error: any) {
-          addDebugLog(`Error reading stream: ${error.message}`);
-          throw error;
         }
-      } else {
-        // Handle non-streaming response (fallback)
-        addDebugLog('Handling non-streaming response');
-        const responseData = await response.json();
-        addDebugLog(`Response data: ${JSON.stringify(responseData)}`);
-        
-        if (responseData?.data) {
-          setRawResponse(responseData.data);
-        } else if (responseData?.error) {
-          throw new Error(responseData.error);
-        } else {
-          throw new Error("Invalid response format from generate-historical-event function");
-        }
+      } catch (error: any) {
+        addDebugLog(`Error reading stream: ${error.message}`);
+        throw error;
       }
       
       toast.success("Historical event generated successfully!");
