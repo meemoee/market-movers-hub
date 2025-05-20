@@ -18,14 +18,51 @@ serve(async (req) => {
   }
 
   try {
-    // Parse request body
+    // Handle both GET and POST requests
+    let requestData = {}
+    let userId = null
+    
+    if (req.method === 'GET') {
+      // Parse URL parameters for GET requests (for EventSource compatibility)
+      const url = new URL(req.url)
+      const marketQuestion = url.searchParams.get('marketQuestion')
+      const model = url.searchParams.get('model') || "perplexity/llama-3.1-sonar-small-128k-online"
+      const enableWebSearch = url.searchParams.get('enableWebSearch') !== 'false'
+      const maxSearchResults = parseInt(url.searchParams.get('maxSearchResults') || '3', 10)
+      const authToken = url.searchParams.get('authToken')
+      
+      // If we have an auth token in the URL, try to get the user
+      if (authToken) {
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+        const supabaseAdmin = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          { auth: { persistSession: false } }
+        )
+        
+        try {
+          const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken)
+          if (!error && user) {
+            userId = user.id
+          }
+        } catch (error) {
+          console.error("Error getting user from token:", error)
+        }
+      }
+      
+      requestData = { marketQuestion, model, enableWebSearch, maxSearchResults, userId }
+    } else {
+      // For POST requests, parse the JSON body as before
+      requestData = await req.json()
+      userId = requestData.userId
+    }
+    
     const { 
       marketQuestion,
       model = "perplexity/llama-3.1-sonar-small-128k-online", 
       enableWebSearch = true, 
-      maxSearchResults = 3,
-      userId
-    } = await req.json()
+      maxSearchResults = 3
+    } = requestData
     
     console.log('Received historical event request:', { 
       marketQuestion, 
@@ -111,9 +148,22 @@ Make your response detailed and insightful, focusing on economic and market fact
 
     console.log('Making streaming request to OpenRouter API with body:', JSON.stringify(requestBody))
     
-    // Create a new ReadableStream with a controller
+    // Set up SSE headers for proper streaming
+    const headers = {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    }
+    
+    // Create a new ReadableStream with a controller for proper SSE streaming
     const stream = new TransformStream()
     const writer = stream.writable.getWriter()
+    
+    // Helper function to send properly formatted SSE events
+    const sendSSE = async (event: string, data: string) => {
+      await writer.write(encoder.encode(`event: ${event}\ndata: ${data}\n\n`))
+    }
     
     // Make the request to OpenRouter API with streaming
     fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -127,19 +177,18 @@ Make your response detailed and insightful, focusing on economic and market fact
       body: JSON.stringify(requestBody)
     }).then(async (response) => {
       console.log('OpenRouter response status:', response.status)
-      console.log('OpenRouter response headers:', Object.fromEntries(response.headers.entries()))
       
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`OpenRouter API error: ${response.status}`, errorText)
-        writer.write(encoder.encode(`event: error\ndata: OpenRouter API error: ${response.status} - ${errorText}\n\n`))
+        await sendSSE('error', `OpenRouter API error: ${response.status} - ${errorText}`)
         writer.close()
         return
       }
       
       if (!response.body) {
         console.error('No response body from OpenRouter')
-        writer.write(encoder.encode(`event: error\ndata: No response body from OpenRouter\n\n`))
+        await sendSSE('error', 'No response body from OpenRouter')
         writer.close()
         return
       }
@@ -154,12 +203,11 @@ Make your response detailed and insightful, focusing on economic and market fact
           const { done, value } = await reader.read()
           if (done) {
             console.log('Stream complete')
-            writer.write(encoder.encode(`event: done\ndata: Stream complete\n\n`))
+            await sendSSE('done', 'Stream complete')
             break
           }
           
           const chunk = decoder.decode(value, { stream: true })
-          console.log('Raw chunk received:', chunk)
           
           // Process the chunk - it contains multiple SSE lines
           const lines = chunk.split('\n')
@@ -167,53 +215,44 @@ Make your response detailed and insightful, focusing on economic and market fact
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6) // Remove 'data: ' prefix
-              console.log('Processing data line:', data)
               
               if (data === '[DONE]') {
                 console.log('Received [DONE] marker')
-                writer.write(encoder.encode(`event: done\ndata: [DONE]\n\n`))
+                await sendSSE('done', '[DONE]')
                 continue
               }
               
               try {
                 const parsed = JSON.parse(data)
-                console.log('Parsed JSON:', parsed)
                 
                 const content = parsed.choices?.[0]?.delta?.content
                 
                 if (content) {
-                  console.log('Sending content chunk:', content)
-                  writer.write(encoder.encode(`event: message\ndata: ${content}\n\n`))
+                  // Send each content piece as a separate SSE message immediately
+                  await sendSSE('message', content)
                 }
               } catch (e) {
                 console.error('Error parsing JSON from stream:', e, 'Raw data:', data)
-                // Still forward the raw data to client for debugging
-                writer.write(encoder.encode(`event: log\ndata: ${data}\n\n`))
+                // Forward the raw data for debugging
+                await sendSSE('log', data)
               }
             }
           }
         }
       } catch (error) {
         console.error('Error reading stream:', error)
-        writer.write(encoder.encode(`event: error\ndata: ${error.message}\n\n`))
+        await sendSSE('error', error.message)
       } finally {
         writer.close()
       }
-    }).catch((error) => {
+    }).catch(async (error) => {
       console.error('Fetch error:', error)
-      writer.write(encoder.encode(`event: error\ndata: ${error.message}\n\n`))
+      await sendSSE('error', error.message)
       writer.close()
     })
 
     // Return the stream response
-    return new Response(stream.readable, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    })
+    return new Response(stream.readable, { headers })
 
   } catch (error) {
     console.error('Error in generate-historical-event function:', error)
