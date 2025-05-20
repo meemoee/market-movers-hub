@@ -49,18 +49,18 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   const { user } = useCurrentUser();
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const addDebugLog = (message: string) => {
     console.log("DEBUG:", message);
     setDebugLogs(prev => [...prev, `[${new Date().toISOString()}] ${message}`]);
   };
 
-  // Close EventSource on unmount
+  // Clean up any fetch requests on unmount
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, []);
@@ -180,11 +180,14 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
       addDebugLog(`Using model: ${selectedModel}`);
       
-      // Clean up any existing EventSource connection
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      // Clean up any existing fetch
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
       
       // First get the auth token
       const { data: sessionData } = await supabase.auth.getSession();
@@ -194,127 +197,145 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         throw new Error("No authentication token available");
       }
       
-      // Create URL with query parameters for EventSource (SSE)
-      const baseUrl = "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event";
-      const params = new URLSearchParams({
-        marketQuestion,
-        model: selectedModel,
-        enableWebSearch: String(enableWebSearch),
-        maxSearchResults: String(maxSearchResults),
-        authToken // Include auth token in URL for EventSource which doesn't support custom headers
-      });
-      
-      const sseUrl = `${baseUrl}?${params.toString()}`;
-      addDebugLog(`Connecting to SSE endpoint: ${sseUrl}`);
-      
-      // Create and configure EventSource for SSE
-      const eventSource = new EventSource(sseUrl);
-      eventSourceRef.current = eventSource;
-      
-      // Set up event listeners for the SSE connection
-      eventSource.addEventListener('open', () => {
-        addDebugLog('SSE connection opened');
-      });
-      
-      eventSource.addEventListener('message', (event) => {
-        addDebugLog(`Received message chunk: ${event.data.length} characters`);
-        setRawResponse(prev => prev + event.data);
-      });
-      
-      eventSource.addEventListener('error', (event) => {
-        addDebugLog(`SSE error: ${JSON.stringify(event)}`);
-        toast.error('Error in streaming connection');
-        eventSource.close();
-        setIsStreaming(false);
-      });
-      
-      eventSource.addEventListener('done', (event) => {
-        addDebugLog(`SSE stream complete: ${event.data}`);
-        toast.success('Historical event generated successfully!');
-        eventSource.close();
-        setIsStreaming(false);
-      });
-      
-      // Fallback for older browsers or if SSE fails
-      // Try the traditional fetch approach as a backup
-      if (!window.EventSource) {
-        addDebugLog('EventSource not supported in this browser, falling back to fetch');
-        
-        // Use the traditional fetch method with JSON body
-        const body = {
+      // Prepare the request to the edge function
+      const requestOptions = {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${authToken}`,
+          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           marketQuestion,
           model: selectedModel,
           enableWebSearch,
           maxSearchResults,
           userId: user?.id
-        };
+        }),
+        signal
+      };
+      
+      addDebugLog(`Making request to edge function with options: ${JSON.stringify(requestOptions)}`);
+      
+      // Make the request to the edge function
+      const response = await fetch(
+        "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event", 
+        requestOptions
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Edge function error: ${response.status} - ${errorText}`);
+      }
+      
+      addDebugLog(`Received response with status: ${response.status}`);
+      
+      // Check if we have a streaming response
+      if (response.headers.get('content-type')?.includes('text/event-stream')) {
+        addDebugLog('Got SSE response, processing stream');
         
-        const response = await fetch("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body)
-        });
+        // Process the SSE stream
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
         
-        // Process the streaming response with ReadableStream
-        if (response.headers.get('content-type')?.includes('text/event-stream')) {
-          const reader = response.body?.getReader();
-          const decoder = new TextDecoder();
-          
-          if (!reader) {
-            throw new Error('Failed to get response reader');
-          }
-          
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
+        if (!reader) {
+          throw new Error('Failed to get response reader');
+        }
+        
+        let buffer = '';
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              addDebugLog('Stream complete');
+              break;
+            }
+            
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            // Process the SSE events - look for complete data: lines
+            const lines = buffer.split('\n');
+            let newBuffer = '';
+            
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
               
-              if (done) {
-                addDebugLog('Stream complete');
-                break;
+              // If it's not a complete line and it's the last line, add to buffer
+              if (i === lines.length - 1 && !line.endsWith('\n')) {
+                newBuffer = line;
+                continue;
               }
               
-              const chunk = decoder.decode(value, { stream: true });
-              
-              // Process the SSE chunks
-              const events = chunk.split('\n\n');
-              
-              for (const event of events) {
-                if (!event.trim()) continue;
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6).trim();
                 
-                const lines = event.split('\n');
-                let eventType = '';
-                let eventData = '';
-                
-                for (const line of lines) {
-                  if (line.startsWith('event:')) {
-                    eventType = line.slice(6).trim();
-                  } else if (line.startsWith('data:')) {
-                    eventData = line.slice(5).trim();
-                  }
+                if (data === '[DONE]') {
+                  addDebugLog('Received [DONE] marker');
+                  setIsStreaming(false);
+                  continue;
                 }
                 
-                if (eventType === 'message') {
-                  setRawResponse(prev => prev + eventData);
-                } else if (eventType === 'error') {
-                  toast.error(`Error from server: ${eventData}`);
-                } else if (eventType === 'done') {
-                  addDebugLog('Stream completed successfully');
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices?.[0]?.delta?.content;
+                  
+                  if (content) {
+                    addDebugLog(`Received content chunk: ${content.length} chars`);
+                    setRawResponse(prev => prev + content);
+                  }
+                } catch (e) {
+                  // Handle raw text that isn't proper JSON format
+                  if (data && typeof data === 'string') {
+                    addDebugLog(`Received raw text: ${data.slice(0, 20)}...`);
+                    setRawResponse(prev => prev + data);
+                  } else {
+                    addDebugLog(`Error parsing JSON: ${e}, data: ${data}`);
+                  }
+                }
+              } else if (line.startsWith('event: ')) {
+                const eventType = line.slice(7).trim();
+                const nextLine = lines[i + 1];
+                
+                if (nextLine?.startsWith('data: ')) {
+                  const eventData = nextLine.slice(6).trim();
+                  i++; // Skip the next line since we've processed it
+                  
+                  if (eventType === 'error') {
+                    addDebugLog(`Error event: ${eventData}`);
+                    toast.error(`Error: ${eventData}`);
+                  } else if (eventType === 'done') {
+                    addDebugLog(`Done event: ${eventData}`);
+                    setIsStreaming(false);
+                  } else if (eventType === 'message') {
+                    addDebugLog(`Message event: ${eventData.length} chars`);
+                    setRawResponse(prev => prev + eventData);
+                  }
                 }
               }
             }
-          } finally {
-            setIsStreaming(false);
+            
+            // Update buffer with any incomplete lines
+            buffer = newBuffer;
           }
-        } else {
-          // Handle regular JSON response
-          const data = await response.json();
-          setRawResponse(data.message || JSON.stringify(data));
+        } catch (error: any) {
+          if (error.name === 'AbortError') {
+            addDebugLog('Stream aborted by user');
+          } else {
+            throw error;
+          }
+        } finally {
           setIsStreaming(false);
+          toast.success('Historical event generated successfully!');
         }
+      } else {
+        // Handle regular JSON response
+        const data = await response.json();
+        setRawResponse(data.message || JSON.stringify(data));
+        setIsStreaming(false);
+        toast.success('Historical event generated successfully!');
       }
     } catch (error: any) {
       console.error("Error generating historical event:", error);
