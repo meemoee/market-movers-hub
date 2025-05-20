@@ -144,77 +144,37 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   };
 
   const generateHistoricalEvent = async () => {
-    if (!user?.openrouter_api_key) {
+    if (!selectedModel && !user?.openrouter_api_key) {
       toast.error("You need to add your OpenRouter API key in account settings");
-      return;
-    }
-
-    if (!selectedModel) {
-      toast.error("Please select a model");
       return;
     }
 
     setIsLoading(true);
     try {
-      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
-      
-Format your response as strict JSON with the following structure:
-{
-  "title": "Name of the historical event",
-  "date": "Date or time period (e.g., 'March 2008' or '1929-1932')",
-  "image_url": "A relevant image URL",
-  "similarities": ["Similarity 1", "Similarity 2", "Similarity 3", "Similarity 4", "Similarity 5"],
-  "differences": ["Difference 1", "Difference 2", "Difference 3", "Difference 4", "Difference 5"]
-}
-
-Make sure the JSON is valid and contains exactly these fields. For the image_url, use a real, accessible URL to a relevant image.`;
-
-      // Base request body
-      const requestBody: any = {
-        model: enableWebSearch ? `${selectedModel}:online` : selectedModel,
-        messages: [
-          { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
-          { role: "user", content: promptText }
-        ],
-        response_format: { type: "json_object" }
-      };
-      
-      // Add web search plugin configuration if enabled with custom max results
-      if (enableWebSearch) {
-        requestBody.plugins = [
-          {
-            id: "web",
-            max_results: maxSearchResults
-          }
-        ];
-      }
-
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${user.openrouter_api_key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": window.location.origin,
-        },
-        body: JSON.stringify(requestBody)
+      // Make request to our new edge function instead of directly to OpenRouter API
+      const { data, error } = await supabase.functions.invoke('generate-historical-event', {
+        body: {
+          marketQuestion,
+          model: selectedModel,
+          enableWebSearch,
+          maxSearchResults,
+          userId: user?.id
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      if (error) {
+        throw new Error(`Supabase function error: ${error.message}`);
       }
 
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error("No content in response");
+      if (!data?.data) {
+        throw new Error("Invalid response from generate-historical-event function");
       }
 
       // Extract JSON from the response
-      let extractedJson = content;
+      let extractedJson = data.data;
       
       // Check if the response contains a code block
-      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/```\n([\s\S]*?)\n```/);
+      const jsonMatch = extractedJson.match(/```json\n([\s\S]*?)\n```/) || extractedJson.match(/```\n([\s\S]*?)\n```/);
       if (jsonMatch && jsonMatch[1]) {
         extractedJson = jsonMatch[1];
       }
@@ -228,9 +188,9 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
       setDifferences(eventData.differences || ['']);
       
       toast.success("Historical event generated successfully!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating historical event:", error);
-      toast.error("Failed to generate historical event");
+      toast.error(`Failed to generate historical event: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
