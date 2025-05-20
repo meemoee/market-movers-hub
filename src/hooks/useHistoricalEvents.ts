@@ -48,9 +48,9 @@ export const useHistoricalEvents = (marketId: string | undefined) => {
           id: comparison.historical_events.id,
           title: comparison.historical_events.title,
           date: comparison.historical_events.date,
-          image_url: comparison.historical_events.image_url,
-          similarities: comparison.similarities as string[],
-          differences: comparison.differences as string[]
+          image_url: comparison.historical_events.image_url || 'https://placehold.co/600x400?text=No+Image', // Provide default image
+          similarities: Array.isArray(comparison.similarities) ? comparison.similarities : [],
+          differences: Array.isArray(comparison.differences) ? comparison.differences : []
         }));
       } catch (error) {
         console.error('Error in historical events query:', error);

@@ -49,6 +49,10 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   const { user } = useCurrentUser();
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Store pending event information
+  const pendingEventTypeRef = useRef<string | null>(null);
+  const bufferRef = useRef<string>('');
 
   const addDebugLog = (message: string) => {
     // Log to console for immediate feedback during development
@@ -167,20 +171,33 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
-  // Process a single SSE message
+  // Process a single SSE message - improved to handle various formats
   const processSSEMessage = (line: string) => {
+    // If we have a pending event type, treat all non-event/data lines as content
+    if (pendingEventTypeRef.current && !line.startsWith('event: ') && !line.startsWith('data: ')) {
+      // This is probably content from the previous message event
+      addDebugLog(`Content line for ${pendingEventTypeRef.current} event: ${line.slice(0, 40)}...`);
+      if (pendingEventTypeRef.current === 'message') {
+        // Update UI immediately with the content
+        setRawResponse(prev => prev + line + '\n');
+      }
+      return;
+    }
+    
     if (line.startsWith('data: ')) {
       const data = line.slice(6).trim(); // Remove 'data: ' prefix
       
       if (data === '[DONE]') {
         addDebugLog('Received [DONE] marker');
+        pendingEventTypeRef.current = null;
         setIsStreaming(false);
         return;
       }
       
       try {
         const parsed = JSON.parse(data);
-        const content = parsed.choices?.[0]?.delta?.content;
+        const content = parsed.choices?.[0]?.delta?.content || 
+                       parsed.choices?.[0]?.message?.content || '';
         
         if (content) {
           addDebugLog(`Received content chunk: ${content.length} chars`);
@@ -190,23 +207,30 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       } catch (e) {
         // Handle raw text that isn't proper JSON format
         if (data && typeof data === 'string') {
-          addDebugLog(`Received raw text: ${data.slice(0, 20)}...`);
+          addDebugLog(`Received raw text: ${data.slice(0, 40)}...`);
           // Update UI immediately with each raw text chunk
           setRawResponse(prev => prev + data);
         } else {
           addDebugLog(`Error parsing JSON: ${e}, data: ${data}`);
         }
       }
+      
+      // Clear pending event type after processing the data
+      pendingEventTypeRef.current = null;
     } else if (line.startsWith('event: ')) {
       const eventType = line.slice(7).trim();
+      addDebugLog(`Received event type: ${eventType}`);
       
-      // Process the event in the next line if available
-      return { eventType };
+      // Set this as the pending event type for subsequent content
+      pendingEventTypeRef.current = eventType;
     } else if (line.startsWith('id: ') || line === '') {
       // Ignore ID lines and empty lines
       return;
     } else {
-      addDebugLog(`Unknown line format: ${line}`);
+      // This is likely content without any event markers
+      // Just add it directly to the response
+      addDebugLog(`Content without event marker: ${line.slice(0, 40)}...`);
+      setRawResponse(prev => prev + line + '\n');
     }
   };
 
@@ -220,6 +244,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsStreaming(true);
     setRawResponse("");
     setDebugLogs([]);
+    // Reset the pending event type and buffer
+    pendingEventTypeRef.current = null;
+    bufferRef.current = '';
     
     try {
       addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
@@ -279,31 +306,25 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       if (response.headers.get('content-type')?.includes('text/event-stream')) {
         addDebugLog('Got SSE response, processing stream');
         
-        // Set up a TextDecoder for converting Uint8Arrays to strings
-        const decoder = new TextDecoder();
-        
         // Get a reader from the response body stream
         const reader = response.body?.getReader();
         if (!reader) {
           throw new Error('Failed to get response reader');
         }
         
-        // Initialize variables for processing SSE
-        let buffer = '';
-        let pendingEventType: string | null = null;
-        
-        // Process the stream chunk by chunk
+        // Process the stream
         try {
+          // Use TextDecoderStream for more efficient streaming
+          const decoder = new TextDecoder();
+          
+          // Keep processing until the stream is done
           while (true) {
             const { done, value } = await reader.read();
             
             if (done) {
-              // Handle any remaining data in the buffer
-              if (buffer.trim()) {
-                const result = processSSEMessage(buffer.trim());
-                if (result?.eventType && pendingEventType === null) {
-                  pendingEventType = result.eventType;
-                }
+              // Process any remaining content in the buffer
+              if (bufferRef.current.trim()) {
+                processSSEMessage(bufferRef.current.trim());
               }
               
               addDebugLog('Stream complete');
@@ -311,53 +332,21 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
               break;
             }
             
-            // Decode this chunk and add it to our buffer
             const chunk = decoder.decode(value, { stream: true });
-            buffer += chunk;
+            bufferRef.current += chunk;
             
-            // Process complete lines
-            const lines = buffer.split('\n');
-            buffer = ''; // Reset buffer
+            // Process all complete lines in the buffer
+            const lines = bufferRef.current.split('\n');
+            bufferRef.current = lines.pop() || ''; // Keep the last potentially incomplete line
             
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
-              
-              // Skip empty lines
-              if (!line) continue;
-              
-              // If this is the last line and doesn't end with a newline
-              if (i === lines.length - 1 && !chunk.endsWith('\n')) {
-                buffer = line; // Keep it in the buffer for the next chunk
-                continue;
-              }
-              
-              // If we have a pending event type, this line should be the data for that event
-              if (pendingEventType && line.startsWith('data: ')) {
-                const data = line.slice(6).trim();
-                
-                if (pendingEventType === 'message') {
-                  addDebugLog(`Message event: ${data.length} chars`);
-                  // Update UI immediately with new content
-                  setRawResponse(prev => prev + data);
-                } else if (pendingEventType === 'error') {
-                  addDebugLog(`Error event: ${data}`);
-                  toast.error(`Error: ${data}`);
-                } else if (pendingEventType === 'done') {
-                  addDebugLog(`Done event: ${data}`);
-                  setIsStreaming(false);
-                }
-                
-                pendingEventType = null; // Reset pending event
-              } else {
-                // Process this line normally
-                const result = processSSEMessage(line);
-                if (result?.eventType) {
-                  pendingEventType = result.eventType;
-                }
+            // Process all complete lines
+            for (const line of lines) {
+              if (line.trim()) {
+                processSSEMessage(line.trim());
               }
             }
             
-            // Ensure UI updates between chunks by forcing a microtask
+            // Force a UI update between chunks
             await new Promise(resolve => setTimeout(resolve, 0));
           }
         } catch (error: any) {
