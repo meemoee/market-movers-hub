@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 interface OpenRouterModel {
   id: string;
@@ -182,7 +184,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       const response = await fetch("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${supabase.auth.session()?.access_token || ""}`,
+          "Authorization": `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ""}`,
           "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
           "Content-Type": "application/json",
         },
