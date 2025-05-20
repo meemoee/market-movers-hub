@@ -49,11 +49,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   const { user } = useCurrentUser();
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   
-  // Buffer for streaming content
-  const contentBufferRef = useRef<string>('');
-
   const addDebugLog = (message: string) => {
     // Log to console for immediate feedback during development
     console.log(`[${new Date().toISOString()}] ${message}`);
@@ -65,8 +62,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   // Clean up any fetch requests on unmount
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
     };
   }, []);
@@ -171,28 +168,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
-  // Handle all types of SSE messages
-  const handleEventSourceMessage = (event: MessageEvent) => {
-    const { type, data } = event;
-    
-    // Add debug info
-    addDebugLog(`Received ${type} event: ${data.length > 50 ? data.substring(0, 50) + '...' : data}`);
-    
-    if (type === 'message') {
-      // For message events, append the content directly to the response
-      setRawResponse(prev => prev + data);
-    } else if (type === 'error') {
-      toast.error(`Error: ${data}`);
-      setIsStreaming(false);
-    } else if (type === 'done') {
-      // Stream is complete
-      setIsStreaming(false);
-      if (data !== '[DONE]') {
-        addDebugLog('Stream complete');
-      }
-    }
-  };
-
   const generateHistoricalEvent = async () => {
     if (!selectedModel && !user?.openrouter_api_key) {
       toast.error("You need to add your OpenRouter API key in account settings");
@@ -203,21 +178,15 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsStreaming(true);
     setRawResponse("");
     setDebugLogs([]);
-    // Reset the content buffer
-    contentBufferRef.current = '';
     
     try {
       addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
       addDebugLog(`Using model: ${selectedModel}`);
       
-      // Clean up any existing fetch
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      // Close existing EventSource if there is one
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
-      
-      // Create a new AbortController for this request
-      abortControllerRef.current = new AbortController();
-      const signal = abortControllerRef.current.signal;
       
       // First get the auth token
       const { data: sessionData } = await supabase.auth.getSession();
@@ -228,7 +197,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       }
       
       // Prepare the EventSource URL with query parameters
-      const url = new URL("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event");
+      const url = new URL(`${window.location.origin}/api/generate-historical-event`);
       url.searchParams.append("marketQuestion", marketQuestion);
       url.searchParams.append("model", selectedModel);
       url.searchParams.append("enableWebSearch", enableWebSearch.toString());
@@ -239,24 +208,38 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       
       // Create an EventSource for SSE streaming
       const eventSource = new EventSource(url.toString());
+      eventSourceRef.current = eventSource;
       
       // Set up event handlers
-      eventSource.addEventListener('message', handleEventSourceMessage);
+      eventSource.addEventListener('message', (event) => {
+        if (event.data) {
+          addDebugLog(`Received message event: ${event.data.substring(0, 50)}${event.data.length > 50 ? '...' : ''}`);
+          setRawResponse(prev => prev + event.data);
+        }
+      });
+      
       eventSource.addEventListener('error', (event) => {
         addDebugLog('EventSource error');
-        if (event instanceof MessageEvent && event.data) {
-          toast.error(`Error: ${event.data}`);
-        } else {
+        try {
+          // Try to parse the error message if it's JSON
+          const errorData = JSON.parse((event as any).data);
+          toast.error(`Error: ${errorData.message || 'Connection error'}`);
+        } catch {
           toast.error('Connection error');
         }
         eventSource.close();
         setIsStreaming(false);
         setIsLoading(false);
       });
+      
       eventSource.addEventListener('done', (event) => {
         addDebugLog('EventSource done');
-        if (event instanceof MessageEvent && event.data) {
-          handleEventSourceMessage(event);
+        try {
+          // Try to parse the done message if it's JSON
+          const doneData = JSON.parse((event as any).data);
+          addDebugLog(`Done: ${doneData.message || 'Stream complete'}`);
+        } catch {
+          addDebugLog('Stream complete');
         }
         eventSource.close();
         setIsStreaming(false);
@@ -264,9 +247,26 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         toast.success('Historical event generated successfully!');
       });
       
-      // Cleanup when the component unmounts or when the request is canceled
-      return () => {
+      // Handle the default message event as well
+      eventSource.onmessage = (event) => {
+        if (event.data) {
+          addDebugLog(`Received default message: ${event.data.substring(0, 50)}${event.data.length > 50 ? '...' : ''}`);
+          setRawResponse(prev => prev + event.data);
+        }
+      };
+      
+      // Handle connection open
+      eventSource.onopen = () => {
+        addDebugLog('EventSource connection opened');
+      };
+      
+      // Handle default error
+      eventSource.onerror = (error) => {
+        addDebugLog(`EventSource default error: ${JSON.stringify(error)}`);
         eventSource.close();
+        setIsStreaming(false);
+        setIsLoading(false);
+        toast.error('Connection error');
       };
       
     } catch (error: any) {
@@ -274,7 +274,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       addDebugLog(`Error: ${error.message}`);
       toast.error(`Failed to generate historical event: ${error.message}`);
       setIsStreaming(false);
-    } finally {
       setIsLoading(false);
     }
   };
