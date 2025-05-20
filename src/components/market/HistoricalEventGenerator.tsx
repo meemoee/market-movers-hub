@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,8 +48,12 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   const { user } = useCurrentUser();
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
+  // Store pending event information
+  const pendingEventTypeRef = useRef<string | null>(null);
+  const bufferRef = useRef<string>('');
+
   const addDebugLog = (message: string) => {
     // Log to console for immediate feedback during development
     console.log(`[${new Date().toISOString()}] ${message}`);
@@ -62,8 +65,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   // Clean up any fetch requests on unmount
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, []);
@@ -168,6 +171,69 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
+  // Process a single SSE message - improved to handle various formats
+  const processSSEMessage = (line: string) => {
+    // If we have a pending event type, treat all non-event/data lines as content
+    if (pendingEventTypeRef.current && !line.startsWith('event: ') && !line.startsWith('data: ')) {
+      // This is probably content from the previous message event
+      addDebugLog(`Content line for ${pendingEventTypeRef.current} event: ${line.slice(0, 40)}...`);
+      if (pendingEventTypeRef.current === 'message') {
+        // Update UI immediately with the content
+        setRawResponse(prev => prev + line + '\n');
+      }
+      return;
+    }
+    
+    if (line.startsWith('data: ')) {
+      const data = line.slice(6).trim(); // Remove 'data: ' prefix
+      
+      if (data === '[DONE]') {
+        addDebugLog('Received [DONE] marker');
+        pendingEventTypeRef.current = null;
+        setIsStreaming(false);
+        return;
+      }
+      
+      try {
+        const parsed = JSON.parse(data);
+        const content = parsed.choices?.[0]?.delta?.content || 
+                       parsed.choices?.[0]?.message?.content || '';
+        
+        if (content) {
+          addDebugLog(`Received content chunk: ${content.length} chars`);
+          // Update UI immediately with each new chunk
+          setRawResponse(prev => prev + content);
+        }
+      } catch (e) {
+        // Handle raw text that isn't proper JSON format
+        if (data && typeof data === 'string') {
+          addDebugLog(`Received raw text: ${data.slice(0, 40)}...`);
+          // Update UI immediately with each raw text chunk
+          setRawResponse(prev => prev + data);
+        } else {
+          addDebugLog(`Error parsing JSON: ${e}, data: ${data}`);
+        }
+      }
+      
+      // Clear pending event type after processing the data
+      pendingEventTypeRef.current = null;
+    } else if (line.startsWith('event: ')) {
+      const eventType = line.slice(7).trim();
+      addDebugLog(`Received event type: ${eventType}`);
+      
+      // Set this as the pending event type for subsequent content
+      pendingEventTypeRef.current = eventType;
+    } else if (line.startsWith('id: ') || line === '') {
+      // Ignore ID lines and empty lines
+      return;
+    } else {
+      // This is likely content without any event markers
+      // Just add it directly to the response
+      addDebugLog(`Content without event marker: ${line.slice(0, 40)}...`);
+      setRawResponse(prev => prev + line + '\n');
+    }
+  };
+
   const generateHistoricalEvent = async () => {
     if (!selectedModel && !user?.openrouter_api_key) {
       toast.error("You need to add your OpenRouter API key in account settings");
@@ -178,15 +244,22 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsStreaming(true);
     setRawResponse("");
     setDebugLogs([]);
+    // Reset the pending event type and buffer
+    pendingEventTypeRef.current = null;
+    bufferRef.current = '';
     
     try {
       addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
       addDebugLog(`Using model: ${selectedModel}`);
       
-      // Close existing EventSource if there is one
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      // Clean up any existing fetch
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
       
       // First get the auth token
       const { data: sessionData } = await supabase.auth.getSession();
@@ -196,84 +269,110 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         throw new Error("No authentication token available");
       }
       
-      // Prepare the EventSource URL with query parameters
-      const url = new URL(`${window.location.origin}/api/generate-historical-event`);
-      url.searchParams.append("marketQuestion", marketQuestion);
-      url.searchParams.append("model", selectedModel);
-      url.searchParams.append("enableWebSearch", enableWebSearch.toString());
-      url.searchParams.append("maxSearchResults", maxSearchResults.toString());
-      url.searchParams.append("authToken", authToken);
+      // Prepare the request to the edge function
+      const requestOptions = {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${authToken}`,
+          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          marketQuestion,
+          model: selectedModel,
+          enableWebSearch,
+          maxSearchResults,
+          userId: user?.id
+        }),
+        signal
+      };
       
-      addDebugLog(`Creating EventSource with URL: ${url.toString()}`);
+      addDebugLog(`Making request to edge function with options: ${JSON.stringify(requestOptions)}`);
       
-      // Create an EventSource for SSE streaming
-      const eventSource = new EventSource(url.toString());
-      eventSourceRef.current = eventSource;
+      // Make the request to the edge function
+      const response = await fetch(
+        "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event", 
+        requestOptions
+      );
       
-      // Set up event handlers
-      eventSource.addEventListener('message', (event) => {
-        if (event.data) {
-          addDebugLog(`Received message event: ${event.data.substring(0, 50)}${event.data.length > 50 ? '...' : ''}`);
-          setRawResponse(prev => prev + event.data);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Edge function error: ${response.status} - ${errorText}`);
+      }
+      
+      addDebugLog(`Received response with status: ${response.status}`);
+      
+      // Check if we have a streaming response
+      if (response.headers.get('content-type')?.includes('text/event-stream')) {
+        addDebugLog('Got SSE response, processing stream');
+        
+        // Get a reader from the response body stream
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Failed to get response reader');
         }
-      });
-      
-      eventSource.addEventListener('error', (event) => {
-        addDebugLog('EventSource error');
+        
+        // Process the stream
         try {
-          // Try to parse the error message if it's JSON
-          const errorData = JSON.parse((event as any).data);
-          toast.error(`Error: ${errorData.message || 'Connection error'}`);
-        } catch {
-          toast.error('Connection error');
+          // Use TextDecoderStream for more efficient streaming
+          const decoder = new TextDecoder();
+          
+          // Keep processing until the stream is done
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              // Process any remaining content in the buffer
+              if (bufferRef.current.trim()) {
+                processSSEMessage(bufferRef.current.trim());
+              }
+              
+              addDebugLog('Stream complete');
+              setIsStreaming(false);
+              break;
+            }
+            
+            const chunk = decoder.decode(value, { stream: true });
+            bufferRef.current += chunk;
+            
+            // Process all complete lines in the buffer
+            const lines = bufferRef.current.split('\n');
+            bufferRef.current = lines.pop() || ''; // Keep the last potentially incomplete line
+            
+            // Process all complete lines
+            for (const line of lines) {
+              if (line.trim()) {
+                processSSEMessage(line.trim());
+              }
+            }
+            
+            // Force a UI update between chunks
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        } catch (error: any) {
+          if (error.name === 'AbortError') {
+            addDebugLog('Stream aborted by user');
+          } else {
+            throw error;
+          }
+        } finally {
+          setIsStreaming(false);
+          addDebugLog('Finished processing stream');
+          toast.success('Historical event generated successfully!');
         }
-        eventSource.close();
+      } else {
+        // Handle regular JSON response
+        const data = await response.json();
+        setRawResponse(data.message || JSON.stringify(data));
         setIsStreaming(false);
-        setIsLoading(false);
-      });
-      
-      eventSource.addEventListener('done', (event) => {
-        addDebugLog('EventSource done');
-        try {
-          // Try to parse the done message if it's JSON
-          const doneData = JSON.parse((event as any).data);
-          addDebugLog(`Done: ${doneData.message || 'Stream complete'}`);
-        } catch {
-          addDebugLog('Stream complete');
-        }
-        eventSource.close();
-        setIsStreaming(false);
-        setIsLoading(false);
         toast.success('Historical event generated successfully!');
-      });
-      
-      // Handle the default message event as well
-      eventSource.onmessage = (event) => {
-        if (event.data) {
-          addDebugLog(`Received default message: ${event.data.substring(0, 50)}${event.data.length > 50 ? '...' : ''}`);
-          setRawResponse(prev => prev + event.data);
-        }
-      };
-      
-      // Handle connection open
-      eventSource.onopen = () => {
-        addDebugLog('EventSource connection opened');
-      };
-      
-      // Handle default error
-      eventSource.onerror = (error) => {
-        addDebugLog(`EventSource default error: ${JSON.stringify(error)}`);
-        eventSource.close();
-        setIsStreaming(false);
-        setIsLoading(false);
-        toast.error('Connection error');
-      };
-      
+      }
     } catch (error: any) {
       console.error("Error generating historical event:", error);
       addDebugLog(`Error: ${error.message}`);
       toast.error(`Failed to generate historical event: ${error.message}`);
       setIsStreaming(false);
+    } finally {
       setIsLoading(false);
     }
   };

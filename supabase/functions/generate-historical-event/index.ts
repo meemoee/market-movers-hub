@@ -7,29 +7,12 @@ const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Max-Age': '86400',
 }
 
 // Create encoder upfront to avoid scope issues
 const encoder = new TextEncoder()
 
-// Helper function to format and send SSE events
-const formatSSE = (event: string, data: string) => {
-  return `event: ${event}\ndata: ${data}\n\n`
-}
-
-// Helper function to chunk a long text into smaller pieces to avoid overwhelming the client
-const chunkContent = (content: string, chunkSize = 500): string[] => {
-  const chunks = []
-  for (let i = 0; i < content.length; i += chunkSize) {
-    chunks.push(content.substring(i, i + chunkSize))
-  }
-  return chunks
-}
-
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -61,8 +44,6 @@ serve(async (req) => {
           const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken)
           if (!error && user) {
             userId = user.id
-          } else {
-            console.error("Error getting user from token:", error)
           }
         } catch (error) {
           console.error("Error getting user from token:", error)
@@ -72,60 +53,8 @@ serve(async (req) => {
       requestData = { marketQuestion, model, enableWebSearch, maxSearchResults, userId }
     } else {
       // For POST requests, parse the JSON body as before
-      try {
-        requestData = await req.json()
-        userId = requestData.userId
-        
-        // Check authorization header for token if userId is provided but no token was in the URL
-        if (userId && !req.headers.get('authorization')) {
-          const authHeader = req.headers.get('authorization')
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7)
-            
-            // Validate the token
-            const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
-            const supabaseAdmin = createClient(
-              Deno.env.get('SUPABASE_URL') ?? '',
-              Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-              { auth: { persistSession: false } }
-            )
-            
-            const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-            if (error) {
-              console.error("Invalid token:", error)
-              return new Response(
-                JSON.stringify({ error: 'Unauthorized: Invalid token' }),
-                { 
-                  status: 401,
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                }
-              )
-            }
-            
-            // Ensure the user ID matches
-            if (user.id !== userId) {
-              return new Response(
-                JSON.stringify({ error: 'Unauthorized: User ID mismatch' }),
-                { 
-                  status: 401,
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                }
-              )
-            }
-          } else {
-            console.warn("Authorization header missing or malformed")
-          }
-        }
-      } catch (error) {
-        console.error("Error parsing request body:", error)
-        return new Response(
-          JSON.stringify({ error: 'Invalid request body' }),
-          { 
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
-        )
-      }
+      requestData = await req.json()
+      userId = requestData.userId
     }
     
     const { 
@@ -231,11 +160,11 @@ Make your response detailed and insightful, focusing on economic and market fact
     const stream = new TransformStream()
     const writer = stream.writable.getWriter()
     
-    // Helper function to write SSE formatted data to the stream
+    // Helper function to send properly formatted SSE events
     const sendSSE = async (event: string, data: string) => {
-      await writer.write(encoder.encode(formatSSE(event, data)))
+      await writer.write(encoder.encode(`event: ${event}\ndata: ${data}\n\n`))
     }
-
+    
     // Make the request to OpenRouter API with streaming
     fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -252,14 +181,14 @@ Make your response detailed and insightful, focusing on economic and market fact
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`OpenRouter API error: ${response.status}`, errorText)
-        await sendSSE('error', JSON.stringify({ message: `OpenRouter API error: ${response.status} - ${errorText}` }))
+        await sendSSE('error', `OpenRouter API error: ${response.status} - ${errorText}`)
         writer.close()
         return
       }
       
       if (!response.body) {
         console.error('No response body from OpenRouter')
-        await sendSSE('error', JSON.stringify({ message: 'No response body from OpenRouter' }))
+        await sendSSE('error', 'No response body from OpenRouter')
         writer.close()
         return
       }
@@ -268,29 +197,20 @@ Make your response detailed and insightful, focusing on economic and market fact
       
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      let buffer = ''
-      let fullContent = ''
       
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) {
-            // If there's anything left in the buffer, send it
-            if (buffer.trim()) {
-              await sendSSE('message', buffer)
-            }
-            
             console.log('Stream complete')
-            await sendSSE('done', JSON.stringify({ message: 'Stream complete' }))
+            await sendSSE('done', 'Stream complete')
             break
           }
           
           const chunk = decoder.decode(value, { stream: true })
-          buffer += chunk
           
-          // Process complete lines from the buffer
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || '' // Keep the last potentially incomplete line
+          // Process the chunk - it contains multiple SSE lines
+          const lines = chunk.split('\n')
           
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -298,42 +218,36 @@ Make your response detailed and insightful, focusing on economic and market fact
               
               if (data === '[DONE]') {
                 console.log('Received [DONE] marker')
-                await sendSSE('done', JSON.stringify({ message: '[DONE]' }))
+                await sendSSE('done', '[DONE]')
                 continue
               }
               
               try {
                 const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || 
-                              parsed.choices?.[0]?.message?.content || ''
+                
+                const content = parsed.choices?.[0]?.delta?.content
                 
                 if (content) {
-                  fullContent += content
-                  
-                  // Chunk the content if it's too long
-                  const contentChunks = chunkContent(content, 500)
-                  for (const contentChunk of contentChunks) {
-                    await sendSSE('message', contentChunk)
-                  }
+                  // Send each content piece as a separate SSE message immediately
+                  await sendSSE('message', content)
                 }
               } catch (e) {
-                // If we can't parse as JSON, send the raw data
-                if (data && typeof data === 'string' && data !== '[DONE]') {
-                  await sendSSE('message', data)
-                }
+                console.error('Error parsing JSON from stream:', e, 'Raw data:', data)
+                // Forward the raw data for debugging
+                await sendSSE('log', data)
               }
             }
           }
         }
       } catch (error) {
         console.error('Error reading stream:', error)
-        await sendSSE('error', JSON.stringify({ message: error.message }))
+        await sendSSE('error', error.message)
       } finally {
         writer.close()
       }
     }).catch(async (error) => {
       console.error('Fetch error:', error)
-      await sendSSE('error', JSON.stringify({ message: error.message }))
+      await sendSSE('error', error.message)
       writer.close()
     })
 
