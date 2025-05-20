@@ -78,16 +78,13 @@ serve(async (req) => {
     // Prepare the prompt for historical event generation
     const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
       
-Format your response as strict JSON with the following structure:
-{
-  "title": "Name of the historical event",
-  "date": "Date or time period (e.g., 'March 2008' or '1929-1932')",
-  "image_url": "A relevant image URL",
-  "similarities": ["Similarity 1", "Similarity 2", "Similarity 3", "Similarity 4", "Similarity 5"],
-  "differences": ["Difference 1", "Difference 2", "Difference 3", "Difference 4", "Difference 5"]
-}
+Please format your response with the following sections:
+1. Title of the historical event
+2. Date or time period of the event
+3. Similarities between this historical event and the current market situation
+4. Differences between this historical event and the current market situation
 
-Make sure the JSON is valid and contains exactly these fields. For the image_url, use a real, accessible URL to a relevant image.`
+Make your response detailed and insightful, focusing on economic and market factors that are relevant to the question.`
 
     // Base request body
     const requestBody: any = {
@@ -95,8 +92,8 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
       messages: [
         { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
         { role: "user", content: promptText }
-      ],
-      response_format: { type: "json_object" }
+      ]
+      // Removed response_format: { type: "json_object" } to get raw text
     }
     
     // Add web search plugin configuration if enabled with custom max results

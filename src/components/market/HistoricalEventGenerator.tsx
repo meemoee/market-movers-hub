@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface OpenRouterModel {
   id: string;
@@ -38,6 +40,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [imageUrl, setImageUrl] = useState("");
   const [similarities, setSimilarities] = useState<string[]>(['']);
   const [differences, setDifferences] = useState<string[]>(['']);
+  // Raw response
+  const [rawResponse, setRawResponse] = useState("");
   // Web search options
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
@@ -151,7 +155,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
     setIsLoading(true);
     try {
-      // Make request to our new edge function instead of directly to OpenRouter API
+      // Make request to our edge function
       const { data, error } = await supabase.functions.invoke('generate-historical-event', {
         body: {
           marketQuestion,
@@ -170,22 +174,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         throw new Error("Invalid response from generate-historical-event function");
       }
 
-      // Extract JSON from the response
-      let extractedJson = data.data;
-      
-      // Check if the response contains a code block
-      const jsonMatch = extractedJson.match(/```json\n([\s\S]*?)\n```/) || extractedJson.match(/```\n([\s\S]*?)\n```/);
-      if (jsonMatch && jsonMatch[1]) {
-        extractedJson = jsonMatch[1];
-      }
-      
-      const eventData = JSON.parse(extractedJson);
-      
-      setEventTitle(eventData.title || "");
-      setEventDate(eventData.date || "");
-      setImageUrl(eventData.image_url || "");
-      setSimilarities(eventData.similarities || ['']);
-      setDifferences(eventData.differences || ['']);
+      // Set the raw response in the textarea
+      setRawResponse(data.data);
       
       toast.success("Historical event generated successfully!");
     } catch (error: any) {
@@ -245,6 +235,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       setImageUrl("");
       setSimilarities(['']);
       setDifferences(['']);
+      setRawResponse("");
       
       // Call the refetch function to update the list
       if (onEventSaved) {
@@ -349,6 +340,19 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                 "Generate Historical Event"
               )}
             </Button>
+
+            {/* Raw Response Textarea */}
+            {rawResponse && (
+              <div className="mt-4">
+                <label className="text-sm font-medium mb-1 block">Generated Response</label>
+                <Textarea
+                  value={rawResponse}
+                  onChange={(e) => setRawResponse(e.target.value)}
+                  className="w-full min-h-[200px] font-mono text-sm"
+                  placeholder="Generated response will appear here"
+                />
+              </div>
+            )}
 
             <div className="grid gap-4">
               <div>
