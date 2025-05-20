@@ -170,8 +170,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       addDebugLog(`Starting historical event generation for question: ${marketQuestion}`);
       addDebugLog(`Using model: ${selectedModel}`);
       
-      // Make request to our edge function
-      const functionUrl = `${supabase.functions.url('generate-historical-event')}`;
+      // Use environment variable URL for the edge function
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/generate-historical-event`;
       addDebugLog(`Calling function at: ${functionUrl}`);
       
       const body = {
@@ -184,13 +184,17 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       
       addDebugLog(`Request body: ${JSON.stringify(body)}`);
       
-      // Direct fetch instead of using supabase.functions.invoke for better control
+      // Get session token for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token || '';
+      
+      // Direct fetch with appropriate headers
       const response = await fetch(functionUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabase.auth.getSession().then(res => res.data.session?.access_token)}`,
-          "apikey": supabase.supabaseKey || ""
+          "Authorization": `Bearer ${accessToken}`,
+          "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY || ''
         },
         body: JSON.stringify(body)
       });

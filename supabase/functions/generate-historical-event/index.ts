@@ -9,13 +9,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Create encoder upfront to avoid scope issues
+const encoder = new TextEncoder()
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
-
-  // Create encoder upfront to avoid scope issues
-  const encoder = new TextEncoder()
 
   try {
     // Parse request body
