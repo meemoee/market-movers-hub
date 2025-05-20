@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,7 +15,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 interface OpenRouterModel {
@@ -180,31 +178,35 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       
       addDebugLog(`Request body: ${JSON.stringify(body)}`);
       
-      // Fix: Remove responseType option and handle the stream directly
-      const { data, error } = await supabase.functions.invoke('generate-historical-event', {
-        body: body
+      // Make a direct fetch request to the edge function
+      const response = await fetch("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-historical-event", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${supabase.auth.session()?.access_token || ""}`,
+          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body)
       });
-
-      if (error) {
-        addDebugLog(`Function error: ${error.message}`);
-        throw error;
+      
+      addDebugLog(`Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        addDebugLog(`Error response: ${errorText}`);
+        throw new Error(`Edge function error: ${response.status} ${response.statusText}`);
       }
-
-      // Handle non-streaming response if that's what we get
-      if (data && !data.readable) {
-        addDebugLog(`Got non-streaming response: ${JSON.stringify(data)}`);
-        setRawResponse(data.message || JSON.stringify(data));
-        toast.success("Historical event generated successfully!");
-        setIsStreaming(false);
-        return;
-      }
-
-      // Process streaming response if we get a ReadableStream
-      if (data?.readable) {
-        addDebugLog(`Function call succeeded, processing stream response`);
+      
+      // Check if we have a streaming response
+      if (response.headers.get('content-type')?.includes('text/event-stream')) {
+        addDebugLog('Got streaming response, processing...');
         
-        const reader = data.getReader();
+        const reader = response.body?.getReader();
         const decoder = new TextDecoder();
+        
+        if (!reader) {
+          throw new Error('Failed to get response reader');
+        }
         
         try {
           while (true) {
@@ -216,7 +218,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
             }
             
             const chunk = decoder.decode(value, { stream: true });
-            addDebugLog(`Raw chunk received: ${chunk.length} bytes`);
+            addDebugLog(`Received chunk: ${chunk.length} bytes`);
             
             // Process the SSE chunks
             const events = chunk.split('\n\n');
@@ -254,8 +256,10 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
           throw error;
         }
       } else {
-        addDebugLog('No response stream from function');
-        throw new Error("Unexpected response format from function");
+        // Handle regular JSON response
+        addDebugLog('Got regular JSON response');
+        const data = await response.json();
+        setRawResponse(data.message || JSON.stringify(data));
       }
       
       toast.success("Historical event generated successfully!");

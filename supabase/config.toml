@@ -1,73 +1,59 @@
 
 project_id = "lfmkoismabbhujycnqpn"
 
-[api]
-enabled = true
-port = 54321
-schemas = ["public", "storage", "graphql_public"]
-extra_search_path = ["public", "extensions"]
-max_rows = 1000
+# Define functions as an array of tables (using double brackets)
+[[functions]]
+name = "market-analysis"
+verify_jwt = false
 
-[db]
-port = 54322
-shadow_port = 54320
-major_version = 15
+[[functions]]
+name = "analyze-web-content"
+verify_jwt = false
 
-[db.pooler]
-enabled = false
-port = 54329
-pool_mode = "transaction"
-default_pool_size = 20
-max_client_conn = 100
+[[functions]]
+name = "brave-search"
+verify_jwt = false
 
-[realtime]
-enabled = true
-ip_version = "IPv4"
+[[functions]]
+name = "web-scrape"
+verify_jwt = false
 
-[studio]
-enabled = true
-port = 54323
-api_url = "https://api.supabase.io"
+[[functions]]
+name = "web-research"
+verify_jwt = false
 
-[inbucket]
-enabled = true
-port = 54324
-smtp_port = 54325
-pop3_port = 54326
+[[functions]]
+name = "extract-research-insights"
+verify_jwt = false
 
-[storage]
-enabled = true
-file_size_limit = "50MiB"
+[[functions]]
+name = "generate-qa-tree"
+verify_jwt = false
 
-[auth]
-enabled = true
-site_url = "http://localhost:8080"
-additional_redirect_urls = ["http://localhost:8080", "https://localhost:8080"]
-jwt_expiry = 3600
-enable_refresh_token_rotation = true
-refresh_token_reuse_interval = 10
-enable_signup = true
+[[functions]]
+name = "evaluate-qa-pair"
+verify_jwt = false
 
-[auth.email]
-enable_signup = true
-double_confirm_changes = true
-enable_confirmations = false
+[[functions]]
+name = "evaluate-qa-final"
+verify_jwt = false
 
-[auth.external.github]
-enabled = false
-client_id = ""
-secret = ""
-redirect_uri = ""
+[[functions]]
+name = "get-orderbook"
+verify_jwt = false
 
-[auth.external.google]
-enabled = false
-client_id = ""
-secret = ""
-redirect_uri = ""
+[[functions]]
+name = "polymarket-ws"
+verify_jwt = false
 
-[analytics]
-enabled = false
+[[functions]]
+name = "create-research-job"
+verify_jwt = false
 
-[functions]
-[functions.generate-historical-event]
+[[functions]]
+name = "generate-queries"
+verify_jwt = false
+
+[[functions]]
+name = "generate-historical-event"
 verify_jwt = false
