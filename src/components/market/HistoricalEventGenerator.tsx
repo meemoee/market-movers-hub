@@ -144,46 +144,42 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   };
 
   const generateHistoricalEvent = async () => {
-    if (!user?.openrouter_api_key) {
+    if (!selectedModel && !user?.openrouter_api_key) {
       toast.error("You need to add your OpenRouter API key in account settings");
-      return;
-    }
-
-    if (!selectedModel) {
-      toast.error("Please select a model");
       return;
     }
 
     setIsLoading(true);
     try {
-      // Call the edge function instead of OpenRouter directly
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-historical-event`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
+      // Make request to our new edge function instead of directly to OpenRouter API
+      const { data, error } = await supabase.functions.invoke('generate-historical-event', {
+        body: {
           marketQuestion,
           model: selectedModel,
           enableWebSearch,
           maxSearchResults,
-          apiKey: user.openrouter_api_key
-        })
+          userId: user?.id
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
+      if (error) {
+        throw new Error(`Supabase function error: ${error.message}`);
       }
 
-      const data = await response.json();
+      if (!data?.data) {
+        throw new Error("Invalid response from generate-historical-event function");
+      }
+
+      // Extract JSON from the response
+      let extractedJson = data.data;
       
-      if (!data.success || !data.event) {
-        throw new Error("Invalid response from server");
+      // Check if the response contains a code block
+      const jsonMatch = extractedJson.match(/```json\n([\s\S]*?)\n```/) || extractedJson.match(/```\n([\s\S]*?)\n```/);
+      if (jsonMatch && jsonMatch[1]) {
+        extractedJson = jsonMatch[1];
       }
       
-      const eventData = data.event;
+      const eventData = JSON.parse(extractedJson);
       
       setEventTitle(eventData.title || "");
       setEventDate(eventData.date || "");
@@ -192,9 +188,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       setDifferences(eventData.differences || ['']);
       
       toast.success("Historical event generated successfully!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating historical event:", error);
-      toast.error("Failed to generate historical event");
+      toast.error(`Failed to generate historical event: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
