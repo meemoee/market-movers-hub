@@ -164,6 +164,14 @@ Make your response detailed and insightful, focusing on economic and market fact
     const sendSSE = async (event: string, data: string) => {
       await writer.write(encoder.encode(`event: ${event}\ndata: ${data}\n\n`))
     }
+
+    // Helper function to chunk a long text into smaller pieces to avoid overwhelming the client
+    const sendContentInChunks = async (content: string, chunkSize = 500) => {
+      for (let i = 0; i < content.length; i += chunkSize) {
+        const chunk = content.substring(i, i + chunkSize)
+        await sendSSE('message', chunk)
+      }
+    }
     
     // Make the request to OpenRouter API with streaming
     fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -197,20 +205,27 @@ Make your response detailed and insightful, focusing on economic and market fact
       
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
+      let buffer = ''
       
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) {
+            // If there's anything left in the buffer, send it
+            if (buffer.trim()) {
+              await sendContentInChunks(buffer)
+            }
             console.log('Stream complete')
             await sendSSE('done', 'Stream complete')
             break
           }
           
           const chunk = decoder.decode(value, { stream: true })
+          buffer += chunk
           
-          // Process the chunk - it contains multiple SSE lines
-          const lines = chunk.split('\n')
+          // Process complete lines from the buffer
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || '' // Keep the last potentially incomplete line
           
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -224,17 +239,18 @@ Make your response detailed and insightful, focusing on economic and market fact
               
               try {
                 const parsed = JSON.parse(data)
-                
-                const content = parsed.choices?.[0]?.delta?.content
+                const content = parsed.choices?.[0]?.delta?.content || 
+                              parsed.choices?.[0]?.message?.content || ''
                 
                 if (content) {
-                  // Send each content piece as a separate SSE message immediately
-                  await sendSSE('message', content)
+                  // Send content as a separate event to ensure it's processed correctly
+                  await sendContentInChunks(content)
                 }
               } catch (e) {
-                console.error('Error parsing JSON from stream:', e, 'Raw data:', data)
-                // Forward the raw data for debugging
-                await sendSSE('log', data)
+                // If we can't parse as JSON, send the raw data
+                if (data && typeof data === 'string') {
+                  await sendContentInChunks(data)
+                }
               }
             }
           }
