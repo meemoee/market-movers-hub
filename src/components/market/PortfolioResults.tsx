@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -145,9 +146,11 @@ export function PortfolioResults({
         throw new Error(`Failed to start portfolio generation: ${errorText}`);
       }
       
-      // Now set up streaming using fetch API instead of EventSource for better auth handling
+      // Now set up streaming using fetch API with the content in the URL parameters
       abortControllerRef.current = new AbortController();
-      const streamResponse = await fetch(functionUrl, {
+      const streamUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
+      
+      const streamResponse = await fetch(streamUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,

@@ -43,9 +43,18 @@ serve(async (req) => {
     
     // Handle SSE request (GET)
     if (req.method === 'GET') {
-      // Extract content from Authorization header or create a client to validate token
-      let content = '';
+      // Extract content from URL parameters
+      const url = new URL(req.url);
+      const content = url.searchParams.get('content');
       
+      if (!content) {
+        return new Response(
+          JSON.stringify({ error: 'No content provided in request' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      // Validate the token
       try {
         // Create Supabase client to validate the token and get user details
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -61,21 +70,6 @@ serve(async (req) => {
         
         if (error || !user) {
           throw new Error('Invalid authentication token');
-        }
-        
-        // Get the request url parameters (content might be in there)
-        const url = new URL(req.url);
-        content = url.searchParams.get('content') || '';
-        
-        // If content wasn't in URL params, try to get it from the user's session storage 
-        // or from the most recent request in database
-        if (!content) {
-          // You could implement a way to retrieve the content from a database
-          // For now, we'll return an error
-          return new Response(
-            JSON.stringify({ error: 'No content provided in request' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-          );
         }
       } catch (error) {
         console.error('Auth error:', error);
