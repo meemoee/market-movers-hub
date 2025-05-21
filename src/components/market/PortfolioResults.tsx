@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -341,27 +340,86 @@ export function PortfolioResults({
           </div>
         )}
         
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid grid-cols-3 mb-4">
             <TabsTrigger value="ideas">Trade Ideas</TabsTrigger>
             <TabsTrigger value="markets">Markets</TabsTrigger>
             <TabsTrigger value="analysis">Analysis</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="ideas" className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1 h-[calc(70vh-200px)]">
-              {tradeIdeas.length > 0 ? (
-                <div className="space-y-4">
-                  {tradeIdeas.map((idea, i) => (
-                    <Card key={i}>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-md overflow-hidden">
-                            {idea.image ? (
+          <div className="flex-1 overflow-hidden">
+            <TabsContent value="ideas" className="h-full overflow-hidden flex flex-col m-0">
+              <ScrollArea className="h-[60vh] pr-4">
+                {tradeIdeas.length > 0 ? (
+                  <div className="space-y-4">
+                    {tradeIdeas.map((idea, i) => (
+                      <Card key={i}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-md overflow-hidden">
+                              {idea.image ? (
+                                <AspectRatio ratio={1} className="bg-muted/20">
+                                  <img 
+                                    src={idea.image} 
+                                    alt={idea.market_title}
+                                    className="object-cover w-full h-full" 
+                                  />
+                                </AspectRatio>
+                              ) : (
+                                <div className="h-full w-full flex items-center justify-center bg-muted">
+                                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <CardTitle className="text-base">{idea.market_title}</CardTitle>
+                              <CardDescription className="flex items-center gap-2 mt-1">
+                                <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'}>
+                                  {idea.outcome}
+                                </Badge>
+                                <span>Current: ${idea.current_price.toFixed(2)}</span>
+                                <span>⟶</span>
+                                <span>Target: ${idea.target_price.toFixed(2)}</span>
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm">{idea.rationale}</p>
+                        </CardContent>
+                        <CardFooter className="pt-0">
+                          <div className="text-xs text-muted-foreground">
+                            Stop price: ${idea.stop_price.toFixed(2)}
+                          </div>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 text-center">
+                    {loading ? (
+                      <p className="text-muted-foreground text-sm">Generating trade ideas...</p>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No trade ideas generated yet</p>
+                    )}
+                  </div>
+                )}
+              </ScrollArea>
+            </TabsContent>
+            
+            <TabsContent value="markets" className="h-full overflow-hidden flex flex-col m-0">
+              <ScrollArea className="h-[60vh] pr-4">
+                {markets.length > 0 ? (
+                  <div className="space-y-6">
+                    {markets.map((market, i) => (
+                      <div key={i} className="border rounded-lg p-4">
+                        <div className="flex gap-3 mb-3">
+                          <div className="h-12 w-12 rounded-md overflow-hidden flex-shrink-0">
+                            {market.image ? (
                               <AspectRatio ratio={1} className="bg-muted/20">
                                 <img 
-                                  src={idea.image} 
-                                  alt={idea.market_title}
+                                  src={market.image} 
+                                  alt={market.question} 
                                   className="object-cover w-full h-full" 
                                 />
                               </AspectRatio>
@@ -372,144 +430,87 @@ export function PortfolioResults({
                             )}
                           </div>
                           <div>
-                            <CardTitle className="text-base">{idea.market_title}</CardTitle>
-                            <CardDescription className="flex items-center gap-2 mt-1">
-                              <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'}>
-                                {idea.outcome}
-                              </Badge>
-                              <span>Current: ${idea.current_price.toFixed(2)}</span>
-                              <span>⟶</span>
-                              <span>Target: ${idea.target_price.toFixed(2)}</span>
-                            </CardDescription>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm">{idea.rationale}</p>
-                      </CardContent>
-                      <CardFooter className="pt-0">
-                        <div className="text-xs text-muted-foreground">
-                          Stop price: ${idea.stop_price.toFixed(2)}
-                        </div>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-8 text-center">
-                  {loading ? (
-                    <p className="text-muted-foreground text-sm">Generating trade ideas...</p>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">No trade ideas generated yet</p>
-                  )}
-                </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-          
-          <TabsContent value="markets" className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1 h-[calc(70vh-200px)]">
-              {markets.length > 0 ? (
-                <div className="space-y-6">
-                  {markets.map((market, i) => (
-                    <div key={i} className="border rounded-lg p-4">
-                      <div className="flex gap-3 mb-3">
-                        <div className="h-12 w-12 rounded-md overflow-hidden flex-shrink-0">
-                          {market.image ? (
-                            <AspectRatio ratio={1} className="bg-muted/20">
-                              <img 
-                                src={market.image} 
-                                alt={market.question} 
-                                className="object-cover w-full h-full" 
-                              />
-                            </AspectRatio>
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center bg-muted">
-                              <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                            <h3 className="font-medium text-lg">{market.event_title}</h3>
+                            <div className="flex gap-3 text-sm text-muted-foreground">
+                              <span>ID: {market.market_id}</span>
                             </div>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-lg">{market.event_title}</h3>
-                          <div className="flex gap-3 text-sm text-muted-foreground">
-                            <span>ID: {market.market_id}</span>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="border-l-2 border-primary/50 pl-3 mb-3">
-                        <p className="font-medium">{market.question}</p>
-                        <div className="flex gap-3 mt-1 text-sm">
-                          <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
-                          <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
+                        
+                        <div className="border-l-2 border-primary/50 pl-3 mb-3">
+                          <p className="font-medium">{market.question}</p>
+                          <div className="flex gap-3 mt-1 text-sm">
+                            <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
+                            <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
+                          </div>
                         </div>
-                      </div>
-                      
-                      {market.related_markets?.length > 0 && (
-                        <>
-                          <p className="text-sm text-muted-foreground mb-2">Related markets:</p>
-                          <div className="space-y-2">
-                            {market.related_markets.map((related, j) => (
-                              <div key={j} className="text-sm border border-border/50 rounded-md p-2">
-                                <p>{related.question}</p>
-                                <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                                  <span>Yes: ${related.yes_price?.toFixed(2) || 'N/A'}</span>
-                                  <span>No: ${related.no_price?.toFixed(2) || 'N/A'}</span>
+                        
+                        {market.related_markets?.length > 0 && (
+                          <>
+                            <p className="text-sm text-muted-foreground mb-2">Related markets:</p>
+                            <div className="space-y-2">
+                              {market.related_markets.map((related, j) => (
+                                <div key={j} className="text-sm border border-border/50 rounded-md p-2">
+                                  <p>{related.question}</p>
+                                  <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                                    <span>Yes: ${related.yes_price?.toFixed(2) || 'N/A'}</span>
+                                    <span>No: ${related.no_price?.toFixed(2) || 'N/A'}</span>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 text-center">
+                    {loading ? (
+                      <p className="text-muted-foreground text-sm">Finding relevant markets...</p>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No markets found</p>
+                    )}
+                  </div>
+                )}
+              </ScrollArea>
+            </TabsContent>
+            
+            <TabsContent value="analysis" className="h-full overflow-hidden flex flex-col m-0">
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="font-medium mb-2">Your Insight</h3>
+                    <div className="border-l-2 border-primary/50 pl-3 py-1">
+                      <p className="text-sm">{content}</p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-8 text-center">
-                  {loading ? (
-                    <p className="text-muted-foreground text-sm">Finding relevant markets...</p>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">No markets found</p>
+                  </div>
+                  
+                  {news && (
+                    <div>
+                      <h3 className="font-medium mb-2">Market Context</h3>
+                      <div className="border-l-2 border-primary/50 pl-3 py-1">
+                        <p className="text-sm">{news}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {keywords && (
+                    <div>
+                      <h3 className="font-medium mb-2">Key Concepts</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {keywords.split(',').map((keyword, i) => (
+                          <Badge key={i} variant="outline" className="bg-primary/5">
+                            {keyword.trim()}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-          
-          <TabsContent value="analysis" className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1 h-[calc(70vh-200px)]">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="font-medium mb-2">Your Insight</h3>
-                  <div className="border-l-2 border-primary/50 pl-3 py-1">
-                    <p className="text-sm">{content}</p>
-                  </div>
-                </div>
-                
-                {news && (
-                  <div>
-                    <h3 className="font-medium mb-2">Market Context</h3>
-                    <div className="border-l-2 border-primary/50 pl-3 py-1">
-                      <p className="text-sm">{news}</p>
-                    </div>
-                  </div>
-                )}
-                
-                {keywords && (
-                  <div>
-                    <h3 className="font-medium mb-2">Key Concepts</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {keywords.split(',').map((keyword, i) => (
-                        <Badge key={i} variant="outline" className="bg-primary/5">
-                          {keyword.trim()}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </TabsContent>
+              </ScrollArea>
+            </TabsContent>
+          </div>
         </Tabs>
         
         <div className="flex justify-end mt-4">
