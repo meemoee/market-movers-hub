@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -11,10 +12,42 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Create encoder upfront to avoid scope issues
-const encoder = new TextEncoder();
+// For tracking steps and timing
+const logStepStart = (stepName: string) => {
+  console.log(`[${new Date().toISOString()}] Starting step: ${stepName}`);
+  return { name: stepName, startTime: Date.now() };
+};
+
+const logStepEnd = (step: { name: string, startTime: number }) => {
+  const elapsed = Date.now() - step.startTime;
+  console.log(`[${new Date().toISOString()}] Completed step: ${step.name} (took ${elapsed}ms)`);
+  return { name: step.name, elapsed };
+};
+
+// Timeout wrapper for fetch calls
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request to ${url} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+};
 
 serve(async (req) => {
+  console.log(`[${new Date().toISOString()}] Request received: ${req.method} ${req.url}`);
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -25,6 +58,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('authorization');
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error(`[${new Date().toISOString()}] Missing or invalid authorization header`);
       return new Response(
         JSON.stringify({ error: 'Missing or invalid authorization header' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
@@ -35,27 +69,102 @@ serve(async (req) => {
     const authToken = authHeader.substring(7);
     
     if (!authToken) {
+      console.error(`[${new Date().toISOString()}] Missing authentication token`);
       return new Response(
         JSON.stringify({ error: 'Missing authentication token' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
     
-    // Handle SSE request (GET)
-    if (req.method === 'GET') {
+    // Create a results object to track progress and collect data
+    const results = {
+      status: "processing",
+      steps: [],
+      errors: [],
+      warnings: [],
+      data: {
+        news: "",
+        keywords: "",
+        markets: [],
+        tradeIdeas: []
+      }
+    };
+    
+    // Utility function to add a completed step
+    const addCompletedStep = (name: string, details?: any) => {
+      results.steps.push({
+        name,
+        completed: true,
+        timestamp: new Date().toISOString(),
+        details
+      });
+      console.log(`[${new Date().toISOString()}] Step completed: ${name}`);
+    };
+    
+    // Utility function to add an error
+    const addError = (step: string, message: string, details?: any) => {
+      console.error(`[${new Date().toISOString()}] Error in ${step}: ${message}`, details);
+      results.errors.push({
+        step,
+        message,
+        timestamp: new Date().toISOString(),
+        details
+      });
+    };
+
+    // For POST requests - initial submission
+    if (req.method === 'POST') {
+      const contentType = req.headers.get('content-type') || '';
+      
+      // Parse the request body based on content-type
+      let content;
+      if (contentType.includes('application/json')) {
+        const body = await req.json();
+        content = body.content;
+      } else {
+        const formData = await req.formData();
+        content = formData.get('content')?.toString();
+      }
+
+      if (!content) {
+        console.error(`[${new Date().toISOString()}] No content provided in POST request`);
+        return new Response(
+          JSON.stringify({ error: 'No content provided' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      console.log(`[${new Date().toISOString()}] Processing initial portfolio generation request for content: ${content.substring(0, 50)}...`);
+      
+      // Return success to indicate the job has started
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: "Portfolio generation initiated",
+          content: content
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    } 
+    // For GET requests - generate portfolio
+    else if (req.method === 'GET') {
       // Extract content from URL parameters
       const url = new URL(req.url);
       const content = url.searchParams.get('content');
       
       if (!content) {
+        console.error(`[${new Date().toISOString()}] No content provided in GET request URL parameters`);
         return new Response(
           JSON.stringify({ error: 'No content provided in request' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
       }
       
+      console.log(`[${new Date().toISOString()}] Starting portfolio generation for content: ${content.substring(0, 50)}...`);
+      
       // Validate the token
       try {
+        let step = logStepStart("Auth validation");
         // Create Supabase client to validate the token and get user details
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
         
@@ -71,38 +180,28 @@ serve(async (req) => {
         if (error || !user) {
           throw new Error('Invalid authentication token');
         }
+        
+        logStepEnd(step);
+        addCompletedStep("auth_validation", { userId: user.id });
       } catch (error) {
-        console.error('Auth error:', error);
+        console.error(`[${new Date().toISOString()}] Auth error:`, error);
         return new Response(
           JSON.stringify({ error: `Authentication error: ${error.message}` }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
         );
       }
       
-      // Set up SSE headers for streaming
-      const headers = {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      };
-
-      // Create a new stream with a controller
-      const stream = new TransformStream();
-      const writer = stream.writable.getWriter();
-
-      // Helper function to send SSE events
-      const sendSSE = async (event: string, data: string) => {
-        await writer.write(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
-      };
-
-      // Send initial status
-      await sendSSE('status', 'Summarizing input...');
-
       // 1️⃣ Generate news summary
       let news = '';
       try {
-        const newsResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const step = logStepStart("News summary generation");
+        results.steps.push({
+          name: "news_summary",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
+        const newsResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -117,23 +216,38 @@ serve(async (req) => {
               { role: "user", content: `Comment: ${content}\nToday's date: ${new Date().toISOString().slice(0,10)}\nProvide a concise update.` }
             ]
           })
-        });
+        }, 15000);
 
         const newsData = await newsResponse.json();
         news = newsData.choices?.[0]?.message?.content?.trim() || "";
-        await sendSSE('news', news);
+        results.data.news = news;
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "news_summary" ? {...s, completed: true} : s
+        );
+        
+        addCompletedStep("news_summary");
       } catch (error) {
-        console.error('Error generating news summary:', error);
-        await sendSSE('error', `Error generating news summary: ${error.message}`);
+        console.error(`[${new Date().toISOString()}] Error generating news summary:`, error);
+        addError("news_summary", error.message || "Error generating news summary");
       }
 
       // 2️⃣ Extract keywords
-      await sendSSE('status', 'Extracting keywords...');
       let keywords = '';
       try {
+        const step = logStepStart("Keywords extraction");
+        results.steps.push({
+          name: "keywords_extraction",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
         const keywordPrompt = `Prediction: ${content} Return ONLY the 15-30 most relevant/specific nouns, names, or phrases deeply tied to the sentiment or prediction (comma-separated, no extra words). They must be specifically related to what circumstances might logically occur if the user is CORRECT in their sentiment or opinion, HIGHLY PRIORITIZING latest up-to-date happenings and news.`;
         
-        const keywordResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const keywordResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -148,21 +262,36 @@ serve(async (req) => {
               { role: "user", content: keywordPrompt }
             ]
           })
-        });
+        }, 15000);
 
         const keywordData = await keywordResponse.json();
         keywords = keywordData.choices?.[0]?.message?.content?.trim() || "";
-        await sendSSE('keywords', keywords);
+        results.data.keywords = keywords;
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "keywords_extraction" ? {...s, completed: true} : s
+        );
+        
+        addCompletedStep("keywords_extraction", { keywordCount: keywords.split(',').length });
       } catch (error) {
-        console.error('Error extracting keywords:', error);
-        await sendSSE('error', `Error extracting keywords: ${error.message}`);
+        console.error(`[${new Date().toISOString()}] Error extracting keywords:`, error);
+        addError("keywords_extraction", error.message || "Error extracting keywords");
       }
 
       // 3️⃣ Get embedding
-      await sendSSE('status', 'Creating embedding...');
       let vecArr: number[] = [];
       try {
-        const embedResponse = await fetch("https://api.openai.com/v1/embeddings", {
+        const step = logStepStart("Embedding creation");
+        results.steps.push({
+          name: "embedding_creation",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
+        const embedResponse = await fetchWithTimeout("https://api.openai.com/v1/embeddings", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${OPENAI_API_KEY}`,
@@ -173,7 +302,7 @@ serve(async (req) => {
             input: keywords,
             encoding_format: "float"
           })
-        });
+        }, 10000);
 
         const embedData = await embedResponse.json();
         vecArr = embedData.data?.[0]?.embedding || [];
@@ -182,17 +311,34 @@ serve(async (req) => {
           throw new Error("Failed to generate embedding");
         }
         
-        await sendSSE('status', `Embedding generated with ${vecArr.length} dimensions`);
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "embedding_creation" ? {...s, completed: true, details: { dimensions: vecArr.length }} : s
+        );
+        
+        addCompletedStep("embedding_creation", { dimensions: vecArr.length });
       } catch (error) {
-        console.error('Error creating embedding:', error);
-        await sendSSE('error', `Error creating embedding: ${error.message}`);
+        console.error(`[${new Date().toISOString()}] Error creating embedding:`, error);
+        addError("embedding_creation", error.message || "Error creating embedding");
       }
 
       // 4️⃣ Query Pinecone
-      await sendSSE('status', 'Searching for relevant markets...');
       let matches: any[] = [];
       try {
-        const pineconeResponse = await fetch(`${PINECONE_HOST}/query`, {
+        const step = logStepStart("Pinecone search");
+        results.steps.push({
+          name: "pinecone_search",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
+        if (vecArr.length === 0) {
+          throw new Error("No embedding vector available for search");
+        }
+        
+        const pineconeResponse = await fetchWithTimeout(`${PINECONE_HOST}/query`, {
           method: "POST",
           headers: {
             "Api-Key": PINECONE_API_KEY,
@@ -208,7 +354,7 @@ serve(async (req) => {
               archived: { "$eq": false }
             }
           })
-        });
+        }, 20000);
 
         if (!pineconeResponse.ok) {
           const errorText = await pineconeResponse.text();
@@ -217,141 +363,245 @@ serve(async (req) => {
 
         const pineconeData = await pineconeResponse.json();
         matches = pineconeData.matches || [];
-        await sendSSE('status', `Found ${matches.length} relevant markets`);
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "pinecone_search" ? {...s, completed: true, details: { matchCount: matches.length }} : s
+        );
+        
+        addCompletedStep("pinecone_search", { matchCount: matches.length });
       } catch (error) {
-        console.error('Error querying Pinecone:', error);
-        await sendSSE('error', `Error querying Pinecone: ${error.message}`);
+        console.error(`[${new Date().toISOString()}] Error querying Pinecone:`, error);
+        addError("pinecone_search", error.message || "Error querying Pinecone");
       }
 
       // 5️⃣ Get data from Supabase
-      await sendSSE('status', 'Fetching market details...');
-      
-      // Create Supabase client
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-        { auth: { persistSession: false } }
-      );
-
-      const marketIds = matches.map(m => m.id);
       let details: any[] = [];
-      
       try {
-        // Query for market details
-        const { data, error } = await supabaseAdmin
-          .rpc('get_markets_with_latest_prices', { 
-            p_market_ids: marketIds 
+        const step = logStepStart("Market details fetching");
+        results.steps.push({
+          name: "market_details",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Create Supabase client
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const supabaseAdmin = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          { auth: { persistSession: false } }
+        );
+
+        const marketIds = matches.map(m => m.id);
+        
+        if (marketIds.length === 0) {
+          console.log(`[${new Date().toISOString()}] No market IDs to fetch details for`);
+          results.warnings.push({
+            step: "market_details",
+            message: "No market IDs available from vector search",
+            timestamp: new Date().toISOString()
           });
-          
-        if (error) throw error;
-        
-        details = data || [];
-        
-        if (details.length === 0) {
-          await sendSSE('warning', 'No matching markets found with price data');
         } else {
-          await sendSSE('status', `Fetched details for ${details.length} markets`);
-        }
-      } catch (error) {
-        console.error('Error fetching market details:', error);
-        await sendSSE('error', `Error fetching market details: ${error.message}`);
-        
-        // Fallback to direct query
-        try {
+          console.log(`[${new Date().toISOString()}] Fetching details for ${marketIds.length} markets`);
+          
+          // Query for market details
           const { data, error } = await supabaseAdmin
-            .from('markets')
-            .select(`
-              id as market_id,
-              event_id,
-              question,
-              description,
-              events!inner(title)
-            `)
-            .in('id', marketIds)
-            .eq('active', true)
-            .eq('closed', false)
-            .eq('archived', false);
+            .rpc('get_markets_with_latest_prices', { 
+              p_market_ids: marketIds 
+            });
             
           if (error) throw error;
           
-          // Transform the data
-          details = data.map(d => ({
-            market_id: d.market_id,
-            event_id: d.event_id,
-            event_title: d.events.title,
-            question: d.question,
-            description: d.description,
-            yes_price: 0.5,
-            no_price: 0.5
-          }));
+          details = data || [];
           
-          await sendSSE('status', `Fetched basic details for ${details.length} markets (prices unavailable)`);
+          if (details.length === 0) {
+            results.warnings.push({
+              step: "market_details",
+              message: "No matching markets found with price data",
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "market_details" ? {...s, completed: true, details: { count: details.length }} : s
+        );
+        
+        addCompletedStep("market_details", { count: details.length });
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] Error fetching market details:`, error);
+        addError("market_details", error.message || "Error fetching market details");
+        
+        // Fallback to direct query
+        try {
+          const step = logStepStart("Market details fallback query");
+          
+          const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+          const supabaseAdmin = createClient(
+            Deno.env.get('SUPABASE_URL') ?? '',
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+            { auth: { persistSession: false } }
+          );
+          
+          const marketIds = matches.map(m => m.id);
+          
+          if (marketIds.length > 0) {
+            const { data, error } = await supabaseAdmin
+              .from('markets')
+              .select(`
+                id as market_id,
+                event_id,
+                question,
+                description,
+                events!inner(title)
+              `)
+              .in('id', marketIds)
+              .eq('active', true)
+              .eq('closed', false)
+              .eq('archived', false);
+              
+            if (error) throw error;
+            
+            // Transform the data
+            details = data.map(d => ({
+              market_id: d.market_id,
+              event_id: d.event_id,
+              event_title: d.events.title,
+              question: d.question,
+              description: d.description,
+              yes_price: 0.5,
+              no_price: 0.5
+            }));
+            
+            addCompletedStep("market_details_fallback", { count: details.length });
+            console.log(`[${new Date().toISOString()}] Fetched basic details for ${details.length} markets (fallback)`);
+          }
+          
+          logStepEnd(step);
         } catch (fallbackError) {
-          console.error('Fallback query also failed:', fallbackError);
+          console.error(`[${new Date().toISOString()}] Fallback query also failed:`, fallbackError);
+          addError("market_details_fallback", fallbackError.message || "Fallback market details query failed");
         }
       }
 
       // 6️⃣ Pick best per event
-      const seen = new Set();
-      const bests = [];
-      for (const m of matches) {
-        const d = details.find(d => d.market_id === m.id);
-        if (d && !seen.has(d.event_id)) {
-          seen.add(d.event_id);
-          bests.push(d);
-          if (bests.length >= 25) break;
+      let bests: any[] = [];
+      try {
+        const step = logStepStart("Best markets selection");
+        results.steps.push({
+          name: "best_markets",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
+        const seen = new Set();
+        bests = [];
+        for (const m of matches) {
+          const d = details.find(d => d.market_id === m.id);
+          if (d && !seen.has(d.event_id)) {
+            seen.add(d.event_id);
+            bests.push(d);
+            if (bests.length >= 25) break;
+          }
         }
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "best_markets" ? {...s, completed: true, details: { count: bests.length }} : s
+        );
+        
+        addCompletedStep("best_markets", { count: bests.length });
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] Error selecting best markets:`, error);
+        addError("best_markets", error.message || "Error selecting best markets");
       }
-
-      await sendSSE('status', `Selected ${bests.length} best markets`);
 
       // 7️⃣ Fetch related markets
-      let relatedByEvent: Record<string, any[]> = {};
       try {
-        const eventIds = bests.map(b => b.event_id);
-        const { data: rels, error } = await supabaseAdmin
-          .rpc('get_related_markets_with_prices', { 
-            p_event_ids: eventIds 
-          });
-          
-        if (error) throw error;
+        const step = logStepStart("Related markets fetching");
+        results.steps.push({
+          name: "related_markets",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
-        // Group by event_id
-        relatedByEvent = {};
-        for (const r of rels) {
-          (relatedByEvent[r.event_id] ||= []).push({
-            id: r.market_id,
-            question: r.question,
-            yes_price: r.yes_price,
-            no_price: r.no_price,
-            best_bid: r.best_bid,
-            best_ask: r.best_ask,
-            last_traded_price: r.last_traded_price,
-            volume: r.volume,
-            liquidity: r.liquidity
-          });
+        let relatedByEvent: Record<string, any[]> = {};
+        const eventIds = bests.map(b => b.event_id);
+        
+        if (eventIds.length > 0) {
+          // Create Supabase client
+          const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+          const supabaseAdmin = createClient(
+            Deno.env.get('SUPABASE_URL') ?? '',
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+            { auth: { persistSession: false } }
+          );
+          
+          const { data: rels, error } = await supabaseAdmin
+            .rpc('get_related_markets_with_prices', { 
+              p_event_ids: eventIds 
+            });
+            
+          if (error) throw error;
+          
+          // Group by event_id
+          relatedByEvent = {};
+          for (const r of rels) {
+            (relatedByEvent[r.event_id] ||= []).push({
+              id: r.market_id,
+              question: r.question,
+              yes_price: r.yes_price,
+              no_price: r.no_price,
+              best_bid: r.best_bid,
+              best_ask: r.best_ask,
+              last_traded_price: r.last_traded_price,
+              volume: r.volume,
+              liquidity: r.liquidity
+            });
+          }
         }
+
+        // Add related markets to each best market
+        bests.forEach(b => b.related_markets = relatedByEvent[b.event_id] || []);
+        results.data.markets = bests;
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "related_markets" ? {...s, completed: true} : s
+        );
+        
+        addCompletedStep("related_markets");
       } catch (error) {
-        console.error('Error fetching related markets:', error);
-        await sendSSE('error', `Error fetching related markets: ${error.message}`);
+        console.error(`[${new Date().toISOString()}] Error fetching related markets:`, error);
+        addError("related_markets", error.message || "Error fetching related markets");
       }
 
-      // Add related markets to each best market
-      bests.forEach(b => b.related_markets = relatedByEvent[b.event_id] || []);
-      
-      // Send best markets to client
-      await sendSSE('markets', JSON.stringify(bests));
-
       // 8️⃣ Generate trade ideas
-      await sendSSE('status', 'Generating trade ideas...');
       let tradeIdeas = [];
       try {
-        const listText = bests
-          .map((r, i) => `${i+1}. ${r.question} — yes:${r.yes_price}, no:${r.no_price}`)
-          .join("\n");
-          
-        const ideasPrompt = `
+        const step = logStepStart("Trade ideas generation");
+        results.steps.push({
+          name: "trade_ideas",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
+        
+        if (bests.length > 0) {
+          const listText = bests
+            .map((r, i) => `${i+1}. ${r.question} — yes:${r.yes_price}, no:${r.no_price}`)
+            .join("\n");
+            
+          const ideasPrompt = `
 User prediction: ${content}
 
 Here are the top markets that matched:
@@ -364,82 +614,78 @@ Return ONLY a valid JSON array of exactly three such objects. No extra text.
 Suggest 3 trades as a JSON array of objects with:
   market_title, outcome, current_price, target_price, stop_price, rationale.`;
 
-        const ideasResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://hunchex.app",
-            "X-Title": "Market Analysis App"
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-preview-05-20",
-            messages: [
-              { role: "system", content: "You are a trading strategy assistant. Output ONLY valid JSON." },
-              { role: "user", content: ideasPrompt }
-            ],
-            response_format: { type: "json_object" }
-          })
-        });
+          const ideasResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://hunchex.app",
+              "X-Title": "Market Analysis App"
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-preview-05-20",
+              messages: [
+                { role: "system", content: "You are a trading strategy assistant. Output ONLY valid JSON." },
+                { role: "user", content: ideasPrompt }
+              ],
+              response_format: { type: "json_object" }
+            })
+          }, 15000);
 
-        const ideasData = await ideasResponse.json();
-        const rawIdeas = ideasData.choices?.[0]?.message?.content?.trim() || "[]";
-        
-        try {
-          tradeIdeas = JSON.parse(rawIdeas);
-          await sendSSE('trade_ideas', JSON.stringify(tradeIdeas));
-        } catch (jsonError) {
-          console.error('Error parsing trade ideas JSON:', jsonError, rawIdeas);
-          await sendSSE('error', `Error parsing trade ideas: ${jsonError.message}`);
-          await sendSSE('raw_ideas', rawIdeas);
+          const ideasData = await ideasResponse.json();
+          const rawIdeas = ideasData.choices?.[0]?.message?.content?.trim() || "[]";
+          
+          try {
+            tradeIdeas = JSON.parse(rawIdeas);
+            results.data.tradeIdeas = tradeIdeas;
+          } catch (jsonError) {
+            console.error(`[${new Date().toISOString()}] Error parsing trade ideas JSON:`, jsonError, rawIdeas);
+            addError("trade_ideas_json_parse", jsonError.message || "Error parsing trade ideas JSON", { raw: rawIdeas });
+          }
+        } else {
+          results.warnings.push({
+            step: "trade_ideas",
+            message: "No markets available to generate trade ideas",
+            timestamp: new Date().toISOString()
+          });
         }
-      } catch (error) {
-        console.error('Error generating trade ideas:', error);
-        await sendSSE('error', `Error generating trade ideas: ${error.message}`);
-      }
-
-      // Send completion
-      await sendSSE('done', 'Portfolio generation complete');
-      writer.close();
-      
-      return new Response(stream.readable, { headers });
-    } else {
-      // Handle POST request (initial submission)
-      const contentType = req.headers.get('content-type') || '';
-      
-      // Parse the request body based on content-type
-      let content;
-      if (contentType.includes('application/json')) {
-        const body = await req.json();
-        content = body.content;
-      } else {
-        const formData = await req.formData();
-        content = formData.get('content')?.toString();
-      }
-
-      if (!content) {
-        return new Response(
-          JSON.stringify({ error: 'No content provided' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        
+        logStepEnd(step);
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "trade_ideas" ? {...s, completed: true, details: { count: tradeIdeas.length }} : s
         );
+        
+        addCompletedStep("trade_ideas", { count: tradeIdeas.length });
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] Error generating trade ideas:`, error);
+        addError("trade_ideas", error.message || "Error generating trade ideas");
       }
 
-      console.log('Processing initial portfolio generation request for content:', content.substring(0, 50) + '...');
+      // Mark as complete
+      results.status = "completed";
+      console.log(`[${new Date().toISOString()}] Portfolio generation complete`);
       
-      // Return success to indicate the job has started
+      // Return the full results
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Portfolio generation initiated",
-          content: content // Store content for later retrieval in GET request
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        JSON.stringify(results),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } else {
+      return new Response(
+        JSON.stringify({ error: `Unsupported method: ${req.method}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 405 }
       );
     }
   } catch (error) {
-    console.error('Error in generate-portfolio function:', error);
+    console.error(`[${new Date().toISOString()}] Error in generate-portfolio function:`, error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        status: "error",
+        timestamp: new Date().toISOString()
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }

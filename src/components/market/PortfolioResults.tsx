@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { ProgressDisplay } from "../market/research/ProgressDisplay";
+import { useJobLogger } from "@/hooks/research/useJobLogger";
 
 interface TradeIdea {
   market_title: string;
@@ -49,12 +51,41 @@ interface PortfolioResultsProps {
   onOpenChange: (open: boolean) => void;
 }
 
+interface PortfolioResults {
+  status: string;
+  steps: Array<{
+    name: string;
+    completed: boolean;
+    timestamp: string;
+    details?: any;
+  }>;
+  errors: Array<{
+    step: string;
+    message: string;
+    timestamp: string;
+    details?: any;
+  }>;
+  warnings: Array<{
+    step: string;
+    message: string;
+    timestamp: string;
+  }>;
+  data: {
+    news: string;
+    keywords: string;
+    markets: Market[];
+    tradeIdeas: TradeIdea[];
+  }
+}
+
 export function PortfolioResults({
   content,
   open,
   onOpenChange
 }: PortfolioResultsProps) {
   const [status, setStatus] = useState<string>('Starting portfolio generation...');
+  const [progress, setProgress] = useState<number>(0);
+  const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [news, setNews] = useState<string>('');
   const [keywords, setKeywords] = useState<string>('');
   const [markets, setMarkets] = useState<Market[]>([]);
@@ -64,6 +95,7 @@ export function PortfolioResults({
   const [activeTab, setActiveTab] = useState<string>('ideas');
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
+  const { logUpdate } = useJobLogger('PortfolioResults');
   
   // Clean up fetch request when component unmounts or dialog closes
   useEffect(() => {
@@ -76,37 +108,46 @@ export function PortfolioResults({
 
   useEffect(() => {
     if (!open || !content) {
-      setStatus('Starting portfolio generation...');
-      setNews('');
-      setKeywords('');
-      setMarkets([]);
-      setTradeIdeas([]);
-      setError('');
+      resetState();
       return;
     }
 
     generatePortfolio(content);
   }, [open, content]);
 
-  const processSSEMessage = (line: string) => {
-    if (line.startsWith('event: ')) {
-      const eventType = line.slice(7).trim();
-      
-      // Wait for the data line
-      return eventType;
-    } 
-    else if (line.startsWith('data: ')) {
-      const data = line.slice(6).trim();
-      return { type: 'data', data };
-    }
+  const resetState = () => {
+    setStatus('Starting portfolio generation...');
+    setProgress(0);
+    setProgressMessages([]);
+    setNews('');
+    setKeywords('');
+    setMarkets([]);
+    setTradeIdeas([]);
+    setError('');
+  };
+
+  const addProgressMessage = (message: string) => {
+    setProgressMessages(prev => [...prev, message]);
+  };
+
+  const updateProgressFromSteps = (steps: any[]) => {
+    if (!steps || steps.length === 0) return;
     
-    return null;
+    // Assuming we have 8 total steps in the portfolio generation process
+    const totalSteps = 8;
+    const completedSteps = steps.filter(step => step.completed).length;
+    const progressPercentage = Math.min(Math.round((completedSteps / totalSteps) * 100), 95);
+    
+    setProgress(progressPercentage);
   };
 
   const generatePortfolio = async (content: string) => {
     try {
+      logUpdate('info', `Starting portfolio generation for: ${content.substring(0, 30)}...`);
       setLoading(true);
       setError('');
+      addProgressMessage('Authenticating user...');
+      setProgress(5);
       
       // Clean up any existing fetch request
       if (abortControllerRef.current) {
@@ -128,11 +169,16 @@ export function PortfolioResults({
         return;
       }
 
+      addProgressMessage('Preparing portfolio generation...');
+      
       // Use Supabase function URL
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
       
       // First make a POST request to start the generation process with proper authentication
-      const response = await fetch(functionUrl, {
+      addProgressMessage('Initializing generation process...');
+      setProgress(10);
+      
+      const initResponse = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,16 +187,23 @@ export function PortfolioResults({
         body: JSON.stringify({ content })
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
         throw new Error(`Failed to start portfolio generation: ${errorText}`);
       }
       
-      // Now set up streaming using fetch API with the content in the URL parameters
+      // Now make the actual request to generate the portfolio
+      addProgressMessage('Starting portfolio analysis...');
       abortControllerRef.current = new AbortController();
-      const streamUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
       
-      const streamResponse = await fetch(streamUrl, {
+      // Include the content as a URL parameter
+      const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
+      
+      logUpdate('info', `Making request to: ${portfolioUrl}`);
+      addProgressMessage('Analyzing your insight...');
+      setProgress(15);
+      
+      const portfolioResponse = await fetch(portfolioUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -159,114 +212,86 @@ export function PortfolioResults({
         signal: abortControllerRef.current.signal
       });
       
-      if (!streamResponse.ok) {
-        const errorText = await streamResponse.text();
-        throw new Error(`Stream connection failed: ${errorText}`);
+      if (!portfolioResponse.ok) {
+        const errorText = await portfolioResponse.text();
+        logUpdate('error', `Portfolio generation failed: ${errorText}`);
+        throw new Error(`Portfolio generation failed: ${errorText}`);
       }
       
-      if (!streamResponse.body) {
-        throw new Error('No response body from stream');
-      }
+      const results: PortfolioResults = await portfolioResponse.json();
+      logUpdate('info', `Received portfolio results with status: ${results.status}`);
       
-      // Process the stream with TextDecoder
-      const reader = streamResponse.body.getReader();
-      const decoder = new TextDecoder();
-      
-      let buffer = '';
-      let currentEventType = '';
-      
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            console.log('Portfolio stream complete');
-            break;
-          }
-          
-          // Decode the chunk and add it to our buffer
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete lines
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // Keep the last potentially incomplete line
-          
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            
-            // Check if this is an event type or data
-            if (line.startsWith('event: ')) {
-              currentEventType = line.slice(7).trim();
-            }
-            else if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              
-              // Process based on event type
-              switch (currentEventType) {
-                case 'status':
-                  setStatus(data);
-                  break;
-                case 'news':
-                  setNews(data);
-                  break;
-                case 'keywords':
-                  setKeywords(data);
-                  break;
-                case 'markets':
-                  try {
-                    const parsedData = JSON.parse(data);
-                    setMarkets(parsedData);
-                  } catch (e) {
-                    console.error('Error parsing markets:', e);
-                  }
-                  break;
-                case 'trade_ideas':
-                  try {
-                    const parsedData = JSON.parse(data);
-                    setTradeIdeas(Array.isArray(parsedData) ? parsedData : []);
-                  } catch (e) {
-                    console.error('Error parsing trade ideas:', e);
-                  }
-                  break;
-                case 'error':
-                  setError(prev => prev ? `${prev}\n${data}` : data);
-                  toast({
-                    title: "Error",
-                    description: data,
-                    variant: "destructive"
-                  });
-                  break;
-                case 'warning':
-                  toast({
-                    title: "Warning",
-                    description: data,
-                    variant: "destructive"
-                  });
-                  break;
-                case 'done':
-                  setStatus('Portfolio generation complete');
-                  setLoading(false);
-                  break;
-              }
-            }
-          }
+      // Process errors if any
+      if (results.errors && results.errors.length > 0) {
+        results.errors.forEach(err => {
+          logUpdate('error', `Error in ${err.step}: ${err.message}`);
+          toast({
+            title: `Error in ${err.step}`,
+            description: err.message,
+            variant: "destructive"
+          });
+        });
+        
+        // Only set error if we have no data
+        if (!results.data.markets.length && !results.data.tradeIdeas.length) {
+          setError(results.errors.map(e => `${e.step}: ${e.message}`).join('\n'));
         }
-      } catch (error: any) {
-        // Check if this is an abort error (user cancelled)
-        if (error.name === 'AbortError') {
-          console.log('Portfolio generation aborted by user');
-        } else {
-          throw error;
-        }
-      } finally {
-        setLoading(false);
       }
+      
+      // Process all steps
+      if (results.steps && results.steps.length > 0) {
+        // Update progress
+        updateProgressFromSteps(results.steps);
+        
+        // Add step messages to progress
+        results.steps.forEach(step => {
+          if (step.completed) {
+            addProgressMessage(`Completed: ${step.name.replace(/_/g, ' ')}`);
+          }
+        });
+      }
+      
+      // Set data
+      if (results.data) {
+        setNews(results.data.news || '');
+        setKeywords(results.data.keywords || '');
+        setMarkets(results.data.markets || []);
+        setTradeIdeas(results.data.tradeIdeas || []);
+        
+        // Add data summaries to progress
+        addProgressMessage(`Found ${results.data.markets.length} relevant markets`);
+        addProgressMessage(`Generated ${results.data.tradeIdeas.length} trade ideas`);
+      }
+      
+      if (results.status === 'completed') {
+        setStatus('Portfolio generation complete');
+        addProgressMessage('Portfolio generation complete');
+        setProgress(100);
+      } else {
+        setStatus('Portfolio generation encountered issues');
+        addProgressMessage('Portfolio generation completed with warnings');
+        setProgress(100);
+      }
+      
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logUpdate('error', `Portfolio generation error: ${errorMessage}`);
       console.error('Portfolio generation error:', error);
-      setError(error instanceof Error ? error.message : String(error));
+      setError(errorMessage);
+      
+      addProgressMessage(`Error: ${errorMessage}`);
+      
+      toast({
+        title: "Portfolio Generation Failed",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
       setLoading(false);
     }
   };
+
+  const progressStatus = loading ? 'processing' : error ? 'failed' : progress === 100 ? 'completed' : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -278,7 +303,7 @@ export function PortfolioResults({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Generating Portfolio
               </>
-            ) : error ? (
+            ) : error && !markets.length && !tradeIdeas.length ? (
               <>
                 <XCircle className="h-4 w-4 text-destructive" />
                 Portfolio Generation Failed
@@ -292,14 +317,14 @@ export function PortfolioResults({
           </DialogTitle>
         </DialogHeader>
         
-        {loading && (
-          <div className="flex items-center gap-2 mb-4">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{status}</span>
-          </div>
-        )}
+        {/* Progress display */}
+        <ProgressDisplay 
+          messages={progressMessages}
+          progress={progress}
+          status={progressStatus}
+        />
         
-        {error && (
+        {error && !markets.length && !tradeIdeas.length && (
           <div className="bg-destructive/10 p-3 rounded-md mb-4">
             <div className="flex items-start gap-2">
               <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
