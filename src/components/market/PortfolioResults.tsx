@@ -349,7 +349,7 @@ export function PortfolioResults({
           </TabsList>
           
           <TabsContent value="ideas" className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 h-[calc(70vh-200px)]">
               {tradeIdeas.length > 0 ? (
                 <div className="space-y-4">
                   {tradeIdeas.map((idea, i) => (
@@ -408,7 +408,7 @@ export function PortfolioResults({
           </TabsContent>
           
           <TabsContent value="markets" className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 h-[calc(70vh-200px)]">
               {markets.length > 0 ? (
                 <div className="space-y-6">
                   {markets.map((market, i) => (
@@ -477,7 +477,7 @@ export function PortfolioResults({
           </TabsContent>
           
           <TabsContent value="analysis" className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 h-[calc(70vh-200px)]">
               <div className="space-y-6">
                 <div>
                   <h3 className="font-medium mb-2">Your Insight</h3>
