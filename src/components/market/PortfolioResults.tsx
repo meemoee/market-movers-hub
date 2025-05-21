@@ -121,51 +121,58 @@ export function PortfolioResults({
       );
       eventSourceRef.current = eventSource;
       
-      eventSource.addEventListener('status', (e) => {
-        setStatus(e.data);
+      eventSource.addEventListener('status', (e: Event) => {
+        const messageEvent = e as MessageEvent;
+        setStatus(messageEvent.data);
       });
       
-      eventSource.addEventListener('news', (e) => {
-        setNews(e.data);
+      eventSource.addEventListener('news', (e: Event) => {
+        const messageEvent = e as MessageEvent;
+        setNews(messageEvent.data);
       });
       
-      eventSource.addEventListener('keywords', (e) => {
-        setKeywords(e.data);
+      eventSource.addEventListener('keywords', (e: Event) => {
+        const messageEvent = e as MessageEvent;
+        setKeywords(messageEvent.data);
       });
       
-      eventSource.addEventListener('markets', (e) => {
+      eventSource.addEventListener('markets', (e: Event) => {
         try {
-          const data = JSON.parse(e.data);
+          const messageEvent = e as MessageEvent;
+          const data = JSON.parse(messageEvent.data);
           setMarkets(data);
         } catch (error) {
           console.error('Error parsing markets data:', error);
         }
       });
       
-      eventSource.addEventListener('trade_ideas', (e) => {
+      eventSource.addEventListener('trade_ideas', (e: Event) => {
         try {
-          const data = JSON.parse(e.data);
+          const messageEvent = e as MessageEvent;
+          const data = JSON.parse(messageEvent.data);
           setTradeIdeas(Array.isArray(data) ? data : []);
         } catch (error) {
           console.error('Error parsing trade ideas data:', error);
         }
       });
       
-      eventSource.addEventListener('error', (e) => {
-        console.error('SSE Error:', e.data);
-        setError(prev => prev ? `${prev}\n${e.data}` : e.data);
+      eventSource.addEventListener('error', (e: Event) => {
+        const messageEvent = e as MessageEvent;
+        console.error('SSE Error:', messageEvent.data);
+        setError(prev => prev ? `${prev}\n${messageEvent.data}` : messageEvent.data);
         toast({
           title: "Error",
-          description: e.data,
+          description: messageEvent.data,
           variant: "destructive"
         });
       });
       
-      eventSource.addEventListener('warning', (e) => {
+      eventSource.addEventListener('warning', (e: Event) => {
+        const messageEvent = e as MessageEvent;
         toast({
           title: "Warning",
-          description: e.data,
-          variant: "warning"
+          description: messageEvent.data,
+          variant: "destructive" // Changed from "warning" to "destructive"
         });
       });
       

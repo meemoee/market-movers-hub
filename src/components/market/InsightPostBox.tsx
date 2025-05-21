@@ -110,7 +110,7 @@ export function InsightPostBox() {
       toast({
         title: "No content provided",
         description: "Please share your market insight before generating a portfolio",
-        variant: "warning"
+        variant: "destructive" // Changed from "warning" to "destructive"
       });
       return;
     }
