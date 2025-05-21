@@ -155,6 +155,29 @@ export type Database = {
           },
         ]
       }
+      market_embeddings: {
+        Row: {
+          embedding: string | null
+          market_id: string
+        }
+        Insert: {
+          embedding?: string | null
+          market_id: string
+        }
+        Update: {
+          embedding?: string | null
+          market_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_embeddings_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: true
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       market_events: {
         Row: {
           created_at: string
@@ -821,7 +844,27 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      latest_prices: {
+        Row: {
+          best_ask: number | null
+          best_bid: number | null
+          last_traded_price: number | null
+          liquidity: number | null
+          market_id: string | null
+          no_price: number | null
+          volume: number | null
+          yes_price: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_prices_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       append_analysis_chunk: {
@@ -854,6 +897,10 @@ export type Database = {
       batch_insert_market_data: {
         Args: { event_records: Json; market_records: Json; price_records: Json }
         Returns: undefined
+      }
+      binary_quantize: {
+        Args: { "": string } | { "": unknown }
+        Returns: unknown
       }
       check_research_job_complete: {
         Args: { job_id: string }
@@ -945,6 +992,70 @@ export type Database = {
           market_id: string
         }[]
       }
+      halfvec_avg: {
+        Args: { "": number[] }
+        Returns: unknown
+      }
+      halfvec_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      halfvec_send: {
+        Args: { "": unknown }
+        Returns: string
+      }
+      halfvec_typmod_in: {
+        Args: { "": unknown[] }
+        Returns: number
+      }
+      hnsw_bit_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      hnsw_halfvec_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      hnsw_sparsevec_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      hnswhandler: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      ivfflat_bit_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      ivfflat_halfvec_support: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      ivfflathandler: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      l2_norm: {
+        Args: { "": unknown } | { "": unknown }
+        Returns: number
+      }
+      l2_normalize: {
+        Args: { "": string } | { "": unknown } | { "": unknown }
+        Returns: string
+      }
+      sparsevec_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      sparsevec_send: {
+        Args: { "": unknown }
+        Returns: string
+      }
+      sparsevec_typmod_in: {
+        Args: { "": unknown[] }
+        Returns: number
+      }
       update_iteration_field: {
         Args: {
           job_id: string
@@ -961,6 +1072,30 @@ export type Database = {
       update_research_results: {
         Args: { job_id: string; result_data: Json }
         Returns: undefined
+      }
+      vector_avg: {
+        Args: { "": number[] }
+        Returns: string
+      }
+      vector_dims: {
+        Args: { "": string } | { "": unknown }
+        Returns: number
+      }
+      vector_norm: {
+        Args: { "": string }
+        Returns: number
+      }
+      vector_out: {
+        Args: { "": string }
+        Returns: unknown
+      }
+      vector_send: {
+        Args: { "": string }
+        Returns: string
+      }
+      vector_typmod_in: {
+        Args: { "": unknown[] }
+        Returns: number
       }
     }
     Enums: {
