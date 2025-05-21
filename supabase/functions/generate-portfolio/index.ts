@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -22,20 +21,18 @@ serve(async (req) => {
   }
 
   try {
-    // Parse the URL to handle both GET and query params
-    const url = new URL(req.url);
-    
-    // Extract auth token from Authorization header or query param
-    let authToken;
+    // Extract auth token from Authorization header
     const authHeader = req.headers.get('authorization');
     
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      // Extract from Authorization header (preferred method)
-      authToken = authHeader.substring(7);
-    } else {
-      // Fall back to query param
-      authToken = url.searchParams.get('access_token');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
     }
+    
+    // Extract the token
+    const authToken = authHeader.substring(7);
     
     if (!authToken) {
       return new Response(
@@ -44,14 +41,47 @@ serve(async (req) => {
       );
     }
     
-    // Handle SSE request
+    // Handle SSE request (GET)
     if (req.method === 'GET') {
-      const content = url.searchParams.get('content');
+      // Extract content from Authorization header or create a client to validate token
+      let content = '';
       
-      if (!content) {
+      try {
+        // Create Supabase client to validate the token and get user details
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        
+        const supabaseAdmin = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          { auth: { persistSession: false } }
+        );
+        
+        // Verify token is valid
+        const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken);
+        
+        if (error || !user) {
+          throw new Error('Invalid authentication token');
+        }
+        
+        // Get the request url parameters (content might be in there)
+        const url = new URL(req.url);
+        content = url.searchParams.get('content') || '';
+        
+        // If content wasn't in URL params, try to get it from the user's session storage 
+        // or from the most recent request in database
+        if (!content) {
+          // You could implement a way to retrieve the content from a database
+          // For now, we'll return an error
+          return new Response(
+            JSON.stringify({ error: 'No content provided in request' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          );
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
         return new Response(
-          JSON.stringify({ error: 'No content provided in query params' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          JSON.stringify({ error: `Authentication error: ${error.message}` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
         );
       }
       
@@ -404,7 +434,11 @@ Suggest 3 trades as a JSON array of objects with:
       
       // Return success to indicate the job has started
       return new Response(
-        JSON.stringify({ success: true, message: "Portfolio generation initiated" }),
+        JSON.stringify({ 
+          success: true, 
+          message: "Portfolio generation initiated",
+          content: content // Store content for later retrieval in GET request
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       );
     }

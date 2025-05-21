@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -62,14 +61,14 @@ export function PortfolioResults({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('ideas');
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
   
-  // Clean up event source when component unmounts or dialog closes
+  // Clean up fetch request when component unmounts or dialog closes
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, []);
@@ -88,16 +87,31 @@ export function PortfolioResults({
     generatePortfolio(content);
   }, [open, content]);
 
+  const processSSEMessage = (line: string) => {
+    if (line.startsWith('event: ')) {
+      const eventType = line.slice(7).trim();
+      
+      // Wait for the data line
+      return eventType;
+    } 
+    else if (line.startsWith('data: ')) {
+      const data = line.slice(6).trim();
+      return { type: 'data', data };
+    }
+    
+    return null;
+  };
+
   const generatePortfolio = async (content: string) => {
     try {
       setLoading(true);
       setError('');
       
-      // Close any existing EventSource
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      // Clean up any existing fetch request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
-
+      
       // Get the current session to retrieve the auth token
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token;
@@ -113,10 +127,10 @@ export function PortfolioResults({
         return;
       }
 
-      // Use Supabase function URL directly
+      // Use Supabase function URL
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
       
-      // First make a POST request to start the generation process
+      // First make a POST request to start the generation process with proper authentication
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
@@ -131,90 +145,119 @@ export function PortfolioResults({
         throw new Error(`Failed to start portfolio generation: ${errorText}`);
       }
       
-      // Now set up SSE to receive streaming updates
-      // Properly format the SSE URL with correctly encoded parameters
-      const sseUrl = new URL(functionUrl);
-      sseUrl.searchParams.append('content', content);
-      sseUrl.searchParams.append('access_token', authToken);
-      
-      console.log("Connecting to EventSource with URL:", sseUrl.toString());
-      
-      const eventSource = new EventSource(sseUrl.toString());
-      eventSourceRef.current = eventSource;
-      
-      eventSource.addEventListener('status', (e: Event) => {
-        const messageEvent = e as MessageEvent;
-        console.log("Status update:", messageEvent.data);
-        setStatus(messageEvent.data);
+      // Now set up streaming using fetch API instead of EventSource for better auth handling
+      abortControllerRef.current = new AbortController();
+      const streamResponse = await fetch(functionUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        signal: abortControllerRef.current.signal
       });
       
-      eventSource.addEventListener('news', (e: Event) => {
-        const messageEvent = e as MessageEvent;
-        setNews(messageEvent.data);
-      });
+      if (!streamResponse.ok) {
+        const errorText = await streamResponse.text();
+        throw new Error(`Stream connection failed: ${errorText}`);
+      }
       
-      eventSource.addEventListener('keywords', (e: Event) => {
-        const messageEvent = e as MessageEvent;
-        setKeywords(messageEvent.data);
-      });
+      if (!streamResponse.body) {
+        throw new Error('No response body from stream');
+      }
       
-      eventSource.addEventListener('markets', (e: Event) => {
-        try {
-          const messageEvent = e as MessageEvent;
-          const data = JSON.parse(messageEvent.data);
-          setMarkets(data);
-        } catch (error) {
-          console.error('Error parsing markets data:', error);
+      // Process the stream with TextDecoder
+      const reader = streamResponse.body.getReader();
+      const decoder = new TextDecoder();
+      
+      let buffer = '';
+      let currentEventType = '';
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            console.log('Portfolio stream complete');
+            break;
+          }
+          
+          // Decode the chunk and add it to our buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last potentially incomplete line
+          
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            
+            // Check if this is an event type or data
+            if (line.startsWith('event: ')) {
+              currentEventType = line.slice(7).trim();
+            }
+            else if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              
+              // Process based on event type
+              switch (currentEventType) {
+                case 'status':
+                  setStatus(data);
+                  break;
+                case 'news':
+                  setNews(data);
+                  break;
+                case 'keywords':
+                  setKeywords(data);
+                  break;
+                case 'markets':
+                  try {
+                    const parsedData = JSON.parse(data);
+                    setMarkets(parsedData);
+                  } catch (e) {
+                    console.error('Error parsing markets:', e);
+                  }
+                  break;
+                case 'trade_ideas':
+                  try {
+                    const parsedData = JSON.parse(data);
+                    setTradeIdeas(Array.isArray(parsedData) ? parsedData : []);
+                  } catch (e) {
+                    console.error('Error parsing trade ideas:', e);
+                  }
+                  break;
+                case 'error':
+                  setError(prev => prev ? `${prev}\n${data}` : data);
+                  toast({
+                    title: "Error",
+                    description: data,
+                    variant: "destructive"
+                  });
+                  break;
+                case 'warning':
+                  toast({
+                    title: "Warning",
+                    description: data,
+                    variant: "destructive"
+                  });
+                  break;
+                case 'done':
+                  setStatus('Portfolio generation complete');
+                  setLoading(false);
+                  break;
+              }
+            }
+          }
         }
-      });
-      
-      eventSource.addEventListener('trade_ideas', (e: Event) => {
-        try {
-          const messageEvent = e as MessageEvent;
-          const data = JSON.parse(messageEvent.data);
-          setTradeIdeas(Array.isArray(data) ? data : []);
-        } catch (error) {
-          console.error('Error parsing trade ideas data:', error);
+      } catch (error: any) {
+        // Check if this is an abort error (user cancelled)
+        if (error.name === 'AbortError') {
+          console.log('Portfolio generation aborted by user');
+        } else {
+          throw error;
         }
-      });
-      
-      eventSource.addEventListener('error', (e: Event) => {
-        const messageEvent = e as MessageEvent;
-        console.error('SSE Error:', messageEvent);
-        setError(prev => {
-          const newError = messageEvent.data || 'Connection error occurred';
-          return prev ? `${prev}\n${newError}` : newError;
-        });
-        toast({
-          title: "Connection Error",
-          description: "Failed to receive portfolio updates",
-          variant: "destructive"
-        });
-      });
-      
-      eventSource.addEventListener('warning', (e: Event) => {
-        const messageEvent = e as MessageEvent;
-        toast({
-          title: "Warning",
-          description: messageEvent.data,
-          variant: "destructive"
-        });
-      });
-      
-      eventSource.addEventListener('done', () => {
-        setStatus('Portfolio generation complete');
+      } finally {
         setLoading(false);
-        eventSource.close();
-        eventSourceRef.current = null;
-      });
-      
-      eventSource.onerror = (err) => {
-        console.error('EventSource error:', err);
-        setError('Connection error. Please try again.');
-        setLoading(false);
-        eventSource.close();
-        eventSourceRef.current = null;
-      };
+      }
     } catch (error) {
       console.error('Portfolio generation error:', error);
       setError(error instanceof Error ? error.message : String(error));
