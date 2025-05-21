@@ -113,11 +113,11 @@ export function PortfolioResults({
         return;
       }
 
-      // Use Supabase function URL directly with URL parameters for compatibility with EventSource
-      const url = new URL('/functions/v1/generate-portfolio', 'https://lfmkoismabbhujycnqpn.supabase.co');
+      // Use Supabase function URL directly
+      const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
       
       // First make a POST request to start the generation process
-      const response = await fetch(url, {
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,17 +132,19 @@ export function PortfolioResults({
       }
       
       // Now set up SSE to receive streaming updates
-      // Add the auth token to the SSE URL
-      const sseUrl = new URL('/functions/v1/generate-portfolio', 'https://lfmkoismabbhujycnqpn.supabase.co');
-      sseUrl.searchParams.append('content', encodeURIComponent(content));
+      // Properly format the SSE URL with correctly encoded parameters
+      const sseUrl = new URL(functionUrl);
+      sseUrl.searchParams.append('content', content);
+      sseUrl.searchParams.append('access_token', authToken);
       
-      const eventSource = new EventSource(
-        `${sseUrl.toString()}?access_token=${authToken}`
-      );
+      console.log("Connecting to EventSource with URL:", sseUrl.toString());
+      
+      const eventSource = new EventSource(sseUrl.toString());
       eventSourceRef.current = eventSource;
       
       eventSource.addEventListener('status', (e: Event) => {
         const messageEvent = e as MessageEvent;
+        console.log("Status update:", messageEvent.data);
         setStatus(messageEvent.data);
       });
       
@@ -178,11 +180,14 @@ export function PortfolioResults({
       
       eventSource.addEventListener('error', (e: Event) => {
         const messageEvent = e as MessageEvent;
-        console.error('SSE Error:', messageEvent.data);
-        setError(prev => prev ? `${prev}\n${messageEvent.data}` : messageEvent.data);
+        console.error('SSE Error:', messageEvent);
+        setError(prev => {
+          const newError = messageEvent.data || 'Connection error occurred';
+          return prev ? `${prev}\n${newError}` : newError;
+        });
         toast({
-          title: "Error",
-          description: messageEvent.data,
+          title: "Connection Error",
+          description: "Failed to receive portfolio updates",
           variant: "destructive"
         });
       });
@@ -192,7 +197,7 @@ export function PortfolioResults({
         toast({
           title: "Warning",
           description: messageEvent.data,
-          variant: "destructive" // Changed from "warning" to "destructive"
+          variant: "destructive"
         });
       });
       

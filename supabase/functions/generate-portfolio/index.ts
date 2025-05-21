@@ -22,32 +22,36 @@ serve(async (req) => {
   }
 
   try {
-    // Check authorization
+    // Parse the URL to handle both GET and query params
+    const url = new URL(req.url);
+    
+    // Extract auth token from Authorization header or query param
+    let authToken;
     const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Extract from Authorization header (preferred method)
+      authToken = authHeader.substring(7);
+    } else {
+      // Fall back to query param
+      authToken = url.searchParams.get('access_token');
+    }
+    
+    if (!authToken) {
       return new Response(
-        JSON.stringify({ error: 'Missing or invalid authorization header' }),
+        JSON.stringify({ error: 'Missing authentication token' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
     
     // Handle SSE request
-    const url = new URL(req.url);
     if (req.method === 'GET') {
       const content = url.searchParams.get('content');
-      const accessToken = url.searchParams.get('access_token');
       
       if (!content) {
         return new Response(
           JSON.stringify({ error: 'No content provided in query params' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        );
-      }
-      
-      if (!accessToken) {
-        return new Response(
-          JSON.stringify({ error: 'No access token provided in query params' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
         );
       }
       
@@ -377,7 +381,17 @@ Suggest 3 trades as a JSON array of objects with:
       return new Response(stream.readable, { headers });
     } else {
       // Handle POST request (initial submission)
-      const { content } = await req.json();
+      const contentType = req.headers.get('content-type') || '';
+      
+      // Parse the request body based on content-type
+      let content;
+      if (contentType.includes('application/json')) {
+        const body = await req.json();
+        content = body.content;
+      } else {
+        const formData = await req.formData();
+        content = formData.get('content')?.toString();
+      }
 
       if (!content) {
         return new Response(
