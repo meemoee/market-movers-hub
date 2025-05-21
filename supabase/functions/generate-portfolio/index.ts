@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { getMarketsWithLatestPrices, getRelatedMarketsWithPrices } from "../_shared/db-helpers.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
@@ -291,6 +292,12 @@ serve(async (req) => {
           timestamp: new Date().toISOString()
         });
         
+        console.log(`[${new Date().toISOString()}] Getting embedding for keywords: ${keywords.substring(0, 50)}...`);
+        
+        if (!keywords || keywords.length === 0) {
+          throw new Error("No keywords available for embedding generation");
+        }
+        
         const embedResponse = await fetchWithTimeout("https://api.openai.com/v1/embeddings", {
           method: "POST",
           headers: {
@@ -304,12 +311,19 @@ serve(async (req) => {
           })
         }, 10000);
 
+        if (!embedResponse.ok) {
+          const errorText = await embedResponse.text();
+          throw new Error(`OpenAI API error: ${embedResponse.status} - ${errorText}`);
+        }
+
         const embedData = await embedResponse.json();
         vecArr = embedData.data?.[0]?.embedding || [];
         
         if (vecArr.length === 0) {
           throw new Error("Failed to generate embedding");
         }
+        
+        console.log(`[${new Date().toISOString()}] Successfully generated embedding with ${vecArr.length} dimensions`);
         
         logStepEnd(step);
         
@@ -405,17 +419,10 @@ serve(async (req) => {
             timestamp: new Date().toISOString()
           });
         } else {
-          console.log(`[${new Date().toISOString()}] Fetching details for ${marketIds.length} markets`);
+          console.log(`[${new Date().toISOString()}] Fetching details for ${marketIds.length} markets using helper function`);
           
-          // Query for market details
-          const { data, error } = await supabaseAdmin
-            .rpc('get_markets_with_latest_prices', { 
-              p_market_ids: marketIds 
-            });
-            
-          if (error) throw error;
-          
-          details = data || [];
+          // Use the imported getMarketsWithLatestPrices function instead of the RPC call
+          details = await getMarketsWithLatestPrices(supabaseAdmin, marketIds);
           
           if (details.length === 0) {
             results.warnings.push({
@@ -468,9 +475,9 @@ serve(async (req) => {
               
             if (error) throw error;
             
-            // Transform the data
+            // Transform the data - using id instead of market_id in the mapping
             details = data.map(d => ({
-              market_id: d.market_id,
+              market_id: d.market_id,  // This already has the correct alias from the query
               event_id: d.event_id,
               event_title: d.events.title,
               question: d.question,
@@ -545,12 +552,8 @@ serve(async (req) => {
             { auth: { persistSession: false } }
           );
           
-          const { data: rels, error } = await supabaseAdmin
-            .rpc('get_related_markets_with_prices', { 
-              p_event_ids: eventIds 
-            });
-            
-          if (error) throw error;
+          // Use the imported getRelatedMarketsWithPrices function
+          const rels = await getRelatedMarketsWithPrices(supabaseAdmin, eventIds);
           
           // Group by event_id
           relatedByEvent = {};

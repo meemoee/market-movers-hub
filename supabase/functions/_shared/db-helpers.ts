@@ -35,6 +35,8 @@ export async function getMarketsWithLatestPrices(
   marketIds: string[]
 ): Promise<Market[]> {
   try {
+    console.log(`[DB] Getting market details for ${marketIds.length} markets`);
+    
     // Get markets with join to events and latest price data
     const { data, error } = await supabaseClient
       .from('markets')
@@ -52,7 +54,17 @@ export async function getMarketsWithLatestPrices(
       .eq('closed', false)
       .eq('archived', false);
       
-    if (error) throw error;
+    if (error) {
+      console.error('[DB] Error fetching markets:', error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) {
+      console.log('[DB] No active markets found matching the criteria');
+      return [];
+    }
+    
+    console.log(`[DB] Found ${data.length} markets, fetching price data`);
     
     // Get latest price data for these markets
     const { data: priceData, error: priceError } = await supabaseClient
@@ -70,15 +82,20 @@ export async function getMarketsWithLatestPrices(
       .in('market_id', marketIds)
       .order('timestamp', { ascending: false });
       
-    if (priceError) throw priceError;
+    if (priceError) {
+      console.error('[DB] Error fetching price data:', priceError);
+      throw priceError;
+    }
     
     // Map price data to markets
-    const priceByMarket = {};
+    const priceByMarket: Record<string, any> = {};
     for (const price of priceData || []) {
       if (!priceByMarket[price.market_id]) {
         priceByMarket[price.market_id] = price;
       }
     }
+    
+    console.log(`[DB] Found price data for ${Object.keys(priceByMarket).length} markets`);
     
     // Combine market and price data
     return (data || []).map(market => ({
@@ -101,6 +118,8 @@ export async function getRelatedMarketsWithPrices(
   eventIds: string[]
 ): Promise<RelatedMarket[]> {
   try {
+    console.log(`[DB] Getting related markets for ${eventIds.length} events`);
+    
     // Get markets in the same events
     const { data, error } = await supabaseClient
       .from('markets')
@@ -114,9 +133,18 @@ export async function getRelatedMarketsWithPrices(
       .eq('closed', false)
       .eq('archived', false);
       
-    if (error) throw error;
+    if (error) {
+      console.error('[DB] Error fetching related markets:', error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) {
+      console.log('[DB] No related markets found');
+      return [];
+    }
     
     const marketIds = data.map(m => m.id);
+    console.log(`[DB] Found ${marketIds.length} related markets, fetching price data`);
     
     // Get latest price data for these markets
     const { data: priceData, error: priceError } = await supabaseClient
@@ -134,15 +162,20 @@ export async function getRelatedMarketsWithPrices(
       .in('market_id', marketIds)
       .order('timestamp', { ascending: false });
       
-    if (priceError) throw priceError;
+    if (priceError) {
+      console.error('[DB] Error fetching price data for related markets:', priceError);
+      throw priceError;
+    }
     
     // Map price data to markets
-    const priceByMarket = {};
+    const priceByMarket: Record<string, any> = {};
     for (const price of priceData || []) {
       if (!priceByMarket[price.market_id]) {
         priceByMarket[price.market_id] = price;
       }
     }
+    
+    console.log(`[DB] Found price data for ${Object.keys(priceByMarket).length} related markets`);
     
     // Combine market and price data
     return (data || []).map(market => ({
