@@ -7,6 +7,7 @@ export type Market = {
   event_title: string;
   question: string;
   description: string;
+  image?: string; // Added image field
   yes_price?: number;
   no_price?: number;
   best_bid?: number;
@@ -45,6 +46,7 @@ export async function getMarketsWithLatestPrices(
         event_id,
         question,
         description,
+        image,
         events!inner (
           title
         )
@@ -104,6 +106,7 @@ export async function getMarketsWithLatestPrices(
       event_title: market.events.title,
       question: market.question,
       description: market.description,
+      image: market.image, // Include image in the results
       ...priceByMarket[market.id]
     }));
   } catch (error) {

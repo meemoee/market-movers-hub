@@ -9,21 +9,24 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, ImageIcon } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ProgressDisplay } from "../market/research/ProgressDisplay";
 import { useJobLogger } from "@/hooks/research/useJobLogger";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface TradeIdea {
+  market_id: string;
   market_title: string;
   outcome: string;
   current_price: number;
   target_price: number;
   stop_price: number;
   rationale: string;
+  image?: string | null;
 }
 
 interface RelatedMarket {
@@ -40,6 +43,8 @@ interface Market {
   event_id: string;
   event_title: string;
   question: string;
+  description?: string;
+  image?: string;
   yes_price: number;
   no_price: number;
   related_markets: RelatedMarket[];
@@ -347,15 +352,28 @@ export function PortfolioResults({
                   {tradeIdeas.map((idea, i) => (
                     <Card key={i}>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-base">{idea.market_title}</CardTitle>
-                        <CardDescription className="flex items-center gap-2">
-                          <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'}>
-                            {idea.outcome}
-                          </Badge>
-                          <span>Current: ${idea.current_price.toFixed(2)}</span>
-                          <span>⟶</span>
-                          <span>Target: ${idea.target_price.toFixed(2)}</span>
-                        </CardDescription>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10 rounded-md">
+                            {idea.image ? (
+                              <AvatarImage src={idea.image} alt={idea.market_title} />
+                            ) : (
+                              <AvatarFallback className="rounded-md bg-muted">
+                                <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <div>
+                            <CardTitle className="text-base">{idea.market_title}</CardTitle>
+                            <CardDescription className="flex items-center gap-2 mt-1">
+                              <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'}>
+                                {idea.outcome}
+                              </Badge>
+                              <span>Current: ${idea.current_price.toFixed(2)}</span>
+                              <span>⟶</span>
+                              <span>Target: ${idea.target_price.toFixed(2)}</span>
+                            </CardDescription>
+                          </div>
+                        </div>
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm">{idea.rationale}</p>
@@ -386,7 +404,24 @@ export function PortfolioResults({
                 <div className="space-y-6">
                   {markets.map((market, i) => (
                     <div key={i} className="border rounded-lg p-4">
-                      <h3 className="font-medium text-lg mb-2">{market.event_title}</h3>
+                      <div className="flex gap-3 mb-3">
+                        <Avatar className="h-12 w-12 rounded-md">
+                          {market.image ? (
+                            <AvatarImage src={market.image} alt={market.question} />
+                          ) : (
+                            <AvatarFallback className="rounded-md bg-muted">
+                              <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                            </AvatarFallback>
+                          )}
+                        </Avatar>
+                        <div>
+                          <h3 className="font-medium text-lg">{market.event_title}</h3>
+                          <div className="flex gap-3 text-sm text-muted-foreground">
+                            <span>ID: {market.market_id}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <div className="border-l-2 border-primary/50 pl-3 mb-3">
                         <p className="font-medium">{market.question}</p>
                         <div className="flex gap-3 mt-1 text-sm">

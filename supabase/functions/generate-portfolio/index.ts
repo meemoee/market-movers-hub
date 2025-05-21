@@ -466,6 +466,7 @@ serve(async (req) => {
                 event_id,
                 question,
                 description,
+                image,
                 events!inner(title)
               `)
               .in('id', marketIds)
@@ -475,13 +476,14 @@ serve(async (req) => {
               
             if (error) throw error;
             
-            // Transform the data - using id instead of market_id in the mapping
+            // Transform the data - using correct alias mapping
             details = data.map(d => ({
               market_id: d.market_id,  // This already has the correct alias from the query
               event_id: d.event_id,
               event_title: d.events.title,
               question: d.question,
               description: d.description,
+              image: d.image, // Include image URL
               yes_price: 0.5,
               no_price: 0.5
             }));
@@ -600,8 +602,16 @@ serve(async (req) => {
         });
         
         if (bests.length > 0) {
+          // Create a mapping of market details for easy lookup in the OpenRouter response
+          const marketDetailsMap = bests.reduce((acc, market) => {
+            acc[market.market_id] = {
+              image: market.image || null
+            };
+            return acc;
+          }, {});
+          
           const listText = bests
-            .map((r, i) => `${i+1}. ${r.question} — yes:${r.yes_price}, no:${r.no_price}`)
+            .map((r, i) => `${i+1}. ID: ${r.market_id} | ${r.question} — yes:${r.yes_price}, no:${r.no_price}`)
             .join("\n");
             
           const ideasPrompt = `
@@ -615,7 +625,13 @@ Based on these, suggest the 3 best trade ideas that would make the user money if
 Return ONLY a valid JSON array of exactly three such objects. No extra text.
 
 Suggest 3 trades as a JSON array of objects with:
-  market_title, outcome, current_price, target_price, stop_price, rationale.`;
+  market_id (must be one of the specific IDs provided above, CRITICAL),
+  market_title, 
+  outcome, 
+  current_price, 
+  target_price, 
+  stop_price, 
+  rationale.`;
 
           const ideasResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -639,8 +655,20 @@ Suggest 3 trades as a JSON array of objects with:
           const rawIdeas = ideasData.choices?.[0]?.message?.content?.trim() || "[]";
           
           try {
-            tradeIdeas = JSON.parse(rawIdeas);
+            const parsedIdeas = JSON.parse(rawIdeas);
+            
+            // Add image URL from our market details to each trade idea
+            tradeIdeas = parsedIdeas.map(idea => {
+              const marketDetails = marketDetailsMap[idea.market_id] || {};
+              return {
+                ...idea,
+                image: marketDetails.image || null
+              };
+            });
+            
             results.data.tradeIdeas = tradeIdeas;
+            
+            console.log(`[${new Date().toISOString()}] Generated ${tradeIdeas.length} trade ideas with market details`);
           } catch (jsonError) {
             console.error(`[${new Date().toISOString()}] Error parsing trade ideas JSON:`, jsonError, rawIdeas);
             addError("trade_ideas_json_parse", jsonError.message || "Error parsing trade ideas JSON", { raw: rawIdeas });
