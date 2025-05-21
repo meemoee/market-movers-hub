@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -340,7 +341,7 @@ export function PortfolioResults({
           </div>
         )}
         
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <TabsList className="grid grid-cols-3 mb-4">
             <TabsTrigger value="ideas">Trade Ideas</TabsTrigger>
             <TabsTrigger value="markets">Markets</TabsTrigger>
@@ -349,7 +350,7 @@ export function PortfolioResults({
           
           <div className="flex-1 overflow-hidden">
             <TabsContent value="ideas" className="h-full overflow-hidden flex flex-col m-0">
-              <ScrollArea className="h-[60vh] pr-4">
+              <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
                 {tradeIdeas.length > 0 ? (
                   <div className="space-y-4">
                     {tradeIdeas.map((idea, i) => (
@@ -408,7 +409,7 @@ export function PortfolioResults({
             </TabsContent>
             
             <TabsContent value="markets" className="h-full overflow-hidden flex flex-col m-0">
-              <ScrollArea className="h-[60vh] pr-4">
+              <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
                 {markets.length > 0 ? (
                   <div className="space-y-6">
                     {markets.map((market, i) => (
@@ -477,7 +478,7 @@ export function PortfolioResults({
             </TabsContent>
             
             <TabsContent value="analysis" className="h-full overflow-hidden flex flex-col m-0">
-              <ScrollArea className="h-[60vh] pr-4">
+              <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
                 <div className="space-y-6">
                   <div>
                     <h3 className="font-medium mb-2">Your Insight</h3>

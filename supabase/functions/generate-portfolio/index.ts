@@ -498,7 +498,7 @@ serve(async (req) => {
         }
       }
 
-      // 6️⃣ Pick best per event
+      // 6️⃣ Pick markets without duplicating events
       let bests: any[] = [];
       try {
         const step = logStepStart("Best markets selection");
@@ -508,16 +508,24 @@ serve(async (req) => {
           timestamp: new Date().toISOString()
         });
         
-        // Instead of filtering to just one market per event, include all markets from the search up to 25
+        // Track event IDs we've already included to avoid duplicates
+        const includedEventIds = new Set<string>();
         bests = [];
         let count = 0;
+        
+        // Process matches in order of relevance
         for (const m of matches) {
-          const d = details.find(d => d.market_id === m.id);
-          if (d) {
-            bests.push(d);
-            count++;
-            // Limit to 25 markets total
-            if (count >= 25) break;
+          const marketDetail = details.find(d => d.market_id === m.id);
+          if (marketDetail) {
+            // Only include the market if we haven't seen this event ID yet
+            if (!includedEventIds.has(marketDetail.event_id)) {
+              includedEventIds.add(marketDetail.event_id);
+              bests.push(marketDetail);
+              count++;
+              
+              // Limit to 25 markets total
+              if (count >= 25) break;
+            }
           }
         }
         
