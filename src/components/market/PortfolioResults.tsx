@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -17,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ProgressDisplay } from "../market/research/ProgressDisplay";
 import { useJobLogger } from "@/hooks/research/useJobLogger";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 interface TradeIdea {
   market_id: string;
@@ -353,15 +353,21 @@ export function PortfolioResults({
                     <Card key={i}>
                       <CardHeader className="pb-2">
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10 rounded-md">
+                          <div className="h-10 w-10 rounded-md overflow-hidden">
                             {idea.image ? (
-                              <AvatarImage src={idea.image} alt={idea.market_title} />
+                              <AspectRatio ratio={1} className="bg-muted/20">
+                                <img 
+                                  src={idea.image} 
+                                  alt={idea.market_title}
+                                  className="object-cover w-full h-full" 
+                                />
+                              </AspectRatio>
                             ) : (
-                              <AvatarFallback className="rounded-md bg-muted">
+                              <div className="h-full w-full flex items-center justify-center bg-muted">
                                 <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                              </AvatarFallback>
+                              </div>
                             )}
-                          </Avatar>
+                          </div>
                           <div>
                             <CardTitle className="text-base">{idea.market_title}</CardTitle>
                             <CardDescription className="flex items-center gap-2 mt-1">
@@ -405,15 +411,21 @@ export function PortfolioResults({
                   {markets.map((market, i) => (
                     <div key={i} className="border rounded-lg p-4">
                       <div className="flex gap-3 mb-3">
-                        <Avatar className="h-12 w-12 rounded-md">
+                        <div className="h-12 w-12 rounded-md overflow-hidden flex-shrink-0">
                           {market.image ? (
-                            <AvatarImage src={market.image} alt={market.question} />
+                            <AspectRatio ratio={1} className="bg-muted/20">
+                              <img 
+                                src={market.image} 
+                                alt={market.question} 
+                                className="object-cover w-full h-full" 
+                              />
+                            </AspectRatio>
                           ) : (
-                            <AvatarFallback className="rounded-md bg-muted">
+                            <div className="h-full w-full flex items-center justify-center bg-muted">
                               <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                            </AvatarFallback>
+                            </div>
                           )}
-                        </Avatar>
+                        </div>
                         <div>
                           <h3 className="font-medium text-lg">{market.event_title}</h3>
                           <div className="flex gap-3 text-sm text-muted-foreground">
