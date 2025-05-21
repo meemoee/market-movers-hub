@@ -13,6 +13,7 @@ import { Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TradeIdea {
   market_title: string;
@@ -97,6 +98,21 @@ export function PortfolioResults({
         eventSourceRef.current.close();
       }
 
+      // Get the current session to retrieve the auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token;
+      
+      if (!authToken) {
+        setError('Authentication required. Please sign in to use this feature.');
+        setLoading(false);
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to generate portfolios",
+          variant: "destructive"
+        });
+        return;
+      }
+
       // Use Supabase function URL directly with URL parameters for compatibility with EventSource
       const url = new URL('/functions/v1/generate-portfolio', 'https://lfmkoismabbhujycnqpn.supabase.co');
       
@@ -105,7 +121,7 @@ export function PortfolioResults({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('supabaseAuthToken') || ''}`
+          'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({ content })
       });
@@ -116,8 +132,12 @@ export function PortfolioResults({
       }
       
       // Now set up SSE to receive streaming updates
+      // Add the auth token to the SSE URL
+      const sseUrl = new URL('/functions/v1/generate-portfolio', 'https://lfmkoismabbhujycnqpn.supabase.co');
+      sseUrl.searchParams.append('content', encodeURIComponent(content));
+      
       const eventSource = new EventSource(
-        `/functions/v1/generate-portfolio?content=${encodeURIComponent(content)}`
+        `${sseUrl.toString()}?access_token=${authToken}`
       );
       eventSourceRef.current = eventSource;
       
