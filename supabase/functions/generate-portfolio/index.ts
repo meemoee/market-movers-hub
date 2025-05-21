@@ -631,7 +631,7 @@ ${listText}
 
 Based on these, suggest the 3 best trade ideas that would make the user money if their prediction or sentiment ends up being CORRECT.
 
-Return ONLY a valid JSON array of exactly three such objects. No extra text. Don't pick an outcome with very small (<10%) odds unless you have good reason.
+Return ONLY a valid JSON array of exactly three such objects. No extra text. Don't pick an outcome with very small (<10%) or very high (90%+) odds unless you have good reason. NEVER suggest an outcome with price of 0 or 1 since those were already resolved.
 
 Suggest 3 trades as a JSON array of objects with:
   market_id (must be one of the specific IDs provided above, CRITICAL),
