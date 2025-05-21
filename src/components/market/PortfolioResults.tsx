@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -15,7 +16,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ProgressDisplay } from "../market/research/ProgressDisplay";
 import { useJobLogger } from "@/hooks/research/useJobLogger";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 interface TradeIdea {
@@ -260,7 +260,10 @@ export function PortfolioResults({
       if (results.data) {
         setNews(results.data.news || '');
         setKeywords(results.data.keywords || '');
+        
+        // Display all markets from the embedding search (all 25 results)
         setMarkets(results.data.markets || []);
+        
         setTradeIdeas(results.data.tradeIdeas || []);
         
         // Add data summaries to progress

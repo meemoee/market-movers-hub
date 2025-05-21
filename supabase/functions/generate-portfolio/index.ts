@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { getMarketsWithLatestPrices, getRelatedMarketsWithPrices } from "../_shared/db-helpers.ts";
@@ -509,14 +508,16 @@ serve(async (req) => {
           timestamp: new Date().toISOString()
         });
         
-        const seen = new Set();
+        // Instead of filtering to just one market per event, include all markets from the search up to 25
         bests = [];
+        let count = 0;
         for (const m of matches) {
           const d = details.find(d => d.market_id === m.id);
-          if (d && !seen.has(d.event_id)) {
-            seen.add(d.event_id);
+          if (d) {
             bests.push(d);
-            if (bests.length >= 25) break;
+            count++;
+            // Limit to 25 markets total
+            if (count >= 25) break;
           }
         }
         
