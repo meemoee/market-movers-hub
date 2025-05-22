@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import PriceChart from '../market/PriceChart';
 import { toast } from 'sonner';
 import { Holding } from './AccountHoldings';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface PriceHistoryViewProps {
   marketId?: string | null;
@@ -12,6 +14,7 @@ interface PriceHistoryViewProps {
 }
 
 export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHistoryViewProps) {
+  const [showCumulativePnL, setShowCumulativePnL] = useState(false);
   // For backward compatibility, use marketId if holdings is not provided
   const effectiveMarketIds = holdings.length > 0 
     ? holdings.map(h => h.market_id) 
@@ -91,7 +94,7 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
   
   // Combine all price histories into a format suitable for the chart
   const combinedPriceHistories = useMemo(() => {
-    return priceHistoryQueries
+    const individualSeries = priceHistoryQueries
       .filter(query => query.data?.points?.length > 0)
       .map(query => {
         const marketId = query.data!.marketId;
@@ -101,10 +104,113 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
           id: marketId,
           name: holding?.market?.question || 'Market',
           color: colorMap.get(marketId) || '#3b82f6',
-          data: query.data!.points
+          data: query.data!.points,
+          holding
         };
       });
-  }, [priceHistoryQueries, holdings, colorMap]);
+      
+    if (!showCumulativePnL || individualSeries.length <= 1) {
+      return individualSeries;
+    }
+    
+    // Calculate cumulative PnL series
+    try {
+      // Get the earliest and latest timestamps across all series
+      let allTimestamps: number[] = [];
+      individualSeries.forEach(series => {
+        series.data.forEach(point => {
+          allTimestamps.push(point.time);
+        });
+      });
+      
+      const minTime = Math.min(...allTimestamps);
+      const maxTime = Math.max(...allTimestamps);
+      
+      // Create a map of timestamps to prices for each series
+      const seriesPriceMap = new Map<string, Map<number, number>>();
+      individualSeries.forEach(series => {
+        const priceMap = new Map<number, number>();
+        series.data.forEach(point => {
+          priceMap.set(point.time, point.price);
+        });
+        seriesPriceMap.set(series.id, priceMap);
+      });
+      
+      // Calculate the total investment amount for weighting
+      const totalInvestment = holdings.reduce((sum, h) => {
+        const amount = h.amount || 0;
+        const entryPrice = h.entry_price || 0;
+        return sum + (amount * entryPrice);
+      }, 0);
+      
+      if (totalInvestment <= 0) {
+        // If there's no investment, just return individual series
+        return individualSeries;
+      }
+      
+      // Get all unique timestamps across all series
+      const uniqueTimestamps = [...new Set(allTimestamps)].sort((a, b) => a - b);
+      
+      // Calculate weighted PnL at each timestamp
+      const pnlData: { time: number; price: number }[] = [];
+      
+      uniqueTimestamps.forEach(timestamp => {
+        let totalPnL = 0;
+        
+        holdings.forEach(holding => {
+          const series = individualSeries.find(s => s.id === holding.market_id);
+          if (!series) return;
+          
+          const priceMap = seriesPriceMap.get(series.id);
+          if (!priceMap) return;
+          
+          // Find the closest timestamp in this series
+          let closestTime = timestamp;
+          let closestDiff = Infinity;
+          
+          for (const time of priceMap.keys()) {
+            const diff = Math.abs(time - timestamp);
+            if (diff < closestDiff) {
+              closestDiff = diff;
+              closestTime = time;
+            }
+          }
+          
+          const currentPrice = priceMap.get(closestTime) || 0;
+          const entryPrice = holding.entry_price || 0;
+          const amount = holding.amount || 0;
+          const investment = amount * entryPrice;
+          const weight = investment / totalInvestment;
+          
+          // Calculate PnL percentage
+          const pnlPct = entryPrice > 0 ? ((currentPrice / 100) - entryPrice) / entryPrice : 0;
+          
+          // Add weighted contribution to total PnL
+          totalPnL += pnlPct * weight * 100; // Convert back to percentage points for display
+        });
+        
+        pnlData.push({
+          time: timestamp,
+          price: totalPnL + 50 // Center at 50% for display purposes
+        });
+      });
+      
+      // Add the cumulative PnL series
+      return [
+        ...individualSeries,
+        {
+          id: 'cumulative-pnl',
+          name: 'Cumulative PnL',
+          color: '#f59e0b', // Amber color for the PnL line
+          data: pnlData,
+          isCumulativePnL: true
+        }
+      ];
+    } catch (error) {
+      console.error('Error calculating cumulative PnL:', error);
+      return individualSeries;
+    }
+  }, [priceHistoryQueries, holdings, colorMap, showCumulativePnL]);
 
   // Fetch events for the first market only (if multiple are selected)
   // In the future, we could combine events from all markets
@@ -169,22 +275,37 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
     <div className="space-y-4">
       <div>
         <div className="flex flex-col gap-1">
-          <div className="text-sm text-muted-foreground">Price History for {effectiveQuestion}</div>
-          {combinedPriceHistories.length > 0 && (
-            <div className="flex flex-wrap gap-3 mt-2">
-              {combinedPriceHistories.map(series => (
-                <div key={series.id} className="flex items-center gap-1">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: series.color }}
-                  ></div>
-                  <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                    {series.name}
-                  </span>
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="text-sm text-muted-foreground">Price History for {effectiveQuestion}</div>
+              {combinedPriceHistories.length > 0 && (
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {combinedPriceHistories.map(series => (
+                    <div key={series.id} className="flex items-center gap-1">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: series.color }}
+                      ></div>
+                      <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                        {series.name}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
+            
+            {holdings.length > 1 && (
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="cumulative-pnl"
+                  checked={showCumulativePnL}
+                  onCheckedChange={setShowCumulativePnL}
+                />
+                <Label htmlFor="cumulative-pnl" className="text-sm">Cumulative PnL</Label>
+              </div>
+            )}
+          </div>
         </div>
         {isLoading ? (
           <div className="h-[300px] flex items-center justify-center">

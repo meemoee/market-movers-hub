@@ -41,9 +41,17 @@ function Chart({
   // Use the first series as the primary data for scales and segments
   const primaryData = dataSeries.length > 0 ? dataSeries[0].data : [];
   // Define a type for our tooltip data
+  interface PricePoint {
+    seriesId: string;
+    price: number;
+    color: string;
+    name: string;
+    isCumulativePnL?: boolean;
+  }
+  
   interface TooltipData {
     time: number;
-    prices: { seriesId: string; price: number; color: string; name: string }[];
+    prices: PricePoint[];
   }
 
   const {
@@ -94,7 +102,7 @@ function Chart({
   // Get interpolated prices for all series at a given x position
   const getInterpolatedPrices = useCallback((xValue: number) => {
     const time = timeScale.invert(xValue).getTime();
-    const prices: { seriesId: string; price: number; color: string; name: string }[] = [];
+    const prices: PricePoint[] = [];
 
     dataSeries.forEach(series => {
       if (series.data.length === 0) return;
@@ -117,7 +125,8 @@ function Chart({
         seriesId: series.id,
         price: series.data[leftIndex].price,
         color: series.color,
-        name: series.name
+        name: series.name,
+        isCumulativePnL: series.isCumulativePnL
       });
     });
 
@@ -198,7 +207,8 @@ function Chart({
                 x={d => timeScale(d.time)}
                 y={d => priceScale(d.price)}
                 stroke={series.color}
-                strokeWidth={2}
+                strokeWidth={series.isCumulativePnL ? 3 : 2}
+                strokeDasharray={series.isCumulativePnL ? "4,2" : undefined}
                 curve={curveStepAfter}
               />
             ))}
@@ -325,7 +335,13 @@ function Chart({
                   className="w-2 h-2 rounded-full" 
                   style={{ backgroundColor: price.color }}
                 ></div>
-                <span>{price.price.toFixed(2)}%</span>
+                {price.isCumulativePnL ? (
+                  <span className={`font-medium ${price.price > 50 ? 'text-green-400' : price.price < 50 ? 'text-red-400' : ''}`}>
+                    PnL: {((price.price - 50) > 0 ? '+' : '')}{(price.price - 50).toFixed(2)}%
+                  </span>
+                ) : (
+                  <span>{price.price.toFixed(2)}%</span>
+                )}
               </div>
             ))}
           </div>
@@ -340,6 +356,8 @@ interface PriceSeriesData {
   name: string;
   color: string;
   data: PriceData[];
+  isCumulativePnL?: boolean;
+  holding?: any;
 }
 
 interface PriceChartProps {
