@@ -13,6 +13,7 @@ import { AccountHoldings } from "./account/AccountHoldings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import AccountSettings from "./account/AccountSettings";
 import { Settings } from "lucide-react";
+import { Link } from "react-router-dom";
 
 type AccountIslandContext = 'desktop' | 'mobile';
 
@@ -130,8 +131,10 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
           <div className="flex items-start gap-4">
             <AccountAvatar email={session.user.email} />
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold mb-1">Account</h2>
-              <p className="text-sm text-muted-foreground truncate overflow-hidden">{session.user.email}</p>
+              <Link to="/profile" className="block hover:underline">
+                <h2 className="text-xl font-bold mb-1">Account</h2>
+                <p className="text-sm text-muted-foreground truncate overflow-hidden">{session.user.email}</p>
+              </Link>
             </div>
             <Button 
               variant="ghost" 
