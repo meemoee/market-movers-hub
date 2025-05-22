@@ -1,4 +1,3 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -204,40 +203,62 @@ serve(async (req) => {
       }
     }
 
-    // Store price history in the database
-    try {
-      // Prepare batch of records to insert
-      const rows = data.history.map((point: { t: number; p: string | number }) => ({
-        market_id: marketId,
-        token_id: clobTokenId,
-        timestamp: new Date(point.t * 1000), // Convert seconds to milliseconds for JS Date
-        price: typeof point.p === 'string' ? parseFloat(point.p) : point.p
-      }));
-
-      if (rows.length > 0) {
-        // Use a batch insert with conflict resolution
-        const { error } = await supabaseClient
-          .from('market_price_history')
-          .upsert(rows, { 
-            onConflict: 'market_id,token_id,timestamp',
-            ignoreDuplicates: true 
-          });
-
-        if (error) {
-          console.error('Error storing price history:', error);
-        } else {
-          console.log(`Successfully stored ${rows.length} price points for market ${marketId}`);
-        }
-      }
-    } catch (dbError) {
-      console.error('Error storing price history in database:', dbError);
-      // Continue with the response even if storing fails
-    }
-
-    return new Response(
+    // Return the response immediately while storing data in the background
+    const response_data = new Response(
       JSON.stringify(formattedData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
+    // Store price history in the database in the background
+    const storeDataInBackground = async () => {
+      try {
+        // Prepare batch of records to insert
+        const rows = data.history.map((point: { t: number; p: string | number }) => ({
+          market_id: marketId,
+          token_id: clobTokenId,
+          timestamp: new Date(point.t * 1000), // Convert seconds to milliseconds for JS Date
+          price: typeof point.p === 'string' ? parseFloat(point.p) : point.p
+        }));
+
+        if (rows.length > 0) {
+          // Use a batch insert with conflict resolution
+          const { error } = await supabaseClient
+            .from('market_price_history')
+            .upsert(rows, { 
+              onConflict: 'market_id,token_id,timestamp',
+              ignoreDuplicates: true 
+            });
+
+          if (error) {
+            console.error('Error storing price history in background task:', error);
+          } else {
+            console.log(`Background task: Successfully stored ${rows.length} price points for market ${marketId}`);
+          }
+        }
+      } catch (dbError) {
+        console.error('Background task error storing price history:', dbError);
+      } finally {
+        // Always close the Redis connection in the background task
+        if (redis) {
+          try {
+            await redis.close();
+          } catch (closeError) {
+            console.error('Background task error closing Redis connection:', closeError);
+          }
+        }
+      }
+    };
+
+    // Use EdgeRuntime.waitUntil to handle the background processing
+    if (typeof EdgeRuntime !== 'undefined') {
+      EdgeRuntime.waitUntil(storeDataInBackground());
+      console.log('Background task for storing price history started');
+    } else {
+      console.warn('EdgeRuntime not available, storing data synchronously');
+      await storeDataInBackground();
+    }
+    
+    return response_data;
 
   } catch (error) {
     console.error('Error in price-history function:', error);
@@ -249,8 +270,9 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } finally {
-    // Clean up Redis connection if it exists
-    if (redis) {
+    // Only close Redis in the main request flow if EdgeRuntime is not available
+    // Otherwise, it will be closed in the background task
+    if (redis && (typeof EdgeRuntime === 'undefined')) {
       try {
         await redis.close();
       } catch (closeError) {
