@@ -183,10 +183,10 @@ serve(async (req) => {
         fidelity = 15; // 15 minutes for 1 month
         break;
       case '3m':
-        fidelity = 60; // 1 hour for 3 months (better than 15 min for meaningful data)
+        fidelity = 15; // 1 hour for 3 months (better than 15 min for meaningful data)
         break;
       case 'all':
-        fidelity = 60; // 1 day for all time
+        fidelity = 15; // 1 day for all time
         break;
     }
 
@@ -397,10 +397,10 @@ async function fetchAndStoreInterval(
         fidelity = 15; // 15 minutes for 1 month
         break;
       case '3m':
-        fidelity = 60; // 1 hour for 3 months
+        fidelity = 15; // 1 hour for 3 months
         break;
       case 'all':
-        fidelity = 1440; // 1 day for all time
+        fidelity = 15; // 1 day for all time
         break;
     }
 
