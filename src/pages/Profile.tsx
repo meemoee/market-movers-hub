@@ -15,6 +15,7 @@ import RightSidebar from "@/components/RightSidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { PriceHistoryView } from "@/components/account/PriceHistoryView";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 export default function Profile() {
   const { user, session, isLoading } = useAuth();
@@ -22,8 +23,8 @@ export default function Profile() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
-  // Fetch user balance
-  const { data: balance } = useQuery({
+  // Fetch user balance with proper caching
+  const { data: balance, isLoading: isBalanceLoading } = useQuery({
     queryKey: ['userBalance', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
@@ -39,11 +40,14 @@ export default function Profile() {
         return data.balance;
       } catch (error: any) {
         console.error('Error fetching profile:', error);
+        toast.error('Could not load your balance. Please try again later.');
         return null;
       }
     },
     enabled: !!user?.id,
     refetchOnWindowFocus: false,
+    staleTime: 60000, // 1 minute
+    gcTime: 300000    // 5 minutes
   });
 
   useEffect(() => {
@@ -72,6 +76,7 @@ export default function Profile() {
         .eq('id', user.id);
     } catch (error) {
       console.error('Error updating balance:', error);
+      toast.error('Could not update your balance. Please try again later.');
     }
   };
 
@@ -86,6 +91,7 @@ export default function Profile() {
         .eq('id', user.id);
     } catch (error) {
       console.error('Error updating balance:', error);
+      toast.error('Could not update your balance. Please try again later.');
     }
   };
 

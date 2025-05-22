@@ -45,6 +45,8 @@ export function PriceHistoryView({ marketId, question }: PriceHistoryViewProps) 
     enabled: !!marketId,
     retry: 3,
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
+    staleTime: 60000, // 1 minute
+    gcTime: 300000, // 5 minutes
   });
 
   const { data: marketEvents, isLoading: isEventsLoading } = useQuery({
@@ -78,6 +80,8 @@ export function PriceHistoryView({ marketId, question }: PriceHistoryViewProps) 
     enabled: !!marketId,
     retry: 3,
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
+    staleTime: 60000, // 1 minute
+    gcTime: 300000, // 5 minutes
   });
 
   const isLoading = isPriceLoading || isEventsLoading;

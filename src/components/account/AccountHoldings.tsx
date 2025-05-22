@@ -1,10 +1,10 @@
-
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Holding {
   id: string;
@@ -25,12 +25,13 @@ interface AccountHoldingsProps {
 }
 
 export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountHoldingsProps) {
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedInterval, setSelectedInterval] = useState("1440"); // Default to 24h
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  // Query for holdings
-  const { data: holdings = [] } = useQuery({
-    queryKey: ['userHoldings'],
+  // Query for holdings with proper staleTime and cacheTime settings
+  const { data: holdings = [], isLoading, isError } = useQuery({
+    queryKey: ['userHoldings', user?.id],
     queryFn: async () => {
       try {
         const { data, error } = await supabase
@@ -46,7 +47,8 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
               image,
               outcomes
             )
-          `);
+          `)
+          .eq('user_id', user?.id);
 
         if (error) throw error;
         
@@ -65,12 +67,12 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
       } catch (error) {
         console.error('Error fetching holdings:', error);
         return [];
-      } finally {
-        setIsLoading(false);
       }
     },
+    enabled: !!user?.id,
     refetchOnWindowFocus: false,
     staleTime: 60000, // 1 minute
+    gcTime: 300000,   // 5 minutes
   });
 
   // Query for market prices
@@ -101,22 +103,30 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
       return priceMap;
     },
     enabled: holdings.length > 0,
-    refetchInterval: 30000 // Refresh every 30 seconds
+    refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 15000, // 15 seconds
+    gcTime: 60000,    // 1 minute
   });
 
+  // Set up real-time updates for holdings
   useEffect(() => {
+    if (!user?.id) return;
+    
     // Subscribe to real-time updates
     const channel = supabase
       .channel('schema-db-changes')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
-          table: 'holdings'
+          table: 'holdings',
+          filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('New holding detected:', payload);
+          console.log('Holdings update detected:', payload);
+          // Invalidate the holdings query to trigger a refetch
+          queryClient.invalidateQueries({ queryKey: ['userHoldings', user.id] });
         }
       )
       .subscribe();
@@ -124,7 +134,7 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user?.id, queryClient]);
 
   const getAdjustedPrice = (price: number | null, holding: Holding) => {
     if (!price || !holding.market?.outcomes) return price;
@@ -143,8 +153,20 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
     return ((adjustedCurrentPrice - entryPrice) / entryPrice) * 100;
   };
 
+  if (isError) {
+    return <div className="text-sm text-red-500">Error loading holdings</div>;
+  }
+
   if (isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading holdings...</div>;
+    return (
+      <div className="text-sm text-muted-foreground">
+        <div className="animate-pulse space-y-2">
+          <div className="h-10 bg-gray-700/20 rounded"></div>
+          <div className="h-10 bg-gray-700/20 rounded"></div>
+          <div className="h-10 bg-gray-700/20 rounded"></div>
+        </div>
+      </div>
+    );
   }
 
   if (holdings.length === 0) {
