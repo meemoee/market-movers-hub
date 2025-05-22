@@ -33,27 +33,27 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
   // If we're on mobile and this is a desktop context, or vice versa, don't render the content
   const shouldRender = (context === 'mobile' && isMobile) || (context === 'desktop' && !isMobile);
 
-  // Use React Query for profile data to prevent constant refetching
-  const { data: profileData } = useQuery({
-    queryKey: ['userBalance', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      
+  useEffect(() => {
+    if (!shouldRender || !session?.user) return;
+    
+    fetchUserProfile(session.user.id);
+  }, [shouldRender, session]);
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
       const { data, error } = await supabase
         .from('profiles')
         .select('balance')
-        .eq('id', user.id)
+        .eq('id', userId)
         .single();
 
       if (error) throw error;
-      
       setBalance(data.balance);
-      return data;
-    },
-    enabled: !!user?.id && shouldRender,
-    staleTime: 30000, // Cache for 30 seconds
-    refetchOnWindowFocus: false,
-  });
+    } catch (error: any) {
+      console.error('Error fetching profile:', error);
+      setError(error.message);
+    }
+  };
 
   // Open settings modal
   const openSettings = () => {
