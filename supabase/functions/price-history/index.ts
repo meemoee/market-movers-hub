@@ -204,6 +204,36 @@ serve(async (req) => {
       }
     }
 
+    // Store price history in the database
+    try {
+      // Prepare batch of records to insert
+      const rows = data.history.map((point: { t: number; p: string | number }) => ({
+        market_id: marketId,
+        token_id: clobTokenId,
+        timestamp: new Date(point.t * 1000), // Convert seconds to milliseconds for JS Date
+        price: typeof point.p === 'string' ? parseFloat(point.p) : point.p
+      }));
+
+      if (rows.length > 0) {
+        // Use a batch insert with conflict resolution
+        const { error } = await supabaseClient
+          .from('market_price_history')
+          .upsert(rows, { 
+            onConflict: 'market_id,token_id,timestamp',
+            ignoreDuplicates: true 
+          });
+
+        if (error) {
+          console.error('Error storing price history:', error);
+        } else {
+          console.log(`Successfully stored ${rows.length} price points for market ${marketId}`);
+        }
+      }
+    } catch (dbError) {
+      console.error('Error storing price history in database:', dbError);
+      // Continue with the response even if storing fails
+    }
+
     return new Response(
       JSON.stringify(formattedData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
