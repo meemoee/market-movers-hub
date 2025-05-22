@@ -4,7 +4,7 @@ import AccountIsland from "@/components/AccountIsland";
 import { AccountHoldings } from "@/components/account/AccountHoldings";
 import { AccountBalance } from "@/components/account/AccountBalance";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import MobileHeader from "@/components/MobileHeader";
@@ -69,9 +69,11 @@ export default function Profile() {
             <div className="fixed z-[60] w-[280px]" style={{ 
               left: 'max(calc(50% - 640px + 16px), 16px)' /* Aligns with main content container */ 
             }}>
-              {/* Logo */}
+              {/* Logo with Link */}
               <div className="text-left mb-10 pl-3 pt-2">
-                <img src="/hunchex-logo.svg" alt="HunchEx" className="h-14" />
+                <Link to="/" className="block hover:opacity-80 transition-opacity">
+                  <img src="/hunchex-logo.svg" alt="HunchEx" className="h-14" />
+                </Link>
               </div>
               <AccountIsland context="desktop" />
             </div>
