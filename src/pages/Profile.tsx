@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from "react";
 import AccountIsland from "@/components/AccountIsland";
-import { AccountHoldings } from "@/components/account/AccountHoldings";
+import { AccountHoldings, Holding } from "@/components/account/AccountHoldings";
 import { AccountBalance } from "@/components/account/AccountBalance";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from "react-router-dom";
@@ -13,12 +13,38 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Glow } from "@/components/ui/glow";
 import RightSidebar from "@/components/RightSidebar";
 import { useAuth } from "@/contexts/AuthContext";
+import { PriceHistoryView } from "@/components/account/PriceHistoryView";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Profile() {
   const { user, session, isLoading } = useAuth();
-  const [balance, setBalance] = useState<number | null>(null);
+  const [selectedHolding, setSelectedHolding] = useState<Holding | null>(null);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+
+  // Fetch user balance
+  const { data: balance } = useQuery({
+    queryKey: ['userBalance', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('balance')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        return data.balance;
+      } catch (error: any) {
+        console.error('Error fetching profile:', error);
+        return null;
+      }
+    },
+    enabled: !!user?.id,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (isLoading) return; // Wait until auth state is determined
@@ -26,26 +52,40 @@ export default function Profile() {
     if (!session?.user) {
       // Redirect to home if not logged in
       navigate('/');
-      return;
-    }
-    
-    if (session?.user) {
-      fetchUserProfile(session.user.id);
     }
   }, [navigate, session, isLoading]);
 
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('balance')
-        .eq('id', userId)
-        .single();
+  const handleSelectHolding = (holding: Holding) => {
+    setSelectedHolding(prevSelected => 
+      prevSelected?.id === holding.id ? null : holding
+    );
+  };
 
-      if (error) throw error;
-      setBalance(data.balance);
-    } catch (error: any) {
-      console.error('Error fetching profile:', error);
+  const handleAddBalance = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const newBalance = (balance || 0) + 100;
+      await supabase
+        .from('profiles')
+        .update({ balance: newBalance })
+        .eq('id', user.id);
+    } catch (error) {
+      console.error('Error updating balance:', error);
+    }
+  };
+
+  const handleRemoveBalance = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const newBalance = Math.max(0, (balance || 0) - 100);
+      await supabase
+        .from('profiles')
+        .update({ balance: newBalance })
+        .eq('id', user.id);
+    } catch (error) {
+      console.error('Error updating balance:', error);
     }
   };
 
@@ -108,17 +148,28 @@ export default function Profile() {
                       <h2 className="text-2xl font-semibold mb-4">Balance</h2>
                       <AccountBalance 
                         balance={balance}
-                        onAddBalance={() => setBalance(b => (b ?? 0) + 100)}
-                        onRemoveBalance={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
+                        onAddBalance={handleAddBalance}
+                        onRemoveBalance={handleRemoveBalance}
                       />
                     </Card>
 
                     <Card className="p-6">
                       <h2 className="text-2xl font-semibold mb-4">Your Holdings</h2>
-                      <ScrollArea className="h-[500px]">
-                        <AccountHoldings />
-                      </ScrollArea>
+                      <AccountHoldings 
+                        onSelectHolding={handleSelectHolding} 
+                        selectedHoldingId={selectedHolding?.id}
+                      />
                     </Card>
+
+                    {selectedHolding && (
+                      <Card className="p-6">
+                        <h2 className="text-2xl font-semibold mb-4">Price History</h2>
+                        <PriceHistoryView 
+                          marketId={selectedHolding.market_id}
+                          question={selectedHolding.market?.question || 'Selected Market'}
+                        />
+                      </Card>
+                    )}
                   </div>
                 )}
               </div>

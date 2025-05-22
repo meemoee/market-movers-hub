@@ -6,7 +6,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { useQuery } from "@tanstack/react-query";
 
-interface Holding {
+export interface Holding {
   id: string;
   market_id: string;
   entry_price: number | null;
@@ -19,18 +19,61 @@ interface Holding {
   } | null;
 }
 
-interface MarketPrice {
-  market_id: string;
-  last_traded_price: number;
-  timestamp: string;
+interface AccountHoldingsProps {
+  onSelectHolding?: (holding: Holding) => void;
+  selectedHoldingId?: string;
 }
 
-export function AccountHoldings() {
-  const [holdings, setHoldings] = useState<Holding[]>([]);
+export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountHoldingsProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedInterval, setSelectedInterval] = useState("1440"); // Default to 24h
 
-  // Fetch latest prices and price changes for all markets in holdings
+  // Query for holdings
+  const { data: holdings = [] } = useQuery({
+    queryKey: ['userHoldings'],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from('holdings')
+          .select(`
+            id,
+            market_id,
+            entry_price,
+            outcome,
+            amount,
+            market:markets (
+              question,
+              image,
+              outcomes
+            )
+          `);
+
+        if (error) throw error;
+        
+        // Transform the data to ensure outcomes is properly typed
+        const transformedData = (data || []).map(holding => ({
+          ...holding,
+          market: holding.market ? {
+            ...holding.market,
+            outcomes: Array.isArray(holding.market.outcomes) 
+              ? holding.market.outcomes.map(outcome => String(outcome))
+              : null
+          } : null
+        }));
+        
+        return transformedData;
+      } catch (error) {
+        console.error('Error fetching holdings:', error);
+        return [];
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    refetchOnWindowFocus: false,
+    staleTime: 60000, // 1 minute
+  });
+
+  // Query for market prices
   const { data: latestPrices } = useQuery({
     queryKey: ['latestPrices', holdings.map(h => h.market_id), selectedInterval],
     queryFn: async () => {
@@ -62,8 +105,6 @@ export function AccountHoldings() {
   });
 
   useEffect(() => {
-    fetchHoldings();
-
     // Subscribe to real-time updates
     const channel = supabase
       .channel('schema-db-changes')
@@ -76,7 +117,6 @@ export function AccountHoldings() {
         },
         (payload) => {
           console.log('New holding detected:', payload);
-          fetchHoldings(); // Refresh the holdings list when a new one is added
         }
       )
       .subscribe();
@@ -85,44 +125,6 @@ export function AccountHoldings() {
       supabase.removeChannel(channel);
     };
   }, []);
-
-  const fetchHoldings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('holdings')
-        .select(`
-          id,
-          market_id,
-          entry_price,
-          outcome,
-          amount,
-          market:markets (
-            question,
-            image,
-            outcomes
-          )
-        `);
-
-      if (error) throw error;
-      
-      // Transform the data to ensure outcomes is properly typed
-      const transformedData = (data || []).map(holding => ({
-        ...holding,
-        market: holding.market ? {
-          ...holding.market,
-          outcomes: Array.isArray(holding.market.outcomes) 
-            ? holding.market.outcomes.map(outcome => String(outcome))
-            : null
-        } : null
-      }));
-      
-      setHoldings(transformedData);
-    } catch (error) {
-      console.error('Error fetching holdings:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const getAdjustedPrice = (price: number | null, holding: Holding) => {
     if (!price || !holding.market?.outcomes) return price;
@@ -162,7 +164,12 @@ export function AccountHoldings() {
             
             return (
               <div key={holding.id}>
-                <div className="p-4 flex items-start gap-3">
+                <div 
+                  className={`p-4 flex items-start gap-3 cursor-pointer hover:bg-accent/50 ${
+                    selectedHoldingId === holding.id ? 'bg-accent' : ''
+                  }`}
+                  onClick={() => onSelectHolding?.(holding)}
+                >
                   {holding.market?.image && (
                     <img
                       src={holding.market.image}
