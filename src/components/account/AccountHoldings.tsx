@@ -5,6 +5,7 @@ import { Card } from "../ui/card";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Holding {
   id: string;
@@ -26,9 +27,47 @@ interface MarketPrice {
 }
 
 export function AccountHoldings() {
-  const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
   const [selectedInterval, setSelectedInterval] = useState("1440"); // Default to 24h
+
+  // Use React Query to fetch and cache the user's holdings
+  const { data: holdings = [], isLoading } = useQuery({
+    queryKey: ['userHoldings', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      
+      const { data, error } = await supabase
+        .from('holdings')
+        .select(`
+          id,
+          market_id,
+          entry_price,
+          outcome,
+          amount,
+          market:markets (
+            question,
+            image,
+            outcomes
+          )
+        `);
+
+      if (error) throw error;
+      
+      // Transform the data to ensure outcomes is properly typed
+      return (data || []).map(holding => ({
+        ...holding,
+        market: holding.market ? {
+          ...holding.market,
+          outcomes: Array.isArray(holding.market.outcomes) 
+            ? holding.market.outcomes.map(outcome => String(outcome))
+            : null
+        } : null
+      }));
+    },
+    enabled: !!user,
+    staleTime: 30000, // Cache for 30 seconds
+    refetchOnWindowFocus: false,
+  });
 
   // Fetch latest prices and price changes for all markets in holdings
   const { data: latestPrices } = useQuery({
@@ -61,22 +100,23 @@ export function AccountHoldings() {
     refetchInterval: 30000 // Refresh every 30 seconds
   });
 
+  // Set up real-time subscription for holdings updates
   useEffect(() => {
-    fetchHoldings();
-
+    if (!user) return;
+    
     // Subscribe to real-time updates
     const channel = supabase
       .channel('schema-db-changes')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Listen for all events (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'holdings'
         },
         (payload) => {
-          console.log('New holding detected:', payload);
-          fetchHoldings(); // Refresh the holdings list when a new one is added
+          console.log('Holdings change detected:', payload);
+          // The query will be invalidated and refetched automatically
         }
       )
       .subscribe();
@@ -84,45 +124,7 @@ export function AccountHoldings() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
-
-  const fetchHoldings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('holdings')
-        .select(`
-          id,
-          market_id,
-          entry_price,
-          outcome,
-          amount,
-          market:markets (
-            question,
-            image,
-            outcomes
-          )
-        `);
-
-      if (error) throw error;
-      
-      // Transform the data to ensure outcomes is properly typed
-      const transformedData = (data || []).map(holding => ({
-        ...holding,
-        market: holding.market ? {
-          ...holding.market,
-          outcomes: Array.isArray(holding.market.outcomes) 
-            ? holding.market.outcomes.map(outcome => String(outcome))
-            : null
-        } : null
-      }));
-      
-      setHoldings(transformedData);
-    } catch (error) {
-      console.error('Error fetching holdings:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [user]);
 
   const getAdjustedPrice = (price: number | null, holding: Holding) => {
     if (!price || !holding.market?.outcomes) return price;

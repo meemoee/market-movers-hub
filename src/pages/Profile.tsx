@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import AccountIsland from "@/components/AccountIsland";
 import { AccountHoldings } from "@/components/account/AccountHoldings";
@@ -13,12 +12,32 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Glow } from "@/components/ui/glow";
 import RightSidebar from "@/components/RightSidebar";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "react-query";
 
 export default function Profile() {
   const { user, session, isLoading } = useAuth();
-  const [balance, setBalance] = useState<number | null>(null);
-  const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+
+  // Use React Query for profile data to prevent unnecessary refetching
+  const { data: profileData } = useQuery({
+    queryKey: ['profileBalance', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('balance')
+        .eq('id', user?.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id && !isLoading,
+    staleTime: 30000, // Cache for 30 seconds
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (isLoading) return; // Wait until auth state is determined
@@ -26,28 +45,8 @@ export default function Profile() {
     if (!session?.user) {
       // Redirect to home if not logged in
       navigate('/');
-      return;
-    }
-    
-    if (session?.user) {
-      fetchUserProfile(session.user.id);
     }
   }, [navigate, session, isLoading]);
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('balance')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      setBalance(data.balance);
-    } catch (error: any) {
-      console.error('Error fetching profile:', error);
-    }
-  };
 
   // If still loading or no session, show a loading state
   if (isLoading || !session) {
@@ -107,7 +106,7 @@ export default function Profile() {
                     <Card className="p-6">
                       <h2 className="text-2xl font-semibold mb-4">Balance</h2>
                       <AccountBalance 
-                        balance={balance}
+                        balance={profileData?.balance}
                         onAddBalance={() => setBalance(b => (b ?? 0) + 100)}
                         onRemoveBalance={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
                       />
@@ -129,7 +128,7 @@ export default function Profile() {
 
       {/* Mobile Dock */}
       {isMobile && <MobileDock />}
-
+      
       {/* Right Sidebar */}
       <RightSidebar />
     </div>
