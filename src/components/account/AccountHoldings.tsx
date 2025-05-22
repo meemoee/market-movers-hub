@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
@@ -107,6 +108,35 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
     staleTime: 15000, // 15 seconds
     gcTime: 60000,    // 1 minute
   });
+
+  // Prefetch price history for all market holdings when component loads
+  useEffect(() => {
+    if (holdings.length > 0) {
+      const prefetchPriceHistories = async () => {
+        console.log('Prefetching price histories for all holdings');
+        
+        // Use Promise.all to fetch all market price histories in parallel
+        try {
+          const prefetchPromises = holdings.map(holding => 
+            supabase.functions.invoke('price-history', {
+              body: { 
+                marketId: holding.market_id,
+                fetchAllIntervals: true // Signal to fetch all intervals
+              }
+            })
+          );
+          
+          await Promise.allSettled(prefetchPromises);
+          console.log('Completed prefetching price histories for all holdings');
+        } catch (error) {
+          console.error('Error prefetching price histories:', error);
+        }
+      };
+      
+      // Start prefetching in the background
+      prefetchPriceHistories();
+    }
+  }, [holdings]);
 
   // Set up real-time updates for holdings
   useEffect(() => {

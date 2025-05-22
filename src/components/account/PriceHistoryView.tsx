@@ -20,7 +20,11 @@ export function PriceHistoryView({ marketId, question }: PriceHistoryViewProps) 
       
       try {
         const response = await supabase.functions.invoke<{ t: string; y: number; lastUpdated?: number }[]>('price-history', {
-          body: JSON.stringify({ marketId, interval: selectedChartInterval })
+          body: JSON.stringify({ 
+            marketId, 
+            interval: selectedChartInterval,
+            fetchAllIntervals: true // Always request all intervals to be stored
+          })
         });
 
         if (response.error) {

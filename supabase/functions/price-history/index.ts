@@ -27,8 +27,8 @@ serve(async (req) => {
 
   let redis;
   try {
-    const { marketId, interval = '1d' } = await req.json();
-    console.log('Request parameters:', { marketId, interval });
+    const { marketId, interval = '1d', fetchAllIntervals = false } = await req.json();
+    console.log('Request parameters:', { marketId, interval, fetchAllIntervals });
 
     if (!marketId) {
       return new Response(
@@ -129,7 +129,7 @@ serve(async (req) => {
             point.lastUpdated = parseInt(latestKey);
           });
 
-          // Start background task to fetch and store all intervals
+          // Always start background task to fetch and store all intervals
           if (typeof EdgeRuntime !== 'undefined') {
             const storeAllIntervalsTask = async () => {
               try {
@@ -183,10 +183,10 @@ serve(async (req) => {
         fidelity = 15; // 15 minutes for 1 month
         break;
       case '3m':
-        fidelity = 15; // 1 hour for 3 months (better than 15 min for meaningful data)
+        fidelity = 60; // 1 hour for 3 months
         break;
       case 'all':
-        fidelity = 15; // 1 day for all time
+        fidelity = 1440; // 1 day for all time
         break;
     }
 
@@ -397,10 +397,10 @@ async function fetchAndStoreInterval(
         fidelity = 15; // 15 minutes for 1 month
         break;
       case '3m':
-        fidelity = 15; // 1 hour for 3 months
+        fidelity = 60; // 1 hour for 3 months
         break;
       case 'all':
-        fidelity = 15; // 1 day for all time
+        fidelity = 1440; // 1 day for all time
         break;
     }
 
