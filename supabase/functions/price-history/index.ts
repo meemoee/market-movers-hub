@@ -10,6 +10,16 @@ const REDIS_CACHE_TTL = 60; // 1 minute cache TTL
 // All supported intervals
 const ALL_INTERVALS = ['1d', '1w', '1m', '3m', 'all'];
 
+// Polymarket API Fidelity Guidelines:
+// Interval   | Finest Supported Fidelity
+// -----------|-------------------------
+// 1m (month) | 15 minutes (900 seconds)
+// 1w (week)  | 5 minutes (300 seconds)
+// 1d (day)   | 1 minute (60 seconds)
+// 6h         | 1 minute (60 seconds)
+// 1h         | 1 minute (60 seconds)
+// max        | 1 minute (60 seconds)
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -163,24 +173,24 @@ serve(async (req) => {
     // Calculate time range based on interval
     const endTs = Math.floor(Date.now() / 1000);
     let duration = 24 * 60 * 60; // Default to 1 day
-    let periodInterval = 1; // Default to 1 minute intervals
+    let periodInterval = 60; // Default to 1 minute intervals (finest fidelity)
 
     switch (interval) {
       case '1w':
         duration = 7 * 24 * 60 * 60;
-        periodInterval = 60; // 1 hour intervals for 1 week
+        periodInterval = 300; // 5 minute intervals for 1 week (finest supported)
         break;
       case '1m':
         duration = 30 * 24 * 60 * 60;
-        periodInterval = 720; // 12 hour intervals for 1 month
+        periodInterval = 900; // 15 minute intervals for 1 month (finest supported)
         break;
       case '3m':
         duration = 90 * 24 * 60 * 60;
-        periodInterval = 1440; // 24 hour intervals for 3 months
+        periodInterval = 3600; // 1 hour intervals for 3 months (to avoid too many points)
         break;
       case 'all':
         duration = 365 * 24 * 60 * 60;
-        periodInterval = 1440; // 24 hour intervals for all time
+        periodInterval = 86400; // 24 hour/daily intervals for all time (to avoid too many points)
         break;
     }
 
@@ -360,24 +370,24 @@ async function fetchAndStoreInterval(
     // Calculate time range based on interval
     const endTs = Math.floor(Date.now() / 1000);
     let duration = 24 * 60 * 60; // Default to 1 day
-    let periodInterval = 1; // Default to 1 minute intervals
+    let periodInterval = 60; // Default to 1 minute intervals
 
     switch (interval) {
       case '1w':
         duration = 7 * 24 * 60 * 60;
-        periodInterval = 60; // 1 hour intervals for 1 week
+        periodInterval = 300; // 5 minute intervals for 1 week (finest supported)
         break;
       case '1m':
         duration = 30 * 24 * 60 * 60;
-        periodInterval = 720; // 12 hour intervals for 1 month
+        periodInterval = 900; // 15 minute intervals for 1 month (finest supported)
         break;
       case '3m':
         duration = 90 * 24 * 60 * 60;
-        periodInterval = 1440; // 24 hour intervals for 3 months
+        periodInterval = 3600; // 1 hour intervals for 3 months (to avoid too many points)
         break;
       case 'all':
         duration = 365 * 24 * 60 * 60;
-        periodInterval = 1440; // 24 hour intervals for all time
+        periodInterval = 86400; // 24 hour/daily intervals for all time (to avoid too many points)
         break;
     }
 
