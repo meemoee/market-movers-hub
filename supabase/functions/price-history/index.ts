@@ -186,7 +186,7 @@ serve(async (req) => {
         fidelity = 60; // 1 hour for 3 months (better than 15 min for meaningful data)
         break;
       case 'all':
-        fidelity = 1440; // 1 day for all time
+        fidelity = 60; // 1 day for all time
         break;
     }
 
