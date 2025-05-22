@@ -1,4 +1,3 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -119,6 +118,34 @@ serve(async (req) => {
           data.forEach(point => {
             point.lastUpdated = parseInt(latestKey);
           });
+
+          // Start background task to fetch and store all intervals
+          if (typeof EdgeRuntime !== 'undefined') {
+            const storeAllIntervalsTask = async () => {
+              try {
+                // Fetch and store all intervals in the background
+                const otherIntervals = ALL_INTERVALS.filter(i => i !== interval);
+                console.log(`Background task: Fetching and storing all intervals: ${ALL_INTERVALS.join(', ')}`);
+                
+                const intervalPromises = ALL_INTERVALS.map(currentInterval => 
+                  fetchAndStoreInterval(marketId, clobTokenId, currentInterval, supabaseClient, redis)
+                );
+
+                await Promise.allSettled(intervalPromises);
+                console.log(`Background task: Completed storing all intervals for market ${marketId}`);
+              } catch (error) {
+                console.error('Background task error storing all intervals:', error);
+              } finally {
+                if (redis) {
+                  await redis.close();
+                }
+              }
+            };
+
+            EdgeRuntime.waitUntil(storeAllIntervalsTask());
+            console.log('Background task for storing all price history intervals started');
+          }
+
           return new Response(
             JSON.stringify(data),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -213,26 +240,28 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-    // Store price history in the database in the background
-    const storeDataInBackground = async () => {
+    // Store all intervals in the background
+    const storeAllIntervalsTask = async () => {
       try {
-        // First, handle the requested interval
-        await storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
-
-        // Then, in parallel, fetch and store all other intervals
-        const otherIntervals = ALL_INTERVALS.filter(i => i !== interval);
-        console.log(`Background task: Fetching additional intervals: ${otherIntervals.join(', ')}`);
+        // Fetch and store all intervals
+        console.log(`Background task: Fetching and storing all intervals: ${ALL_INTERVALS.join(', ')}`);
         
         // Create an array of promises for all intervals
-        const intervalPromises = otherIntervals.map(otherInterval => 
-          fetchAndStoreInterval(marketId, clobTokenId, otherInterval, supabaseClient, redis)
-        );
+        const intervalPromises = ALL_INTERVALS.map(currentInterval => {
+          // Skip refetching the interval we just got since we already have the data
+          if (currentInterval === interval) {
+            return storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
+          }
+          
+          // Fetch other intervals
+          return fetchAndStoreInterval(marketId, clobTokenId, currentInterval, supabaseClient, redis);
+        });
 
         // Wait for all intervals to complete
         await Promise.allSettled(intervalPromises);
         console.log(`Background task: Completed storing all intervals for market ${marketId}`);
-      } catch (dbError) {
-        console.error('Background task error storing price history:', dbError);
+      } catch (error) {
+        console.error('Background task error storing all intervals:', error);
       } finally {
         // Always close the Redis connection in the background task
         if (redis) {
@@ -247,11 +276,12 @@ serve(async (req) => {
 
     // Use EdgeRuntime.waitUntil to handle the background processing
     if (typeof EdgeRuntime !== 'undefined') {
-      EdgeRuntime.waitUntil(storeDataInBackground());
+      EdgeRuntime.waitUntil(storeAllIntervalsTask());
       console.log('Background task for storing all price history intervals started');
     } else {
-      console.warn('EdgeRuntime not available, storing only requested interval data synchronously');
-      await storeDataInBackground();
+      console.warn('EdgeRuntime not available, storing all interval data may be less efficient');
+      // Still try to store in background, but can't guarantee completion
+      storeAllIntervalsTask();
     }
     
     return response_data;
