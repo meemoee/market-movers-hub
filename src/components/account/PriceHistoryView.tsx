@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -23,7 +22,7 @@ export function PriceHistoryView({ marketId, question }: PriceHistoryViewProps) 
           body: JSON.stringify({ 
             marketId, 
             interval: selectedChartInterval,
-            fetchAllIntervals: true // Always request all intervals to be stored
+            fetchAllIntervals: true // Signal to fetch all intervals in the background if needed
           })
         });
 

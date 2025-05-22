@@ -129,22 +129,39 @@ serve(async (req) => {
             point.lastUpdated = parseInt(latestKey);
           });
 
-          // Always start background task to fetch and store all intervals
-          if (typeof EdgeRuntime !== 'undefined') {
+          // If fetchAllIntervals is true, start background task to fetch and store all other intervals
+          // ONLY IF we haven't fetched them recently (check their cache status)
+          if (fetchAllIntervals && typeof EdgeRuntime !== 'undefined') {
             const storeAllIntervalsTask = async () => {
               try {
-                // Fetch and store all intervals in the background
+                // Only fetch other intervals that aren't already in cache
                 const otherIntervals = ALL_INTERVALS.filter(i => i !== interval);
-                console.log(`Background task: Fetching and storing all intervals: ${ALL_INTERVALS.join(', ')}`);
+                const intervalsToPrefetch = [];
                 
-                const intervalPromises = ALL_INTERVALS.map(currentInterval => 
-                  fetchAndStoreInterval(marketId, clobTokenId, currentInterval, supabaseClient, redis)
-                );
-
-                await Promise.allSettled(intervalPromises);
-                console.log(`Background task: Completed storing all intervals for market ${marketId}`);
+                // Check which intervals need to be prefetched
+                for (const otherInterval of otherIntervals) {
+                  const otherLatestKey = await redis.get(`priceHistory:${marketId}:${otherInterval}:latest`);
+                  if (!otherLatestKey) {
+                    intervalsToPrefetch.push(otherInterval);
+                  } else {
+                    console.log(`Background check: Interval ${otherInterval} is already in cache, skipping`);
+                  }
+                }
+                
+                if (intervalsToPrefetch.length > 0) {
+                  console.log(`Background task: Fetching missing intervals: ${intervalsToPrefetch.join(', ')}`);
+                  
+                  const intervalPromises = intervalsToPrefetch.map(currentInterval => 
+                    fetchAndStoreInterval(marketId, clobTokenId, currentInterval, supabaseClient, redis)
+                  );
+  
+                  await Promise.allSettled(intervalPromises);
+                  console.log(`Background task: Completed storing missing intervals for market ${marketId}`);
+                } else {
+                  console.log(`Background task: All intervals are already in cache for market ${marketId}`);
+                }
               } catch (error) {
-                console.error('Background task error storing all intervals:', error);
+                console.error('Background task error checking/storing intervals:', error);
               } finally {
                 if (redis) {
                   await redis.close();
@@ -153,7 +170,7 @@ serve(async (req) => {
             };
 
             EdgeRuntime.waitUntil(storeAllIntervalsTask());
-            console.log('Background task for storing all price history intervals started');
+            console.log('Background task for checking/storing missing price history intervals started');
           }
 
           return new Response(
@@ -267,48 +284,64 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-    // Store all intervals in the background
-    const storeAllIntervalsTask = async () => {
-      try {
-        // Fetch and store all intervals
-        console.log(`Background task: Fetching and storing all intervals: ${ALL_INTERVALS.join(', ')}`);
-        
-        // Create an array of promises for all intervals
-        const intervalPromises = ALL_INTERVALS.map(currentInterval => {
-          // Skip refetching the interval we just got since we already have the data
-          if (currentInterval === interval) {
-            return storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
+    // If fetchAllIntervals is true, fetch and store other intervals
+    if (fetchAllIntervals && typeof EdgeRuntime !== 'undefined') {
+      const storeAllIntervalsTask = async () => {
+        try {
+          // Check which intervals need to be prefetched (skip the one we just fetched)
+          const otherIntervals = ALL_INTERVALS.filter(i => i !== interval);
+          const intervalsToPrefetch = [];
+          
+          // Check which other intervals need to be fetched (not in cache)
+          if (redis) {
+            for (const otherInterval of otherIntervals) {
+              const otherLatestKey = await redis.get(`priceHistory:${marketId}:${otherInterval}:latest`);
+              if (!otherLatestKey) {
+                intervalsToPrefetch.push(otherInterval);
+              } else {
+                console.log(`Background check: Interval ${otherInterval} is already in cache, skipping`);
+              }
+            }
+          } else {
+            // If Redis connection failed, try to fetch all other intervals anyway
+            intervalsToPrefetch.push(...otherIntervals);
           }
           
-          // Fetch other intervals
-          return fetchAndStoreInterval(marketId, clobTokenId, currentInterval, supabaseClient, redis);
-        });
-
-        // Wait for all intervals to complete
-        await Promise.allSettled(intervalPromises);
-        console.log(`Background task: Completed storing all intervals for market ${marketId}`);
-      } catch (error) {
-        console.error('Background task error storing all intervals:', error);
-      } finally {
-        // Always close the Redis connection in the background task
-        if (redis) {
-          try {
-            await redis.close();
-          } catch (closeError) {
-            console.error('Background task error closing Redis connection:', closeError);
+          if (intervalsToPrefetch.length > 0) {
+            console.log(`Background task: Fetching missing intervals: ${intervalsToPrefetch.join(', ')}`);
+            
+            const intervalPromises = intervalsToPrefetch.map(currentInterval => 
+              fetchAndStoreInterval(marketId, clobTokenId, currentInterval, supabaseClient, redis)
+            );
+            
+            // Store the current interval data in the database
+            await storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
+            
+            // Wait for all intervals to complete
+            await Promise.allSettled(intervalPromises);
+            console.log(`Background task: Completed storing all intervals for market ${marketId}`);
+          } else {
+            console.log(`Background task: All other intervals are already in cache for market ${marketId}`);
+            // Still store the current interval data in the database
+            await storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
+          }
+        } catch (error) {
+          console.error('Background task error storing all intervals:', error);
+        } finally {
+          // Always close the Redis connection in the background task
+          if (redis) {
+            try {
+              await redis.close();
+            } catch (closeError) {
+              console.error('Background task error closing Redis connection:', closeError);
+            }
           }
         }
-      }
-    };
+      };
 
-    // Use EdgeRuntime.waitUntil to handle the background processing
-    if (typeof EdgeRuntime !== 'undefined') {
+      // Use EdgeRuntime.waitUntil to handle the background processing
       EdgeRuntime.waitUntil(storeAllIntervalsTask());
-      console.log('Background task for storing all price history intervals started');
-    } else {
-      console.warn('EdgeRuntime not available, storing all interval data may be less efficient');
-      // Still try to store in background, but can't guarantee completion
-      storeAllIntervalsTask();
+      console.log('Background task for storing price history intervals started');
     }
     
     return response_data;
@@ -372,6 +405,28 @@ async function storeIntervalData(
   }
 }
 
+// Function to check if a price history for a given interval exists in cache
+async function checkCacheForInterval(
+  marketId: string,
+  interval: string,
+  redis: any
+): Promise<boolean> {
+  try {
+    if (!redis) return false;
+    
+    const latestKey = await redis.get(`priceHistory:${marketId}:${interval}:latest`);
+    if (!latestKey) return false;
+    
+    const cacheKey = `priceHistory:${marketId}:${interval}:${latestKey}`;
+    const cachedData = await redis.get(cacheKey);
+    
+    return !!cachedData;
+  } catch (error) {
+    console.error(`Error checking cache for interval ${interval}:`, error);
+    return false;
+  }
+}
+
 // Function to fetch and store a specific interval
 async function fetchAndStoreInterval(
   marketId: string, 
@@ -381,6 +436,13 @@ async function fetchAndStoreInterval(
   redis: any
 ) {
   try {
+    // First check if this interval is already in the cache
+    const isInCache = await checkCacheForInterval(marketId, interval, redis);
+    if (isInCache) {
+      console.log(`Background task: Interval ${interval} for market ${marketId} already in cache, skipping fetch`);
+      return;
+    }
+    
     console.log(`Background task: Fetching interval ${interval} for market ${marketId}`);
     
     // Updated fidelity values for better data representation

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
@@ -110,6 +109,7 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
   });
 
   // Prefetch price history for all market holdings when component loads
+  // With cache-aware logic
   useEffect(() => {
     if (holdings.length > 0) {
       const prefetchPriceHistories = async () => {
@@ -117,16 +117,31 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
         
         // Use Promise.all to fetch all market price histories in parallel
         try {
-          const prefetchPromises = holdings.map(holding => 
-            supabase.functions.invoke('price-history', {
-              body: { 
-                marketId: holding.market_id,
-                fetchAllIntervals: true // Signal to fetch all intervals
-              }
-            })
-          );
+          // Batch fetch requests to avoid overwhelming the API
+          // Process in small batches of 3 markets at a time
+          const batchSize = 3;
+          for (let i = 0; i < holdings.length; i += batchSize) {
+            const batch = holdings.slice(i, i + batchSize);
+            console.log(`Processing batch ${i / batchSize + 1} of ${Math.ceil(holdings.length / batchSize)}`);
+            
+            const batchPromises = batch.map(holding => 
+              supabase.functions.invoke('price-history', {
+                body: { 
+                  marketId: holding.market_id,
+                  interval: '1d', // Default interval for initial load
+                  fetchAllIntervals: true // Signal to fetch all intervals
+                }
+              })
+            );
+            
+            await Promise.allSettled(batchPromises);
+            
+            // Small delay between batches to prevent hitting rate limits
+            if (i + batchSize < holdings.length) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
           
-          await Promise.allSettled(prefetchPromises);
           console.log('Completed prefetching price histories for all holdings');
         } catch (error) {
           console.error('Error prefetching price histories:', error);
