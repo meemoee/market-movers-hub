@@ -19,7 +19,7 @@ import { toast } from "sonner";
 
 export default function Profile() {
   const { user, session, isLoading } = useAuth();
-  const [selectedHolding, setSelectedHolding] = useState<Holding | null>(null);
+  const [selectedHoldings, setSelectedHoldings] = useState<Holding[]>([]);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
@@ -60,9 +60,18 @@ export default function Profile() {
   }, [navigate, session, isLoading]);
 
   const handleSelectHolding = (holding: Holding) => {
-    setSelectedHolding(prevSelected => 
-      prevSelected?.id === holding.id ? null : holding
-    );
+    setSelectedHoldings(prevSelected => {
+      // Check if the holding is already selected
+      const existingIndex = prevSelected.findIndex(h => h.id === holding.id);
+      
+      if (existingIndex >= 0) {
+        // If already selected, remove it (toggle off)
+        return prevSelected.filter(h => h.id !== holding.id);
+      } else {
+        // If not selected, add it to the array
+        return [...prevSelected, holding];
+      }
+    });
   };
 
   const handleAddBalance = async () => {
@@ -163,16 +172,30 @@ export default function Profile() {
                       <h2 className="text-2xl font-semibold mb-4">Your Holdings</h2>
                       <AccountHoldings 
                         onSelectHolding={handleSelectHolding} 
-                        selectedHoldingId={selectedHolding?.id}
+                        selectedHoldingIds={selectedHoldings.map(h => h.id)}
                       />
                     </Card>
 
-                    {selectedHolding && (
+                    {selectedHoldings.length > 0 && (
                       <Card className="p-6">
                         <h2 className="text-2xl font-semibold mb-4">Price History</h2>
+                        <div className="mb-4">
+                          <p className="text-sm text-muted-foreground">
+                            {selectedHoldings.length === 1 
+                              ? "Showing price history for 1 holding" 
+                              : `Showing price history for ${selectedHoldings.length} holdings`}
+                          </p>
+                          {selectedHoldings.length > 1 && (
+                            <button 
+                              onClick={() => setSelectedHoldings([])}
+                              className="text-sm text-primary hover:underline mt-1"
+                            >
+                              Clear all selections
+                            </button>
+                          )}
+                        </div>
                         <PriceHistoryView 
-                          marketId={selectedHolding.market_id}
-                          question={selectedHolding.market?.question || 'Selected Market'}
+                          holdings={selectedHoldings}
                         />
                       </Card>
                     )}

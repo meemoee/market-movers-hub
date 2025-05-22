@@ -22,9 +22,12 @@ export interface Holding {
 interface AccountHoldingsProps {
   onSelectHolding?: (holding: Holding) => void;
   selectedHoldingId?: string;
+  selectedHoldingIds?: string[];
 }
 
-export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountHoldingsProps) {
+export function AccountHoldings({ onSelectHolding, selectedHoldingId, selectedHoldingIds }: AccountHoldingsProps) {
+  // For backward compatibility, use selectedHoldingId if selectedHoldingIds is not provided
+  const effectiveSelectedIds = selectedHoldingIds || (selectedHoldingId ? [selectedHoldingId] : []);
   const [selectedInterval, setSelectedInterval] = useState("1440"); // Default to 24h
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -233,7 +236,7 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId }: AccountH
               <div key={holding.id}>
                 <div 
                   className={`p-4 flex items-start gap-3 cursor-pointer hover:bg-accent/50 ${
-                    selectedHoldingId === holding.id ? 'bg-accent' : ''
+                    effectiveSelectedIds.includes(holding.id) ? 'bg-accent' : ''
                   }`}
                   onClick={() => onSelectHolding?.(holding)}
                 >

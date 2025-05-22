@@ -24,7 +24,7 @@ const intervals = [
 const formatDate = timeFormat("%b %d");
 
 interface ChartProps {
-  data: PriceData[];
+  dataSeries: PriceSeriesData[];
   events: MarketEvent[];
   width: number;
   height: number;
@@ -32,33 +32,51 @@ interface ChartProps {
 }
 
 function Chart({ 
-  data, 
+  dataSeries, 
   events,
   width, 
   height, 
   margin = { top: 20, right: 30, bottom: 30, left: 40 } 
 }: ChartProps) {
+  // Use the first series as the primary data for scales and segments
+  const primaryData = dataSeries.length > 0 ? dataSeries[0].data : [];
+  // Define a type for our tooltip data
+  interface TooltipData {
+    time: number;
+    prices: { seriesId: string; price: number; color: string; name: string }[];
+  }
+
   const {
     showTooltip,
     hideTooltip,
     tooltipData,
     tooltipLeft = 0,
     tooltipTop = 0,
-  } = useTooltip<PriceData>();
+  } = useTooltip<TooltipData>();
 
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
+
+  // Get all time points from all series for the time scale domain
+  const allTimePoints = useMemo(() => {
+    const points: number[] = [];
+    dataSeries.forEach(series => {
+      series.data.forEach(point => {
+        points.push(point.time);
+      });
+    });
+    return points;
+  }, [dataSeries]);
 
   const timeScale = useMemo(
     () =>
       scaleTime<number>({
         range: [0, innerWidth],
-        domain: [
-          Math.min(...data.map((d) => d.time)),
-          Math.max(...data.map((d) => d.time)),
-        ],
+        domain: allTimePoints.length > 0 ? 
+          [Math.min(...allTimePoints), Math.max(...allTimePoints)] : 
+          [new Date().getTime() - 86400000, new Date().getTime()], // Default to last 24h if no data
       }),
-    [innerWidth, data]
+    [innerWidth, allTimePoints]
   );
 
   const priceScale = useMemo(
@@ -71,24 +89,43 @@ function Chart({
     [innerHeight]
   );
 
-  const { segments } = useChartData(data);
+  const { segments } = useChartData(primaryData);
 
-  const getInterpolatedPrice = useCallback((xValue: number) => {
+  // Get interpolated prices for all series at a given x position
+  const getInterpolatedPrices = useCallback((xValue: number) => {
     const time = timeScale.invert(xValue).getTime();
-    let leftIndex = 0;
+    const prices: { seriesId: string; price: number; color: string; name: string }[] = [];
 
-    for (let i = 0; i < data.length - 1; i++) {
-      if (data[i].time <= time && data[i + 1].time > time) {
-        leftIndex = i;
-        break;
+    dataSeries.forEach(series => {
+      if (series.data.length === 0) return;
+
+      let leftIndex = 0;
+      // Find the closest point to the left of the cursor
+      for (let i = 0; i < series.data.length - 1; i++) {
+        if (series.data[i].time <= time && series.data[i + 1].time > time) {
+          leftIndex = i;
+          break;
+        }
       }
-    }
+
+      // If we're past the last point, use the last point
+      if (time > series.data[series.data.length - 1].time) {
+        leftIndex = series.data.length - 1;
+      }
+
+      prices.push({
+        seriesId: series.id,
+        price: series.data[leftIndex].price,
+        color: series.color,
+        name: series.name
+      });
+    });
 
     return {
       time,
-      price: data[leftIndex].price
+      prices
     };
-  }, [data, timeScale]);
+  }, [dataSeries, timeScale]);
 
   const handleTooltip = useCallback(
     (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
@@ -97,15 +134,18 @@ function Chart({
       
       if (xValue < 0 || xValue > innerWidth) return;
       
-      const interpolatedPoint = getInterpolatedPrice(xValue);
+      const interpolatedData = getInterpolatedPrices(xValue);
+      
+      // Use the first price for positioning if available
+      const firstPrice = interpolatedData.prices[0]?.price ?? 50;
 
       showTooltip({
-        tooltipData: interpolatedPoint,
+        tooltipData: interpolatedData,
         tooltipLeft: x,
-        tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
+        tooltipTop: priceScale(firstPrice) + margin.top,
       });
     },
-    [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]
+    [timeScale, priceScale, margin, showTooltip, innerWidth, getInterpolatedPrices]
   );
 
   const tooltipDateFormat = useMemo(() => {
@@ -150,14 +190,18 @@ function Chart({
               />
             ))}
 
-            <LinePath
-              data={data}
-              x={d => timeScale(d.time)}
-              y={d => priceScale(d.price)}
-              stroke="#3b82f6"
-              strokeWidth={2}
-              curve={curveStepAfter}
-            />
+            {/* Render each data series as a separate line */}
+            {dataSeries.map(series => (
+              <LinePath
+                key={series.id}
+                data={series.data}
+                x={d => timeScale(d.time)}
+                y={d => priceScale(d.price)}
+                stroke={series.color}
+                strokeWidth={2}
+                curve={curveStepAfter}
+              />
+            ))}
 
             {/* Event markers - lines on bottom layer */}
             <g>
@@ -240,12 +284,15 @@ function Chart({
                   stroke="#4a5568"
                   strokeWidth={1}
                 />
-                <circle
-                  cx={tooltipLeft - margin.left}
-                  cy={priceScale(tooltipData.price)}
-                  r={4}
-                  fill="#3b82f6"
-                />
+                {tooltipData.prices.map(price => (
+                  <circle
+                    key={price.seriesId}
+                    cx={tooltipLeft - margin.left}
+                    cy={priceScale(price.price)}
+                    r={4}
+                    fill={price.color}
+                  />
+                ))}
               </g>
             )}
           </g>
@@ -253,7 +300,7 @@ function Chart({
       </svg>
 
       {/* Price tooltip overlay */}
-      {tooltipData && (
+      {tooltipData && tooltipData.prices.length > 0 && (
         <div
           style={{
             position: 'absolute',
@@ -271,8 +318,16 @@ function Chart({
           }}
         >
           <div className="flex flex-col leading-tight">
-            <span>{tooltipDateFormat(new Date(tooltipData.time))}</span>
-            <span>{tooltipData.price.toFixed(2)}%</span>
+            <span className="mb-1">{tooltipDateFormat(new Date(tooltipData.time))}</span>
+            {tooltipData.prices.map(price => (
+              <div key={price.seriesId} className="flex items-center gap-1">
+                <div 
+                  className="w-2 h-2 rounded-full" 
+                  style={{ backgroundColor: price.color }}
+                ></div>
+                <span>{price.price.toFixed(2)}%</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -280,25 +335,47 @@ function Chart({
   );
 }
 
-interface PriceChartProps {
+interface PriceSeriesData {
+  id: string;
+  name: string;
+  color: string;
   data: PriceData[];
+}
+
+interface PriceChartProps {
+  dataSeries: PriceSeriesData[];
   events: MarketEvent[];
   selectedInterval: string;
   onIntervalSelect?: (interval: string) => void;
 }
 
 export default function PriceChart({ 
-  data, 
+  dataSeries, 
   events,
   selectedInterval, 
   onIntervalSelect 
 }: PriceChartProps) {
-  const normalizedData = useMemo(() => 
-    data.map(d => ({
-      ...d,
-      time: d.time * (d.time < 1e12 ? 1000 : 1)
+  // For backward compatibility, if dataSeries is empty, use an empty array
+  const normalizedDataSeries = useMemo(() => 
+    dataSeries.map(series => ({
+      ...series,
+      data: series.data.map(d => ({
+        ...d,
+        time: d.time * (d.time < 1e12 ? 1000 : 1)
+      }))
     }))
-  , [data]);
+  , [dataSeries]);
+
+  // If we have no data series, show an empty chart
+  const isEmpty = normalizedDataSeries.length === 0 || 
+    normalizedDataSeries.every(series => series.data.length === 0);
+
+  // If we have only one series, use it as the primary data
+  const primaryData = normalizedDataSeries.length === 1 
+    ? normalizedDataSeries[0].data 
+    : normalizedDataSeries.length > 1 
+      ? normalizedDataSeries[0].data 
+      : [];
 
   return (
     <div>      
@@ -306,7 +383,7 @@ export default function PriceChart({
         <ParentSize>
           {({ width, height }) => (
             <Chart
-              data={normalizedData}
+              dataSeries={normalizedDataSeries}
               events={events}
               width={width}
               height={height}
