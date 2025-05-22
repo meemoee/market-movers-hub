@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -167,19 +168,19 @@ serve(async (req) => {
     switch (interval) {
       case '1w':
         duration = 7 * 24 * 60 * 60;
-        periodInterval = 60;
+        periodInterval = 60; // 1 hour intervals for 1 week
         break;
       case '1m':
         duration = 30 * 24 * 60 * 60;
-        periodInterval = 60;
+        periodInterval = 720; // 12 hour intervals for 1 month
         break;
       case '3m':
         duration = 90 * 24 * 60 * 60;
-        periodInterval = 60;
+        periodInterval = 1440; // 24 hour intervals for 3 months
         break;
       case 'all':
         duration = 365 * 24 * 60 * 60;
-        periodInterval = 1440;
+        periodInterval = 1440; // 24 hour intervals for all time
         break;
     }
 
@@ -364,19 +365,19 @@ async function fetchAndStoreInterval(
     switch (interval) {
       case '1w':
         duration = 7 * 24 * 60 * 60;
-        periodInterval = 60;
+        periodInterval = 60; // 1 hour intervals for 1 week
         break;
       case '1m':
         duration = 30 * 24 * 60 * 60;
-        periodInterval = 60;
+        periodInterval = 720; // 12 hour intervals for 1 month
         break;
       case '3m':
         duration = 90 * 24 * 60 * 60;
-        periodInterval = 60;
+        periodInterval = 1440; // 24 hour intervals for 3 months
         break;
       case 'all':
         duration = 365 * 24 * 60 * 60;
-        periodInterval = 1440;
+        periodInterval = 1440; // 24 hour intervals for all time
         break;
     }
 
