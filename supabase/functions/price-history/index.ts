@@ -11,14 +11,13 @@ const REDIS_CACHE_TTL = 60; // 1 minute cache TTL
 const ALL_INTERVALS = ['1d', '1w', '1m', '3m', 'all'];
 
 // Polymarket API Fidelity Guidelines from testing:
-// Interval   | Finest Supported Fidelity
-// -----------|-------------------------
-// 1m (month) | 15 minutes (900 seconds)
-// 1w (week)  | 5 minutes (300 seconds)
-// 1d (day)   | 1 minute (60 seconds)
-// 6h         | 1 minute (60 seconds)
-// 1h         | 1 minute (60 seconds)
-// max        | 1 minute (60 seconds)
+// Interval   | Optimal Fidelity Value  | Unit
+// -----------|-------------------------|-------------------
+// 1d (day)   | 1                       | minute (60 seconds)
+// 1w (week)  | 5                       | minutes (300 seconds)
+// 1m (month) | 15                      | minutes (900 seconds)
+// 3m         | 60                      | minutes (3600 seconds)
+// all        | 1440                    | minutes (86400 seconds)
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -170,25 +169,28 @@ serve(async (req) => {
       // Continue without caching if Redis fails
     }
 
-    // Set appropriate fidelity based on interval
-    let fidelity = 60; // Default to 1 minute intervals for 1d
+    // Updated fidelity values for better data representation
+    let fidelity;
     
     switch (interval) {
+      case '1d':
+        fidelity = 1; // 1 minute for 1 day
+        break;
       case '1w':
-        fidelity = 300; // 5 minutes for 1 week
+        fidelity = 5; // 5 minutes for 1 week
         break;
       case '1m':
-        fidelity = 900; // 15 minutes for 1 month
+        fidelity = 15; // 15 minutes for 1 month
         break;
       case '3m':
-        fidelity = 3600; // 1 hour for 3 months
+        fidelity = 60; // 1 hour for 3 months (better than 15 min for meaningful data)
         break;
       case 'all':
-        fidelity = 86400; // 1 day for all time
+        fidelity = 1440; // 1 day for all time
         break;
     }
 
-    // Query Polymarket API - using interval parameter directly as in the working script
+    // Query Polymarket API
     const searchParams = new URLSearchParams({
       market: clobTokenId,
       fidelity: fidelity.toString(),
@@ -202,6 +204,7 @@ serve(async (req) => {
                           'max'; // 'all' becomes 'max'
       
       searchParams.set('interval', polyInterval);
+      console.log(`Using 'interval' parameter for ${interval}: ${polyInterval}`);
     } else {
       // For shorter intervals like 1d and 1w, we can still use startTs and endTs
       const endTs = Math.floor(Date.now() / 1000);
@@ -210,6 +213,7 @@ serve(async (req) => {
       
       searchParams.set('startTs', startTs.toString());
       searchParams.set('endTs', endTs.toString());
+      console.log(`Using time range for ${interval}: ${new Date(startTs*1000).toISOString()} to ${new Date(endTs*1000).toISOString()}`);
     }
 
     console.log('Querying Polymarket API with params:', Object.fromEntries(searchParams.entries()));
@@ -226,6 +230,13 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    console.log(`Received ${data.history?.length || 0} data points from Polymarket API`);
+    
+    // If we have very few points for 3m or all, log it
+    if ((interval === '3m' || interval === 'all') && data.history && data.history.length < 5) {
+      console.warn(`WARNING: Received only ${data.history.length} points for ${interval} interval. Data may be sparse.`);
+    }
+    
     const timestamp = Math.floor(Date.now() / 1000);
     const formattedData = data.history.map((point: { t: number; p: string | number }) => ({
       t: point.t * 1000, // Convert to milliseconds
@@ -372,21 +383,24 @@ async function fetchAndStoreInterval(
   try {
     console.log(`Background task: Fetching interval ${interval} for market ${marketId}`);
     
-    // Set appropriate fidelity based on interval
-    let fidelity = 60; // Default to 1 minute intervals for 1d
+    // Updated fidelity values for better data representation
+    let fidelity;
     
     switch (interval) {
+      case '1d':
+        fidelity = 1; // 1 minute for 1 day
+        break;
       case '1w':
-        fidelity = 300; // 5 minutes for 1 week
+        fidelity = 5; // 5 minutes for 1 week
         break;
       case '1m':
-        fidelity = 900; // 15 minutes for 1 month
+        fidelity = 15; // 15 minutes for 1 month
         break;
       case '3m':
-        fidelity = 3600; // 1 hour for 3 months
+        fidelity = 60; // 1 hour for 3 months
         break;
       case 'all':
-        fidelity = 86400; // 1 day for all time
+        fidelity = 1440; // 1 day for all time
         break;
     }
 
@@ -429,6 +443,7 @@ async function fetchAndStoreInterval(
     }
 
     const data = await response.json();
+    console.log(`Background task: Received ${data.history?.length || 0} data points for interval ${interval}`);
     
     // Store in database
     await storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
