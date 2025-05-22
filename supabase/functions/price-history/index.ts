@@ -10,7 +10,7 @@ const REDIS_CACHE_TTL = 60; // 1 minute cache TTL
 // All supported intervals
 const ALL_INTERVALS = ['1d', '1w', '1m', '3m', 'all'];
 
-// Polymarket API Fidelity Guidelines:
+// Polymarket API Fidelity Guidelines from testing:
 // Interval   | Finest Supported Fidelity
 // -----------|-------------------------
 // 1m (month) | 15 minutes (900 seconds)
@@ -170,46 +170,51 @@ serve(async (req) => {
       // Continue without caching if Redis fails
     }
 
-    // Calculate time range based on interval
-    const endTs = Math.floor(Date.now() / 1000);
-    let duration = 24 * 60 * 60; // Default to 1 day
-    let periodInterval = 60; // Default to 1 minute intervals (finest fidelity)
-
+    // Set appropriate fidelity based on interval
+    let fidelity = 60; // Default to 1 minute intervals for 1d
+    
     switch (interval) {
       case '1w':
-        duration = 7 * 24 * 60 * 60;
-        periodInterval = 300; // 5 minute intervals for 1 week (finest supported)
+        fidelity = 300; // 5 minutes for 1 week
         break;
       case '1m':
-        duration = 30 * 24 * 60 * 60;
-        periodInterval = 900; // 15 minute intervals for 1 month (finest supported)
+        fidelity = 900; // 15 minutes for 1 month
         break;
       case '3m':
-        duration = 90 * 24 * 60 * 60;
-        periodInterval = 3600; // 1 hour intervals for 3 months (to avoid too many points)
+        fidelity = 3600; // 1 hour for 3 months
         break;
       case 'all':
-        duration = 365 * 24 * 60 * 60;
-        periodInterval = 86400; // 24 hour/daily intervals for all time (to avoid too many points)
+        fidelity = 86400; // 1 day for all time
         break;
     }
 
-    const startTs = endTs - duration;
-
-    // Query Polymarket API
-    console.log('Querying Polymarket API with params:', {
+    // Query Polymarket API - using interval parameter directly as in the working script
+    const searchParams = new URLSearchParams({
       market: clobTokenId,
-      startTs,
-      endTs,
-      fidelity: periodInterval
+      fidelity: fidelity.toString(),
     });
 
-    const response = await fetch(`${POLY_API_URL}/prices-history?` + new URLSearchParams({
-      market: clobTokenId,
-      startTs: startTs.toString(),
-      endTs: endTs.toString(),
-      fidelity: periodInterval.toString()
-    }), {
+    // For longer intervals (1m, 3m, all), use the interval parameter directly
+    if (interval === '1m' || interval === '3m' || interval === 'all') {
+      // Convert our interval format to Polymarket format
+      const polyInterval = interval === '1m' ? '1m' : 
+                          interval === '3m' ? 'max' : 
+                          'max'; // 'all' becomes 'max'
+      
+      searchParams.set('interval', polyInterval);
+    } else {
+      // For shorter intervals like 1d and 1w, we can still use startTs and endTs
+      const endTs = Math.floor(Date.now() / 1000);
+      let duration = interval === '1w' ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
+      const startTs = endTs - duration;
+      
+      searchParams.set('startTs', startTs.toString());
+      searchParams.set('endTs', endTs.toString());
+    }
+
+    console.log('Querying Polymarket API with params:', Object.fromEntries(searchParams.entries()));
+
+    const response = await fetch(`${POLY_API_URL}/prices-history?` + searchParams, {
       headers: {
         'Authorization': 'Bearer 0x4929c395a0fd63d0eeb6f851e160642bb01975a808bf6119b07e52f3eca4ee69'
       }
@@ -367,39 +372,52 @@ async function fetchAndStoreInterval(
   try {
     console.log(`Background task: Fetching interval ${interval} for market ${marketId}`);
     
-    // Calculate time range based on interval
-    const endTs = Math.floor(Date.now() / 1000);
-    let duration = 24 * 60 * 60; // Default to 1 day
-    let periodInterval = 60; // Default to 1 minute intervals
-
+    // Set appropriate fidelity based on interval
+    let fidelity = 60; // Default to 1 minute intervals for 1d
+    
     switch (interval) {
       case '1w':
-        duration = 7 * 24 * 60 * 60;
-        periodInterval = 300; // 5 minute intervals for 1 week (finest supported)
+        fidelity = 300; // 5 minutes for 1 week
         break;
       case '1m':
-        duration = 30 * 24 * 60 * 60;
-        periodInterval = 900; // 15 minute intervals for 1 month (finest supported)
+        fidelity = 900; // 15 minutes for 1 month
         break;
       case '3m':
-        duration = 90 * 24 * 60 * 60;
-        periodInterval = 3600; // 1 hour intervals for 3 months (to avoid too many points)
+        fidelity = 3600; // 1 hour for 3 months
         break;
       case 'all':
-        duration = 365 * 24 * 60 * 60;
-        periodInterval = 86400; // 24 hour/daily intervals for all time (to avoid too many points)
+        fidelity = 86400; // 1 day for all time
         break;
     }
 
-    const startTs = endTs - duration;
+    // Query Polymarket API - using interval parameter directly as in the working script
+    const searchParams = new URLSearchParams({
+      market: clobTokenId,
+      fidelity: fidelity.toString(),
+    });
+
+    // For longer intervals (1m, 3m, all), use the interval parameter directly
+    if (interval === '1m' || interval === '3m' || interval === 'all') {
+      // Convert our interval format to Polymarket format
+      const polyInterval = interval === '1m' ? '1m' : 
+                          interval === '3m' ? 'max' : 
+                          'max'; // 'all' becomes 'max'
+      
+      searchParams.set('interval', polyInterval);
+    } else {
+      // For shorter intervals like 1d and 1w, we can still use startTs and endTs
+      const endTs = Math.floor(Date.now() / 1000);
+      let duration = interval === '1w' ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
+      const startTs = endTs - duration;
+      
+      searchParams.set('startTs', startTs.toString());
+      searchParams.set('endTs', endTs.toString());
+    }
+
+    console.log('Background task: Using Polymarket API params:', Object.fromEntries(searchParams.entries()));
     
     // Query Polymarket API for this interval
-    const response = await fetch(`${POLY_API_URL}/prices-history?` + new URLSearchParams({
-      market: clobTokenId,
-      startTs: startTs.toString(),
-      endTs: endTs.toString(),
-      fidelity: periodInterval.toString()
-    }), {
+    const response = await fetch(`${POLY_API_URL}/prices-history?` + searchParams, {
       headers: {
         'Authorization': 'Bearer 0x4929c395a0fd63d0eeb6f851e160642bb01975a808bf6119b07e52f3eca4ee69'
       }
