@@ -14,6 +14,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import AccountSettings from "./account/AccountSettings";
 import { Settings } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 type AccountIslandContext = 'desktop' | 'mobile';
 
@@ -22,7 +23,7 @@ interface AccountIslandProps {
 }
 
 export default function AccountIsland({ context = 'desktop' }: AccountIslandProps) {
-  const [session, setSession] = useState<any>(null);
+  const { user, session, isLoading, signOut } = useAuth();
   const [balance, setBalance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -33,28 +34,10 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
   const shouldRender = (context === 'mobile' && isMobile) || (context === 'desktop' && !isMobile);
 
   useEffect(() => {
-    if (!shouldRender) return;
+    if (!shouldRender || !session?.user) return;
     
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      } else {
-        setBalance(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [shouldRender]);
+    fetchUserProfile(session.user.id);
+  }, [shouldRender, session]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -72,17 +55,6 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
     }
   };
 
-  const handleSignOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      navigate('/');
-    } catch (error: any) {
-      console.error('Error signing out:', error);
-      setError(error.message);
-    }
-  };
-
   // Open settings modal
   const openSettings = () => {
     setShowSettings(true);
@@ -96,6 +68,21 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
   // If we shouldn't render this context, return null
   if (!shouldRender) {
     return null;
+  }
+
+  // Show loading state if auth status is still being determined
+  if (isLoading) {
+    return (
+      <Card className={`w-full ${isMobile ? 'rounded-md' : 'rounded-lg'} bg-transparent border-0 shadow-none`}>
+        <div className={isMobile ? 'p-4' : 'p-6'}>
+          <div className="animate-pulse flex flex-col space-y-4">
+            <div className="h-10 bg-gray-700/50 rounded w-2/3"></div>
+            <div className="h-8 bg-gray-700/50 rounded w-full"></div>
+            <div className="h-8 bg-gray-700/50 rounded w-full"></div>
+          </div>
+        </div>
+      </Card>
+    );
   }
 
   return (
@@ -159,7 +146,7 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
           </div>
 
           <Button
-            onClick={handleSignOut}
+            onClick={signOut}
             className="w-full"
             variant="destructive"
           >

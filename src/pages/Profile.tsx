@@ -12,27 +12,27 @@ import MobileDock from "@/components/MobileDock";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Glow } from "@/components/ui/glow";
 import RightSidebar from "@/components/RightSidebar";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Profile() {
-  const [session, setSession] = useState<any>(null);
+  const { user, session, isLoading } = useAuth();
   const [balance, setBalance] = useState<number | null>(null);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        // Redirect to home if not logged in
-        navigate('/');
-        return;
-      }
-      
-      setSession(session);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      }
-    });
-  }, [navigate]);
+    if (isLoading) return; // Wait until auth state is determined
+    
+    if (!session?.user) {
+      // Redirect to home if not logged in
+      navigate('/');
+      return;
+    }
+    
+    if (session?.user) {
+      fetchUserProfile(session.user.id);
+    }
+  }, [navigate, session, isLoading]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -48,6 +48,18 @@ export default function Profile() {
       console.error('Error fetching profile:', error);
     }
   };
+
+  // If still loading or no session, show a loading state
+  if (isLoading || !session) {
+    return (
+      <div className="bg-background min-h-screen flex items-center justify-center">
+        <div className="animate-pulse flex flex-col space-y-4 items-center">
+          <div className="h-12 bg-gray-700/50 rounded w-48"></div>
+          <div className="h-8 bg-gray-700/50 rounded w-64"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background min-h-screen flex flex-col">

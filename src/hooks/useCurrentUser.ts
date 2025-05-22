@@ -1,37 +1,45 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface User {
   id: string;
   email: string;
-  openrouter_api_key?: string | null;  // Add the new field to the interface
+  openrouter_api_key?: string | null;
 }
 
 export const useCurrentUser = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isLoading: authLoading } = useAuth();
+  const [userData, setUserData] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
-    // Fetch the current user when the component mounts
-    const fetchUser = async () => {
+    // If auth is still loading or user is not authenticated, wait
+    if (authLoading) {
+      return;
+    }
+    
+    const fetchUserProfile = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          // Get profile data including the openrouter_api_key
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('openrouter_api_key')
-            .eq('id', session.user.id)
-            .single();
-          
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            openrouter_api_key: profile?.openrouter_api_key || null,
-          });
+        if (!user) {
+          setUserData(null);
+          setIsLoading(false);
+          return;
         }
+        
+        // Get profile data including the openrouter_api_key
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('openrouter_api_key')
+          .eq('id', user.id)
+          .single();
+        
+        setUserData({
+          id: user.id,
+          email: user.email || '',
+          openrouter_api_key: profile?.openrouter_api_key || null,
+        });
       } catch (error) {
         console.error('Error fetching user:', error);
       } finally {
@@ -39,39 +47,11 @@ export const useCurrentUser = () => {
       }
     };
     
-    fetchUser();
-    
-    // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
-          // Get profile data including the openrouter_api_key
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('openrouter_api_key')
-            .eq('id', session.user.id)
-            .single();
-          
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            openrouter_api_key: profile?.openrouter_api_key || null,
-          });
-        } else {
-          setUser(null);
-        }
-        setIsLoading(false);
-      }
-    );
-    
-    // Cleanup subscription on unmount
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+    fetchUserProfile();
+  }, [user, authLoading]);
   
   return {
-    user,
-    isLoading,
+    user: userData,
+    isLoading: isLoading || authLoading,
   };
 };
