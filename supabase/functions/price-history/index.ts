@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -5,6 +6,9 @@ import { connect } from 'https://deno.land/x/redis@v0.29.0/mod.ts';
 
 const POLY_API_URL = 'https://clob.polymarket.com';
 const REDIS_CACHE_TTL = 60; // 1 minute cache TTL
+
+// All supported intervals
+const ALL_INTERVALS = ['1d', '1w', '1m', '3m', 'all'];
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -212,29 +216,21 @@ serve(async (req) => {
     // Store price history in the database in the background
     const storeDataInBackground = async () => {
       try {
-        // Prepare batch of records to insert
-        const rows = data.history.map((point: { t: number; p: string | number }) => ({
-          market_id: marketId,
-          token_id: clobTokenId,
-          timestamp: new Date(point.t * 1000), // Convert seconds to milliseconds for JS Date
-          price: typeof point.p === 'string' ? parseFloat(point.p) : point.p
-        }));
+        // First, handle the requested interval
+        await storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
 
-        if (rows.length > 0) {
-          // Use a batch insert with conflict resolution
-          const { error } = await supabaseClient
-            .from('market_price_history')
-            .upsert(rows, { 
-              onConflict: 'market_id,token_id,timestamp',
-              ignoreDuplicates: true 
-            });
+        // Then, in parallel, fetch and store all other intervals
+        const otherIntervals = ALL_INTERVALS.filter(i => i !== interval);
+        console.log(`Background task: Fetching additional intervals: ${otherIntervals.join(', ')}`);
+        
+        // Create an array of promises for all intervals
+        const intervalPromises = otherIntervals.map(otherInterval => 
+          fetchAndStoreInterval(marketId, clobTokenId, otherInterval, supabaseClient, redis)
+        );
 
-          if (error) {
-            console.error('Error storing price history in background task:', error);
-          } else {
-            console.log(`Background task: Successfully stored ${rows.length} price points for market ${marketId}`);
-          }
-        }
+        // Wait for all intervals to complete
+        await Promise.allSettled(intervalPromises);
+        console.log(`Background task: Completed storing all intervals for market ${marketId}`);
       } catch (dbError) {
         console.error('Background task error storing price history:', dbError);
       } finally {
@@ -252,9 +248,9 @@ serve(async (req) => {
     // Use EdgeRuntime.waitUntil to handle the background processing
     if (typeof EdgeRuntime !== 'undefined') {
       EdgeRuntime.waitUntil(storeDataInBackground());
-      console.log('Background task for storing price history started');
+      console.log('Background task for storing all price history intervals started');
     } else {
-      console.warn('EdgeRuntime not available, storing data synchronously');
+      console.warn('EdgeRuntime not available, storing only requested interval data synchronously');
       await storeDataInBackground();
     }
     
@@ -281,3 +277,122 @@ serve(async (req) => {
     }
   }
 });
+
+// Function to store price history data for a specific interval
+async function storeIntervalData(
+  marketId: string, 
+  clobTokenId: string, 
+  historyData: Array<{ t: number, p: string | number }>,
+  intervalName: string,
+  supabaseClient: any
+) {
+  try {
+    // Prepare batch of records to insert
+    const rows = historyData.map(point => ({
+      market_id: marketId,
+      token_id: clobTokenId,
+      timestamp: new Date(point.t * 1000), // Convert seconds to milliseconds for JS Date
+      price: typeof point.p === 'string' ? parseFloat(point.p) : point.p
+    }));
+
+    if (rows.length > 0) {
+      // Use a batch insert with conflict resolution
+      const { error } = await supabaseClient
+        .from('market_price_history')
+        .upsert(rows, { 
+          onConflict: 'market_id,token_id,timestamp',
+          ignoreDuplicates: true 
+        });
+
+      if (error) {
+        console.error(`Error storing ${intervalName} price history in background task:`, error);
+      } else {
+        console.log(`Background task: Successfully stored ${rows.length} price points for market ${marketId} interval ${intervalName}`);
+      }
+    }
+  } catch (error) {
+    console.error(`Error storing ${intervalName} interval data:`, error);
+  }
+}
+
+// Function to fetch and store a specific interval
+async function fetchAndStoreInterval(
+  marketId: string, 
+  clobTokenId: string, 
+  interval: string,
+  supabaseClient: any,
+  redis: any
+) {
+  try {
+    console.log(`Background task: Fetching interval ${interval} for market ${marketId}`);
+    
+    // Calculate time range based on interval
+    const endTs = Math.floor(Date.now() / 1000);
+    let duration = 24 * 60 * 60; // Default to 1 day
+    let periodInterval = 1; // Default to 1 minute intervals
+
+    switch (interval) {
+      case '1w':
+        duration = 7 * 24 * 60 * 60;
+        periodInterval = 60;
+        break;
+      case '1m':
+        duration = 30 * 24 * 60 * 60;
+        periodInterval = 60;
+        break;
+      case '3m':
+        duration = 90 * 24 * 60 * 60;
+        periodInterval = 60;
+        break;
+      case 'all':
+        duration = 365 * 24 * 60 * 60;
+        periodInterval = 1440;
+        break;
+    }
+
+    const startTs = endTs - duration;
+    
+    // Query Polymarket API for this interval
+    const response = await fetch(`${POLY_API_URL}/prices-history?` + new URLSearchParams({
+      market: clobTokenId,
+      startTs: startTs.toString(),
+      endTs: endTs.toString(),
+      fidelity: periodInterval.toString()
+    }), {
+      headers: {
+        'Authorization': 'Bearer 0x4929c395a0fd63d0eeb6f851e160642bb01975a808bf6119b07e52f3eca4ee69'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`Polymarket API error for ${interval}:`, response.status);
+      return;
+    }
+
+    const data = await response.json();
+    
+    // Store in database
+    await storeIntervalData(marketId, clobTokenId, data.history, interval, supabaseClient);
+    
+    // Cache in Redis if available
+    if (redis) {
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const formattedData = data.history.map((point: { t: number; p: string | number }) => ({
+          t: point.t * 1000,
+          y: typeof point.p === 'string' ? parseFloat(point.p) : point.p,
+          lastUpdated: timestamp
+        }));
+        
+        const cacheKey = `priceHistory:${marketId}:${interval}:${timestamp}`;
+        await redis.setex(cacheKey, REDIS_CACHE_TTL, JSON.stringify(formattedData));
+        await redis.set(`priceHistory:${marketId}:${interval}:latest`, timestamp);
+        console.log(`Background task: Cached data for interval ${interval} at key ${cacheKey}`);
+      } catch (redisError) {
+        console.error(`Redis caching error for interval ${interval}:`, redisError);
+      }
+    }
+  } catch (error) {
+    console.error(`Error processing interval ${interval}:`, error);
+  }
+}
