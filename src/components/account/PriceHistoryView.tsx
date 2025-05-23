@@ -189,9 +189,13 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
           totalPnL += pnlPct * weight * 100; // Convert back to percentage points for display
         });
         
+        // Clamp the PnL to reasonable bounds and center at 50%
+        // This prevents extreme values from breaking the chart
+        const clampedPnL = Math.max(-80, Math.min(80, totalPnL)); // Clamp between -80% and +80%
+        
         pnlData.push({
           time: timestamp,
-          price: totalPnL + 50 // Center at 50% for display purposes
+          price: clampedPnL + 50 // Center at 50% for display purposes
         });
       });
       

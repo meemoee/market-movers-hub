@@ -87,15 +87,44 @@ function Chart({
     [innerWidth, allTimePoints]
   );
 
-  const priceScale = useMemo(
-    () =>
-      scaleLinear<number>({
-        range: [innerHeight, 0],
-        domain: [0, 100],
-        nice: true,
-      }),
-    [innerHeight]
-  );
+  const priceScale = useMemo(() => {
+    // Calculate the actual data range from all series
+    let minPrice = 0;
+    let maxPrice = 100;
+    
+    if (dataSeries.length > 0) {
+      const allPrices: number[] = [];
+      dataSeries.forEach(series => {
+        series.data.forEach(point => {
+          allPrices.push(point.price);
+        });
+      });
+      
+      if (allPrices.length > 0) {
+        const dataMin = Math.min(...allPrices);
+        const dataMax = Math.max(...allPrices);
+        
+        // For cumulative PnL, we want to show a wider range to accommodate negative values
+        const hasCumulativePnL = dataSeries.some(series => series.isCumulativePnL);
+        
+        if (hasCumulativePnL) {
+          // Extend the range to show negative PnL values properly
+          minPrice = Math.min(dataMin - 10, -20); // Allow for negative PnL
+          maxPrice = Math.max(dataMax + 10, 120); // Allow for high positive PnL
+        } else {
+          // For regular price data, stick closer to 0-100 but allow some extension
+          minPrice = Math.max(0, dataMin - 5);
+          maxPrice = Math.min(100, dataMax + 5);
+        }
+      }
+    }
+    
+    return scaleLinear<number>({
+      range: [innerHeight, 0],
+      domain: [minPrice, maxPrice],
+      nice: true,
+    });
+  }, [innerHeight, dataSeries]);
 
   const { segments } = useChartData(primaryData);
 
@@ -170,6 +199,20 @@ function Chart({
 
   const isLeftHalf = tooltipLeft < width / 2;
 
+  // Calculate dynamic tick values based on the price scale domain
+  const tickValues = useMemo(() => {
+    const [minPrice, maxPrice] = priceScale.domain();
+    const range = maxPrice - minPrice;
+    const step = range / 4; // Create 5 tick marks
+    return [
+      Math.round(minPrice),
+      Math.round(minPrice + step),
+      Math.round(minPrice + 2 * step),
+      Math.round(minPrice + 3 * step),
+      Math.round(maxPrice)
+    ];
+  }, [priceScale]);
+
   return (
     <div className="relative touch-pan-y overscroll-none">
       <svg width={width} height={height} style={{ overflow: 'visible' }}>
@@ -207,8 +250,8 @@ function Chart({
                 x={d => timeScale(d.time)}
                 y={d => priceScale(d.price)}
                 stroke={series.color}
-                strokeWidth={series.isCumulativePnL ? 3 : 2}
-                strokeDasharray={series.isCumulativePnL ? "4,2" : undefined}
+                strokeWidth={series.isCumulativePnL ? 2.5 : 2}
+                strokeDasharray={series.isCumulativePnL ? "5,3" : undefined}
                 curve={curveStepAfter}
               />
             ))}
@@ -224,7 +267,7 @@ function Chart({
 
             <AxisLeft
               scale={priceScale}
-              tickValues={[0, 25, 50, 75, 100]}
+              tickValues={tickValues}
               tickFormat={(value) => `${value}`}
               stroke="#4a5568"
               tickStroke="#4a5568"
