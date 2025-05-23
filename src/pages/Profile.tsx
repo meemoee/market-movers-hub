@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import AccountIsland from "@/components/AccountIsland";
 import { AccountHoldings, Holding } from "@/components/account/AccountHoldings";
@@ -168,14 +167,6 @@ export default function Profile() {
                       />
                     </Card>
 
-                    <Card className="p-6">
-                      <h2 className="text-2xl font-semibold mb-4">Your Holdings</h2>
-                      <AccountHoldings 
-                        onSelectHolding={handleSelectHolding} 
-                        selectedHoldingIds={selectedHoldings.map(h => h.id)}
-                      />
-                    </Card>
-
                     {selectedHoldings.length > 0 && (
                       <Card className="p-6">
                         <h2 className="text-2xl font-semibold mb-4">Price History</h2>
@@ -199,6 +190,14 @@ export default function Profile() {
                         />
                       </Card>
                     )}
+
+                    <Card className="p-6">
+                      <h2 className="text-2xl font-semibold mb-4">Your Holdings</h2>
+                      <AccountHoldings 
+                        onSelectHolding={handleSelectHolding} 
+                        selectedHoldingIds={selectedHoldings.map(h => h.id)}
+                      />
+                    </Card>
                   </div>
                 )}
               </div>
