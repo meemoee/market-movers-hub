@@ -251,6 +251,7 @@ function Chart({
                 y={d => priceScale(d.price)}
                 stroke={series.color}
                 strokeWidth={series.isCumulativePnL ? 2.5 : 2}
+                strokeDasharray={series.isCumulativePnL ? "5,3" : undefined}
                 curve={curveStepAfter}
               />
             ))}
