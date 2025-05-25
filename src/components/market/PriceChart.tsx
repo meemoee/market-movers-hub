@@ -1,3 +1,4 @@
+
 import { useMemo, useCallback } from 'react';
 import { ParentSize } from '@visx/responsive';
 import { scaleTime, scaleLinear } from '@visx/scale';
@@ -39,7 +40,7 @@ function Chart({
   margin = { top: 20, right: 30, bottom: 30, left: 40 } 
 }: ChartProps) {
   // Use the first series as the primary data for scales and segments
-  const primaryData = dataSeries.length > 0 ? dataSeries[0].data : [];
+  const primaryData = dataSeries && dataSeries.length > 0 ? dataSeries[0].data : [];
   // Define a type for our tooltip data
   interface PricePoint {
     seriesId: string;
@@ -68,11 +69,15 @@ function Chart({
   // Get all time points from all series for the time scale domain
   const allTimePoints = useMemo(() => {
     const points: number[] = [];
-    dataSeries.forEach(series => {
-      series.data.forEach(point => {
-        points.push(point.time);
+    if (dataSeries && Array.isArray(dataSeries)) {
+      dataSeries.forEach(series => {
+        if (series.data && Array.isArray(series.data)) {
+          series.data.forEach(point => {
+            points.push(point.time);
+          });
+        }
       });
-    });
+    }
     return points;
   }, [dataSeries]);
 
@@ -92,12 +97,14 @@ function Chart({
     let minPrice = 0;
     let maxPrice = 100;
     
-    if (dataSeries.length > 0) {
+    if (dataSeries && dataSeries.length > 0) {
       const allPrices: number[] = [];
       dataSeries.forEach(series => {
-        series.data.forEach(point => {
-          allPrices.push(point.price);
-        });
+        if (series.data && Array.isArray(series.data)) {
+          series.data.forEach(point => {
+            allPrices.push(point.price);
+          });
+        }
       });
       
       if (allPrices.length > 0) {
@@ -133,31 +140,33 @@ function Chart({
     const time = timeScale.invert(xValue).getTime();
     const prices: PricePoint[] = [];
 
-    dataSeries.forEach(series => {
-      if (series.data.length === 0) return;
+    if (dataSeries && Array.isArray(dataSeries)) {
+      dataSeries.forEach(series => {
+        if (!series.data || series.data.length === 0) return;
 
-      let leftIndex = 0;
-      // Find the closest point to the left of the cursor
-      for (let i = 0; i < series.data.length - 1; i++) {
-        if (series.data[i].time <= time && series.data[i + 1].time > time) {
-          leftIndex = i;
-          break;
+        let leftIndex = 0;
+        // Find the closest point to the left of the cursor
+        for (let i = 0; i < series.data.length - 1; i++) {
+          if (series.data[i].time <= time && series.data[i + 1].time > time) {
+            leftIndex = i;
+            break;
+          }
         }
-      }
 
-      // If we're past the last point, use the last point
-      if (time > series.data[series.data.length - 1].time) {
-        leftIndex = series.data.length - 1;
-      }
+        // If we're past the last point, use the last point
+        if (time > series.data[series.data.length - 1].time) {
+          leftIndex = series.data.length - 1;
+        }
 
-      prices.push({
-        seriesId: series.id,
-        price: series.data[leftIndex].price,
-        color: series.color,
-        name: series.name,
-        isCumulativePnL: series.isCumulativePnL
+        prices.push({
+          seriesId: series.id,
+          price: series.data[leftIndex].price,
+          color: series.color,
+          name: series.name,
+          isCumulativePnL: series.isCumulativePnL
+        });
       });
-    });
+    }
 
     return {
       time,
@@ -213,6 +222,9 @@ function Chart({
     ];
   }, [priceScale]);
 
+  // Safely handle rendering when dataSeries is undefined or empty
+  const safeDataSeries = dataSeries || [];
+
   return (
     <div className="relative touch-pan-y overscroll-none">
       <svg width={width} height={height} style={{ overflow: 'visible' }}>
@@ -243,10 +255,10 @@ function Chart({
             ))}
 
             {/* Render each data series as a separate line */}
-            {dataSeries.map(series => (
+            {safeDataSeries.map(series => (
               <LinePath
                 key={series.id}
-                data={series.data}
+                data={series.data || []}
                 x={d => timeScale(d.time)}
                 y={d => priceScale(d.price)}
                 stroke={series.color}
@@ -258,7 +270,7 @@ function Chart({
             {/* Event markers - lines on bottom layer */}
             <g>
               <EventMarkers
-                events={events}
+                events={events || []}
                 timeScale={timeScale}
                 height={innerHeight}
               />
@@ -318,7 +330,7 @@ function Chart({
             {/* Interactive event markers icons - must be on top */}
             <g>
               <EventMarkers
-                events={events}
+                events={events || []}
                 timeScale={timeScale}
                 height={innerHeight}
                 iconsOnly
@@ -403,28 +415,30 @@ interface PriceSeriesData {
 }
 
 interface PriceChartProps {
-  dataSeries: PriceSeriesData[];
-  events: MarketEvent[];
+  dataSeries?: PriceSeriesData[];
+  events?: MarketEvent[];
   selectedInterval: string;
   onIntervalSelect?: (interval: string) => void;
 }
 
 export default function PriceChart({ 
-  dataSeries, 
-  events,
+  dataSeries = [], 
+  events = [],
   selectedInterval, 
   onIntervalSelect 
 }: PriceChartProps) {
   // For backward compatibility, if dataSeries is empty, use an empty array
-  const normalizedDataSeries = useMemo(() => 
-    dataSeries.map(series => ({
+  const normalizedDataSeries = useMemo(() => {
+    if (!dataSeries || !Array.isArray(dataSeries)) return [];
+    
+    return dataSeries.map(series => ({
       ...series,
-      data: series.data.map(d => ({
+      data: (series.data || []).map(d => ({
         ...d,
         time: d.time * (d.time < 1e12 ? 1000 : 1)
       }))
-    }))
-  , [dataSeries]);
+    }));
+  }, [dataSeries]);
 
   // If we have no data series, show an empty chart
   const isEmpty = normalizedDataSeries.length === 0 || 
