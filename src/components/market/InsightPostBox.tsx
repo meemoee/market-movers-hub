@@ -126,7 +126,7 @@ export function InsightPostBox() {
 
   return (
     <>
-      <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border overflow-hidden relative`}>
+      <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border relative`}>
         <div className="flex gap-3">
           <Avatar className="h-10 w-10 flex-shrink-0">
             <AvatarFallback className="bg-primary/10">

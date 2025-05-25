@@ -272,7 +272,7 @@ export function PortfolioGeneratorDropdown({
   return (
     <div
       ref={dropdownRef}
-      className="absolute top-full left-0 mt-1 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-96 overflow-hidden"
+      className="absolute top-full left-0 mt-1 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[9999] max-h-96 overflow-hidden"
     >
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
