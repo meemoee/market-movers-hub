@@ -1,10 +1,8 @@
-import { Send, Sparkles } from 'lucide-react'
+import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
-import { PortfolioGeneratorDropdown } from './market/PortfolioGeneratorDropdown'
-import { Button } from './ui/button'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -12,8 +10,6 @@ export default function RightSidebar() {
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  const [showPortfolioGenerator, setShowPortfolioGenerator] = useState(false)
-  const [lastUserMessage, setLastUserMessage] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Message {
@@ -26,7 +22,6 @@ export default function RightSidebar() {
     
     setHasStartedChat(true)
     setIsLoading(true)
-    setLastUserMessage(userMessage) // Store for portfolio generation
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
     
@@ -109,9 +104,6 @@ export default function RightSidebar() {
         type: 'assistant', 
         content: accumulatedContent 
       }])
-      
-      // Show portfolio generator button after assistant responds
-      setShowPortfolioGenerator(true)
 
     } catch (error) {
       console.error('Error in chat:', error)
@@ -156,25 +148,13 @@ export default function RightSidebar() {
         ) : (
           <div className="space-y-4 mb-20">
             {messages.map((message, index) => (
-              <div key={index}>
-                <div className="bg-[#2c2e33] p-3 rounded-lg">
-                  {message.type === 'user' ? (
-                    <p className="text-white text-sm">{message.content}</p>
-                  ) : (
-                    <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                      {message.content || ''}
-                    </ReactMarkdown>
-                  )}
-                </div>
-                
-                {/* Show portfolio generator after each assistant message */}
-                {message.type === 'assistant' && showPortfolioGenerator && index === messages.length - 1 && (
-                  <div className="mt-3">
-                    <PortfolioGeneratorDropdown 
-                      content={lastUserMessage}
-                      className="w-full"
-                    />
-                  </div>
+              <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
+                {message.type === 'user' ? (
+                  <p className="text-white text-sm">{message.content}</p>
+                ) : (
+                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                    {message.content || ''}
+                  </ReactMarkdown>
                 )}
               </div>
             ))}
