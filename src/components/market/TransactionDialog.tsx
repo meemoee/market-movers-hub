@@ -288,36 +288,84 @@ export function TransactionDialog({
   const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
   const formatPercentage = (value: number) => `${value}%`;
 
-  const renderOrderbookRows = (data: Record<string, number> | undefined, isAsk: boolean, maxRows: number = 5) => {
-    const stableData = data || {};
+  const renderDOMLadder = (maxRows: number = 10) => {
+    const bidsData = orderBookData?.bids || {};
+    const asksData = orderBookData?.asks || {};
     
-    const sortedEntries = Object.entries(stableData)
-      .sort(([priceA], [priceB]) => 
-        isAsk 
-          ? Number(priceA) - Number(priceB)  // Ascending for asks
-          : Number(priceB) - Number(priceA)  // Descending for bids
-      )
+    // Get all unique prices and sort them
+    const allPrices = new Set([
+      ...Object.keys(bidsData).map(Number),
+      ...Object.keys(asksData).map(Number)
+    ]);
+    
+    const sortedPrices = Array.from(allPrices).sort((a, b) => b - a); // Descending order
+    
+    // Take the middle section around best bid/ask
+    const bestBid = orderBookData?.best_bid || 0;
+    const bestAsk = orderBookData?.best_ask || 0;
+    const midPrice = (bestBid + bestAsk) / 2;
+    
+    // Find prices around the mid price
+    const relevantPrices = sortedPrices
+      .filter(price => Math.abs(price - midPrice) <= 0.1) // Within 10 cents of mid
       .slice(0, maxRows);
     
-    const rows = [...sortedEntries];
-    while (rows.length < maxRows) {
-      rows.push(['--', 0]);
+    // Fill to maxRows if needed
+    const displayPrices = [...relevantPrices];
+    while (displayPrices.length < maxRows) {
+      displayPrices.push(0);
     }
     
     return (
-      <div className="space-y-1">
-        {rows.map(([price, size], index) => (
-          <div 
-            key={`${isAsk ? 'ask' : 'bid'}-${index}`} 
-            className={`flex justify-between text-sm transition-all duration-300 ease-in-out ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}
-            style={{height: '20px'}}
-          >
-            <span className={size > 0 ? (isAsk ? "text-red-500" : "text-green-500") : "text-muted-foreground"}>
-              {size > 0 ? `${(Number(price) * 100).toFixed(2)}¢` : "--"}
-            </span>
-            <span>{size > 0 ? size.toFixed(2) : "--"}</span>
-          </div>
-        ))}
+      <div className="space-y-0.5">
+        {displayPrices.map((price, index) => {
+          const priceStr = price.toString();
+          const bidSize = price > 0 ? (bidsData[priceStr] || 0) : 0;
+          const askSize = price > 0 ? (asksData[priceStr] || 0) : 0;
+          const displayPrice = price > 0 ? `${(price * 100).toFixed(2)}¢` : "--";
+          
+          const isBestBid = price === bestBid;
+          const isBestAsk = price === bestAsk;
+          
+          return (
+            <div 
+              key={`ladder-${index}-${price}`}
+              className={`grid grid-cols-3 gap-2 text-sm transition-all duration-300 ease-in-out py-1 px-2 rounded ${
+                isOrderBookLoading ? 'opacity-50' : 'opacity-100'
+              } ${
+                isBestBid ? 'bg-green-500/10 border border-green-500/20' : 
+                isBestAsk ? 'bg-red-500/10 border border-red-500/20' : 
+                'hover:bg-accent/30'
+              }`}
+              style={{height: '28px'}}
+            >
+              {/* Bid Size */}
+              <div className="text-right">
+                <span className={`${bidSize > 0 ? 'text-green-500 font-medium' : 'text-muted-foreground'}`}>
+                  {bidSize > 0 ? bidSize.toFixed(2) : ""}
+                </span>
+              </div>
+              
+              {/* Price */}
+              <div className="text-center">
+                <span className={`font-mono ${
+                  isBestBid ? 'text-green-500 font-bold' :
+                  isBestAsk ? 'text-red-500 font-bold' :
+                  price > 0 ? 'text-foreground' : 'text-muted-foreground'
+                }`}>
+                  {displayPrice}
+                </span>
+              </div>
+              
+              {/* Ask Size */}
+              <div className="text-left">
+                <span className={`${askSize > 0 ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+                  {askSize > 0 ? askSize.toFixed(2) : ""}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -360,35 +408,37 @@ export function TransactionDialog({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 transition-all duration-300">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Bids</div>
-                  <div className="bg-accent/20 p-3 rounded-lg h-[140px] relative">
-                    {isOrderBookLoading ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
-                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : null}
-                    <div className={`transition-opacity duration-300 ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}>
-                      {renderOrderbookRows(orderBookData?.bids, false)}
-                    </div>
+              {/* DOM-style Order Book Ladder */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <div className="text-sm font-medium">Order Book</div>
+                  <div className="text-xs text-muted-foreground">
+                    Spread: {orderBookData?.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Asks</div>
-                  <div className="bg-accent/20 p-3 rounded-lg h-[140px] relative">
-                    {isOrderBookLoading ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
-                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : null}
-                    <div className={`transition-opacity duration-300 ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}>
-                      {renderOrderbookRows(orderBookData?.asks, true)}
+                
+                <div className="bg-accent/20 p-3 rounded-lg relative">
+                  {isOrderBookLoading ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                     </div>
+                  ) : null}
+                  
+                  {/* Header */}
+                  <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground mb-2 pb-2 border-b border-border">
+                    <div className="text-right">Bid Size</div>
+                    <div className="text-center">Price</div>
+                    <div className="text-left">Ask Size</div>
+                  </div>
+                  
+                  {/* Ladder */}
+                  <div className="max-h-[280px] overflow-y-auto">
+                    {renderDOMLadder(10)}
                   </div>
                 </div>
               </div>
               
+              {/* Best Bid/Ask Summary */}
               <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg transition-all duration-300">
                 <div>
                   <div className="text-sm text-muted-foreground">Best Bid</div>
@@ -403,11 +453,8 @@ export function TransactionDialog({
                   </div>
                 </div>
               </div>
-              
-              <div className="text-sm text-muted-foreground mb-4 h-5 transition-all duration-300">
-                Spread: {orderBookData?.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
-              </div>
 
+              {/* Order Details */}
               <div className="bg-accent/20 p-4 rounded-lg space-y-4 h-[250px]">
                 <div className="text-sm font-medium">Order Details</div>
                 
