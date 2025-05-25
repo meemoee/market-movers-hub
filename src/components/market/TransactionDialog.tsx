@@ -288,36 +288,147 @@ export function TransactionDialog({
   const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
   const formatPercentage = (value: number) => `${value}%`;
 
-  const renderOrderbookRows = (data: Record<string, number> | undefined, isAsk: boolean, maxRows: number = 5) => {
-    const stableData = data || {};
-    
-    const sortedEntries = Object.entries(stableData)
-      .sort(([priceA], [priceB]) => 
-        isAsk 
-          ? Number(priceA) - Number(priceB)  // Ascending for asks
-          : Number(priceB) - Number(priceA)  // Descending for bids
-      )
-      .slice(0, maxRows);
-    
-    const rows = [...sortedEntries];
-    while (rows.length < maxRows) {
-      rows.push(['--', 0]);
+  const renderOrderBookLadder = () => {
+    if (!orderBookData) {
+      console.log('[TransactionDialog] No orderbook data available for ladder rendering');
+      return (
+        <div className="space-y-1">
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="grid grid-cols-5 gap-2 py-1 text-sm h-6">
+              <div className="text-right text-muted-foreground">--</div>
+              <div className="text-right text-muted-foreground">--</div>
+              <div className="text-center text-muted-foreground">--</div>
+              <div className="text-left text-muted-foreground">--</div>
+              <div className="text-left text-muted-foreground">--</div>
+            </div>
+          ))}
+        </div>
+      );
     }
+
+    console.log('[TransactionDialog] Rendering orderbook ladder with data:', {
+      bidsCount: Object.keys(orderBookData.bids || {}).length,
+      asksCount: Object.keys(orderBookData.asks || {}).length,
+      bestBid: orderBookData.best_bid,
+      bestAsk: orderBookData.best_ask
+    });
+
+    const bids = Object.entries(orderBookData.bids || {})
+      .sort(([a], [b]) => Number(b) - Number(a))
+      .slice(0, 5);
     
+    const asks = Object.entries(orderBookData.asks || {})
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .slice(0, 5);
+
+    const maxRows = Math.max(5, Math.max(bids.length, asks.length));
+    const rows = [];
+
+    // Create combined rows showing both sides
+    for (let i = 0; i < maxRows; i++) {
+      const bid = bids[i];
+      const ask = asks[i];
+      
+      rows.push({
+        bidSize: bid ? bid[1] : null,
+        bidPrice: bid ? Number(bid[0]) : null,
+        askPrice: ask ? Number(ask[0]) : null,
+        askSize: ask ? ask[1] : null,
+        index: i
+      });
+    }
+
+    const midPrice = orderBookData.best_bid && orderBookData.best_ask 
+      ? (orderBookData.best_bid + orderBookData.best_ask) / 2 
+      : null;
+
     return (
-      <div className="space-y-1">
-        {rows.map(([price, size], index) => (
-          <div 
-            key={`${isAsk ? 'ask' : 'bid'}-${index}`} 
-            className={`flex justify-between text-sm transition-all duration-300 ease-in-out ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}
-            style={{height: '20px'}}
-          >
-            <span className={size > 0 ? (isAsk ? "text-red-500" : "text-green-500") : "text-muted-foreground"}>
-              {size > 0 ? `${(Number(price) * 100).toFixed(2)}¢` : "--"}
-            </span>
-            <span>{size > 0 ? size.toFixed(2) : "--"}</span>
+      <div className="space-y-0">
+        {/* Header */}
+        <div className="grid grid-cols-5 gap-2 py-2 text-xs font-medium text-muted-foreground border-b border-border/50">
+          <div className="text-right">Size</div>
+          <div className="text-right">Bid</div>
+          <div className="text-center">Price</div>
+          <div className="text-left">Ask</div>
+          <div className="text-left">Size</div>
+        </div>
+        
+        {/* Order book rows */}
+        <div className="space-y-0">
+          {rows.map((row) => (
+            <div 
+              key={row.index} 
+              className={`grid grid-cols-5 gap-2 py-1 text-sm transition-all duration-300 ease-in-out hover:bg-accent/20 ${
+                isOrderBookLoading ? 'opacity-50' : 'opacity-100'
+              }`}
+              style={{ height: '24px' }}
+            >
+              {/* Bid Size */}
+              <div className="text-right text-muted-foreground">
+                {row.bidSize ? row.bidSize.toFixed(2) : "--"}
+              </div>
+              
+              {/* Bid Price */}
+              <div className="text-right">
+                {row.bidPrice ? (
+                  <span className="text-green-500 font-medium">
+                    {(row.bidPrice * 100).toFixed(2)}¢
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">--</span>
+                )}
+              </div>
+              
+              {/* Mid Price / Spread */}
+              <div className="text-center">
+                {row.index === 0 && midPrice ? (
+                  <div className="flex flex-col items-center">
+                    <span className="text-xs font-medium text-blue-500">
+                      {(midPrice * 100).toFixed(2)}¢
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ±{((orderBookData.spread / 2) * 100).toFixed(1)}¢
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">--</span>
+                )}
+              </div>
+              
+              {/* Ask Price */}
+              <div className="text-left">
+                {row.askPrice ? (
+                  <span className="text-red-500 font-medium">
+                    {(row.askPrice * 100).toFixed(2)}¢
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">--</span>
+                )}
+              </div>
+              
+              {/* Ask Size */}
+              <div className="text-left text-muted-foreground">
+                {row.askSize ? row.askSize.toFixed(2) : "--"}
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {/* Best bid/ask summary */}
+        <div className="grid grid-cols-2 gap-4 pt-3 mt-3 border-t border-border/50">
+          <div className="text-center">
+            <div className="text-xs text-muted-foreground">Best Bid</div>
+            <div className="text-sm font-medium text-green-500">
+              {orderBookData.best_bid ? `${(orderBookData.best_bid * 100).toFixed(2)}¢` : "--"}
+            </div>
           </div>
-        ))}
+          <div className="text-center">
+            <div className="text-xs text-muted-foreground">Best Ask</div>
+            <div className="text-sm font-medium text-red-500">
+              {orderBookData.best_ask ? `${(orderBookData.best_ask * 100).toFixed(2)}¢` : "--"}
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -327,7 +438,7 @@ export function TransactionDialog({
       open={selectedMarket !== null} 
       onOpenChange={handleClose}
     >
-      <AlertDialogContent className="min-h-[650px] flex flex-col">
+      <AlertDialogContent className="min-h-[650px] flex flex-col max-w-2xl">
         <AlertDialogHeader>
           <div className="flex items-start gap-4 mb-4">
             {topMover && (
@@ -350,7 +461,8 @@ export function TransactionDialog({
           </div>
           
           <div className="space-y-4 overflow-y-auto flex-1">
-            <div className="h-16">
+            {/* Hidden LiveOrderBook component for data fetching */}
+            <div className="h-0 overflow-hidden">
               <LiveOrderBook 
                 onOrderBookData={onOrderBookData}
                 isLoading={isOrderBookLoading}
@@ -360,54 +472,38 @@ export function TransactionDialog({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 transition-all duration-300">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Bids</div>
-                  <div className="bg-accent/20 p-3 rounded-lg h-[140px] relative">
-                    {isOrderBookLoading ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
-                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : null}
-                    <div className={`transition-opacity duration-300 ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}>
-                      {renderOrderbookRows(orderBookData?.bids, false)}
+              {/* Modern DOM-style Order Book Ladder */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">Order Book</div>
+                  {isOrderBookLoading && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Live Updates
                     </div>
-                  </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Asks</div>
-                  <div className="bg-accent/20 p-3 rounded-lg h-[140px] relative">
-                    {isOrderBookLoading ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
-                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <div className="bg-accent/10 border border-border/50 rounded-lg p-4 relative overflow-hidden">
+                  {isOrderBookLoading && (
+                    <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Connecting to live data...</span>
                       </div>
-                    ) : null}
-                    <div className={`transition-opacity duration-300 ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}>
-                      {renderOrderbookRows(orderBookData?.asks, true)}
                     </div>
-                  </div>
+                  )}
+                  {renderOrderBookLadder()}
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg transition-all duration-300">
-                <div>
-                  <div className="text-sm text-muted-foreground">Best Bid</div>
-                  <div className="text-lg font-medium text-green-500 h-7">
-                    {orderBookData?.best_bid ? `${(orderBookData.best_bid * 100).toFixed(2)}¢` : "--"}
-                  </div>
+              {/* Spread information */}
+              <div className="text-center">
+                <div className="text-xs text-muted-foreground">
+                  Current Spread: {orderBookData?.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Best Ask</div>
-                  <div className="text-lg font-medium text-red-500 h-7">
-                    {orderBookData?.best_ask ? `${(orderBookData.best_ask * 100).toFixed(2)}¢` : "--"}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="text-sm text-muted-foreground mb-4 h-5 transition-all duration-300">
-                Spread: {orderBookData?.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
               </div>
 
+              {/* Order Details Section */}
               <div className="bg-accent/20 p-4 rounded-lg space-y-4 h-[250px]">
                 <div className="text-sm font-medium">Order Details</div>
                 
