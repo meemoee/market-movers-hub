@@ -129,19 +129,34 @@ export function PortfolioGeneratorDropdown({
     }
   };
 
+  // Map backend step names to user-friendly display names
+  const stepDisplayNames: Record<string, string> = {
+    'auth_validation': 'Validating authentication',
+    'news_summary': 'Generating news summary',
+    'keywords_extraction': 'Extracting keywords',
+    'embedding_creation': 'Creating embeddings',
+    'pinecone_search': 'Searching markets',
+    'market_details': 'Fetching market details',
+    'best_markets': 'Selecting best markets',
+    'related_markets': 'Finding related markets',
+    'trade_ideas': 'Generating trade ideas'
+  };
+
   const updateProgressFromSteps = (steps: any[]) => {
     if (!steps || steps.length === 0) return;
     
-    const totalSteps = 8;
+    const totalSteps = Object.keys(stepDisplayNames).length;
     const completed = steps.filter(step => step.completed).length;
-    const progressPercentage = Math.min(Math.round((completed / totalSteps) * 100), 95);
+    const progressPercentage = completed === totalSteps ? 100 : Math.round((completed / totalSteps) * 100);
     
     setProgress(progressPercentage);
     setCompletedSteps(steps.filter(step => step.completed).map(step => step.name));
     
+    // Find the current step (first incomplete step)
     const currentStepData = steps.find(step => !step.completed);
     if (currentStepData) {
-      setCurrentStep(currentStepData.name.replace(/_/g, ' '));
+      const displayName = stepDisplayNames[currentStepData.name] || currentStepData.name.replace(/_/g, ' ');
+      setCurrentStep(displayName);
     } else if (completed === totalSteps) {
       setCurrentStep('Complete');
       setProgress(100);
@@ -153,7 +168,7 @@ export function PortfolioGeneratorDropdown({
       setLoading(true);
       setError('');
       setCurrentStep('Initializing...');
-      setProgress(5);
+      setProgress(0);
       
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -168,10 +183,10 @@ export function PortfolioGeneratorDropdown({
         return;
       }
 
-      setCurrentStep('Starting analysis...');
-      setProgress(10);
-      
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+      
+      // Start the portfolio generation process
+      setCurrentStep('Starting portfolio generation...');
       
       const initResponse = await fetch(functionUrl, {
         method: 'POST',
@@ -190,9 +205,7 @@ export function PortfolioGeneratorDropdown({
       abortControllerRef.current = new AbortController();
       const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
       
-      setCurrentStep('Analyzing your insight...');
-      setProgress(15);
-      
+      // Execute the main portfolio generation
       const portfolioResponse = await fetch(portfolioUrl, {
         method: 'GET',
         headers: {
@@ -209,6 +222,7 @@ export function PortfolioGeneratorDropdown({
       
       const results: PortfolioResults = await portfolioResponse.json();
       
+      // Handle errors
       if (results.errors && results.errors.length > 0) {
         results.errors.forEach(err => {
           toast({
@@ -223,10 +237,12 @@ export function PortfolioGeneratorDropdown({
         }
       }
       
+      // Update progress based on completed steps
       if (results.steps && results.steps.length > 0) {
         updateProgressFromSteps(results.steps);
       }
       
+      // Set the data
       if (results.data) {
         setNews(results.data.news || '');
         setKeywords(results.data.keywords || '');
@@ -234,6 +250,7 @@ export function PortfolioGeneratorDropdown({
         setTradeIdeas(results.data.tradeIdeas || []);
       }
       
+      // Final status update
       if (results.status === 'completed') {
         setStatus('Portfolio generation complete');
         setCurrentStep('Complete');

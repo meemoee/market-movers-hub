@@ -195,11 +195,7 @@ serve(async (req) => {
       let news = '';
       try {
         const step = logStepStart("News summary generation");
-        results.steps.push({
-          name: "news_summary",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
+        addCompletedStep("news_summary", { status: "starting" });
         
         const newsResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -223,13 +219,7 @@ serve(async (req) => {
         results.data.news = news;
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "news_summary" ? {...s, completed: true} : s
-        );
-        
-        addCompletedStep("news_summary");
+        addCompletedStep("news_summary", { status: "completed", length: news.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error generating news summary:`, error);
         addError("news_summary", error.message || "Error generating news summary");
@@ -239,11 +229,6 @@ serve(async (req) => {
       let keywords = '';
       try {
         const step = logStepStart("Keywords extraction");
-        results.steps.push({
-          name: "keywords_extraction",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         const keywordPrompt = `Prediction: ${content} Return ONLY the 15-30 most relevant/specific nouns, names, or phrases deeply tied to the sentiment or prediction (comma-separated, no extra words). They must be specifically related to what circumstances might logically occur if the user is CORRECT in their sentiment or opinion, HIGHLY PRIORITIZING latest up-to-date happenings and news.`;
         
@@ -269,12 +254,6 @@ serve(async (req) => {
         results.data.keywords = keywords;
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "keywords_extraction" ? {...s, completed: true} : s
-        );
-        
         addCompletedStep("keywords_extraction", { keywordCount: keywords.split(',').length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error extracting keywords:`, error);
@@ -285,11 +264,6 @@ serve(async (req) => {
       let vecArr: number[] = [];
       try {
         const step = logStepStart("Embedding creation");
-        results.steps.push({
-          name: "embedding_creation",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         console.log(`[${new Date().toISOString()}] Getting embedding for keywords: ${keywords.substring(0, 50)}...`);
         
@@ -325,12 +299,6 @@ serve(async (req) => {
         console.log(`[${new Date().toISOString()}] Successfully generated embedding with ${vecArr.length} dimensions`);
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "embedding_creation" ? {...s, completed: true, details: { dimensions: vecArr.length }} : s
-        );
-        
         addCompletedStep("embedding_creation", { dimensions: vecArr.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error creating embedding:`, error);
@@ -341,11 +309,6 @@ serve(async (req) => {
       let matches: any[] = [];
       try {
         const step = logStepStart("Pinecone search");
-        results.steps.push({
-          name: "pinecone_search",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         if (vecArr.length === 0) {
           throw new Error("No embedding vector available for search");
@@ -378,12 +341,6 @@ serve(async (req) => {
         matches = pineconeData.matches || [];
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "pinecone_search" ? {...s, completed: true, details: { matchCount: matches.length }} : s
-        );
-        
         addCompletedStep("pinecone_search", { matchCount: matches.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error querying Pinecone:`, error);
@@ -394,11 +351,6 @@ serve(async (req) => {
       let details: any[] = [];
       try {
         const step = logStepStart("Market details fetching");
-        results.steps.push({
-          name: "market_details",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         // Create Supabase client
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -433,12 +385,6 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "market_details" ? {...s, completed: true, details: { count: details.length }} : s
-        );
-        
         addCompletedStep("market_details", { count: details.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error fetching market details:`, error);
@@ -502,11 +448,6 @@ serve(async (req) => {
       let bests: any[] = [];
       try {
         const step = logStepStart("Best markets selection");
-        results.steps.push({
-          name: "best_markets",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         // Track event IDs we've already included to avoid duplicates
         const includedEventIds = new Set<string>();
@@ -530,12 +471,6 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "best_markets" ? {...s, completed: true, details: { count: bests.length }} : s
-        );
-        
         addCompletedStep("best_markets", { count: bests.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error selecting best markets:`, error);
@@ -545,11 +480,6 @@ serve(async (req) => {
       // 7️⃣ Fetch related markets
       try {
         const step = logStepStart("Related markets fetching");
-        results.steps.push({
-          name: "related_markets",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         let relatedByEvent: Record<string, any[]> = {};
         const eventIds = bests.map(b => b.event_id);
@@ -588,12 +518,6 @@ serve(async (req) => {
         results.data.markets = bests;
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "related_markets" ? {...s, completed: true} : s
-        );
-        
         addCompletedStep("related_markets");
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error fetching related markets:`, error);
@@ -604,11 +528,6 @@ serve(async (req) => {
       let tradeIdeas = [];
       try {
         const step = logStepStart("Trade ideas generation");
-        results.steps.push({
-          name: "trade_ideas",
-          completed: false,
-          timestamp: new Date().toISOString()
-        });
         
         if (bests.length > 0) {
           // Create a mapping of market details for easy lookup in the OpenRouter response
@@ -691,12 +610,6 @@ Suggest 3 trades as a JSON array of objects with:
         }
         
         logStepEnd(step);
-        
-        // Update step status to completed
-        results.steps = results.steps.map(s => 
-          s.name === "trade_ideas" ? {...s, completed: true, details: { count: tradeIdeas.length }} : s
-        );
-        
         addCompletedStep("trade_ideas", { count: tradeIdeas.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error generating trade ideas:`, error);
