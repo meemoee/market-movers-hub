@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useJobLogger } from "@/hooks/research/useJobLogger";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface TradeIdea {
   market_id: string;
@@ -106,6 +107,7 @@ export function PortfolioGeneratorDropdown({
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
   const { logUpdate } = useJobLogger('PortfolioGeneratorDropdown');
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     return () => {
@@ -116,6 +118,15 @@ export function PortfolioGeneratorDropdown({
   }, []);
 
   const handleGenerateClick = async () => {
+    if (!content.trim()) {
+      toast({
+        title: "No content provided",
+        description: "Please share your market insight before generating a portfolio",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (onGenerateClick) {
       onGenerateClick();
     }
@@ -287,18 +298,29 @@ export function PortfolioGeneratorDropdown({
       {/* Generate Portfolio Button */}
       <Button
         onClick={handleGenerateClick}
-        disabled={isGenerating || !content}
-        variant="default"
-        className="w-full bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] hover:opacity-90 transition-opacity"
+        disabled={isGenerating || !content.trim()}
+        variant="ghost"
+        size="sm"
+        className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1"
       >
-        <Sparkles className="h-4 w-4 mr-2" />
-        Generate Portfolio
-        {isOpen ? <ChevronUp className="h-4 w-4 ml-2" /> : <ChevronDown className="h-4 w-4 ml-2" />}
+        {isMobile ? (
+          <Sparkles className="h-3 w-3" />
+        ) : (
+          <>
+            Generate portfolio
+            <Sparkles className="h-3 w-3" />
+          </>
+        )}
+        {isOpen && !isMobile ? (
+          <ChevronUp className="h-3 w-3 ml-1" />
+        ) : !isMobile ? (
+          <ChevronDown className="h-3 w-3 ml-1" />
+        ) : null}
       </Button>
 
       {/* Dropdown Content */}
       {isOpen && (
-        <div className="absolute top-full mt-2 w-[600px] max-h-[600px] bg-background border rounded-lg shadow-lg z-50 overflow-hidden">
+        <div className="absolute top-full mt-2 left-0 w-[min(500px,calc(100vw-2rem))] max-h-[600px] bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg z-[1000] overflow-hidden">
           {/* Progress Section */}
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-2">
