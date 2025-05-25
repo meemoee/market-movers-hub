@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Loader2, CheckCircle, XCircle, AlertCircle, ImageIcon, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -103,7 +104,9 @@ export function PortfolioGeneratorDropdown({
   const [error, setError] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('ideas');
   const [completedSteps, setCompletedSteps] = useState<Record<string, any>>({});
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
   const { logUpdate } = useJobLogger('PortfolioGeneratorDropdown');
 
@@ -114,6 +117,35 @@ export function PortfolioGeneratorDropdown({
       }
     };
   }, []);
+
+  // Calculate dropdown position when opened
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX,
+        width: Math.max(600, rect.width)
+      });
+    }
+  }, [isOpen]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isOpen && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        const dropdownElement = document.getElementById('portfolio-dropdown');
+        if (dropdownElement && !dropdownElement.contains(event.target as Node)) {
+          setIsOpen(false);
+        }
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
 
   const handleGenerateClick = async () => {
     if (onGenerateClick) {
@@ -282,10 +314,208 @@ export function PortfolioGeneratorDropdown({
     }
   };
 
+  const renderDropdownContent = () => (
+    <div 
+      id="portfolio-dropdown"
+      className="w-[600px] max-h-[600px] bg-background border rounded-lg shadow-lg overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: dropdownPosition?.top || 0,
+        left: dropdownPosition?.left || 0,
+        zIndex: 9999,
+        width: dropdownPosition?.width || 600
+      }}
+    >
+      {/* Progress Section */}
+      <div className="p-4 border-b">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : error && !markets.length && !tradeIdeas.length ? (
+              <XCircle className="h-4 w-4 text-destructive" />
+            ) : progress === 100 ? (
+              <CheckCircle className="h-4 w-4 text-primary" />
+            ) : null}
+            <span className="text-sm font-medium">{currentStep}</span>
+          </div>
+          <span className="text-sm text-muted-foreground">{progress}%</span>
+        </div>
+        <Progress value={progress} className="h-2" />
+        
+        {/* Expandable Steps */}
+        {Object.keys(completedSteps).length > 0 && (
+          <div className="mt-3 space-y-1">
+            {Object.entries(completedSteps).map(([step, data]) => (
+              <div key={step} className="text-xs">
+                <button
+                  onClick={() => toggleStepExpansion(step)}
+                  className="flex items-center gap-1 hover:text-primary transition-colors"
+                >
+                  <CheckCircle className="h-3 w-3 text-green-500" />
+                  <span>{STEP_DESCRIPTIONS[step] || step}</span>
+                  {expandedSteps.includes(step) ? 
+                    <ChevronUp className="h-3 w-3" /> : 
+                    <ChevronDown className="h-3 w-3" />
+                  }
+                </button>
+                {expandedSteps.includes(step) && (
+                  <div className="ml-4 mt-1 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
+                    <pre className="whitespace-pre-wrap">
+                      {JSON.stringify(data, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Error Display */}
+      {error && !markets.length && !tradeIdeas.length && (
+        <div className="p-4 bg-destructive/10">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+            <p className="text-sm">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Results Tabs */}
+      {(tradeIdeas.length > 0 || markets.length > 0) && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+          <TabsList className="w-full justify-start rounded-none border-b">
+            <TabsTrigger value="ideas">
+              Trade Ideas ({tradeIdeas.length})
+            </TabsTrigger>
+            <TabsTrigger value="markets">
+              Markets ({markets.length})
+            </TabsTrigger>
+            <TabsTrigger value="analysis">Analysis</TabsTrigger>
+          </TabsList>
+          
+          <ScrollArea className="h-[400px]">
+            <TabsContent value="ideas" className="p-4 space-y-3">
+              {tradeIdeas.map((idea, i) => (
+                <Card key={i} className="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-8 w-8 rounded overflow-hidden flex-shrink-0">
+                      {idea.image ? (
+                        <img 
+                          src={idea.image} 
+                          alt={idea.market_title}
+                          className="object-cover w-full h-full" 
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-muted">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm truncate">{idea.market_title}</h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'} className="text-xs">
+                          {idea.outcome}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          ${idea.current_price.toFixed(2)} → ${idea.target_price.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                        {idea.rationale}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </TabsContent>
+            
+            <TabsContent value="markets" className="p-4 space-y-3">
+              {markets.map((market, i) => (
+                <Card key={i} className="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-8 w-8 rounded overflow-hidden flex-shrink-0">
+                      {market.image ? (
+                        <img 
+                          src={market.image} 
+                          alt={market.question} 
+                          className="object-cover w-full h-full" 
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-muted">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm">{market.event_title}</h4>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {market.question}
+                      </p>
+                      <div className="flex gap-3 mt-2 text-xs">
+                        <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
+                        <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </TabsContent>
+            
+            <TabsContent value="analysis" className="p-4 space-y-4">
+              <div>
+                <h3 className="font-medium text-sm mb-2">Your Insight</h3>
+                <p className="text-xs text-muted-foreground border-l-2 border-primary/50 pl-3">
+                  {content}
+                </p>
+              </div>
+              
+              {news && (
+                <div>
+                  <h3 className="font-medium text-sm mb-2">Market Context</h3>
+                  <p className="text-xs text-muted-foreground border-l-2 border-primary/50 pl-3">
+                    {news}
+                  </p>
+                </div>
+              )}
+              
+              {keywords && (
+                <div>
+                  <h3 className="font-medium text-sm mb-2">Key Concepts</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {keywords.split(',').map((keyword, i) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        {keyword.trim()}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          </ScrollArea>
+        </Tabs>
+      )}
+      
+      {/* Close button */}
+      <div className="p-3 border-t flex justify-end">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setIsOpen(false)}
+        >
+          Close
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className={cn("relative", className)}>
       {/* Generate Portfolio Button */}
       <Button
+        ref={buttonRef}
         onClick={handleGenerateClick}
         disabled={isGenerating || !content}
         variant="default"
@@ -296,192 +526,10 @@ export function PortfolioGeneratorDropdown({
         {isOpen ? <ChevronUp className="h-4 w-4 ml-2" /> : <ChevronDown className="h-4 w-4 ml-2" />}
       </Button>
 
-      {/* Dropdown Content */}
-      {isOpen && (
-        <div className="absolute top-full mt-2 w-[600px] max-h-[600px] bg-background border rounded-lg shadow-lg z-50 overflow-hidden">
-          {/* Progress Section */}
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                {isGenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : error && !markets.length && !tradeIdeas.length ? (
-                  <XCircle className="h-4 w-4 text-destructive" />
-                ) : progress === 100 ? (
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                ) : null}
-                <span className="text-sm font-medium">{currentStep}</span>
-              </div>
-              <span className="text-sm text-muted-foreground">{progress}%</span>
-            </div>
-            <Progress value={progress} className="h-2" />
-            
-            {/* Expandable Steps */}
-            {Object.keys(completedSteps).length > 0 && (
-              <div className="mt-3 space-y-1">
-                {Object.entries(completedSteps).map(([step, data]) => (
-                  <div key={step} className="text-xs">
-                    <button
-                      onClick={() => toggleStepExpansion(step)}
-                      className="flex items-center gap-1 hover:text-primary transition-colors"
-                    >
-                      <CheckCircle className="h-3 w-3 text-green-500" />
-                      <span>{STEP_DESCRIPTIONS[step] || step}</span>
-                      {expandedSteps.includes(step) ? 
-                        <ChevronUp className="h-3 w-3" /> : 
-                        <ChevronDown className="h-3 w-3" />
-                      }
-                    </button>
-                    {expandedSteps.includes(step) && (
-                      <div className="ml-4 mt-1 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
-                        <pre className="whitespace-pre-wrap">
-                          {JSON.stringify(data, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Error Display */}
-          {error && !markets.length && !tradeIdeas.length && (
-            <div className="p-4 bg-destructive/10">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-                <p className="text-sm">{error}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Results Tabs */}
-          {(tradeIdeas.length > 0 || markets.length > 0) && (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-              <TabsList className="w-full justify-start rounded-none border-b">
-                <TabsTrigger value="ideas">
-                  Trade Ideas ({tradeIdeas.length})
-                </TabsTrigger>
-                <TabsTrigger value="markets">
-                  Markets ({markets.length})
-                </TabsTrigger>
-                <TabsTrigger value="analysis">Analysis</TabsTrigger>
-              </TabsList>
-              
-              <ScrollArea className="h-[400px]">
-                <TabsContent value="ideas" className="p-4 space-y-3">
-                  {tradeIdeas.map((idea, i) => (
-                    <Card key={i} className="p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="h-8 w-8 rounded overflow-hidden flex-shrink-0">
-                          {idea.image ? (
-                            <img 
-                              src={idea.image} 
-                              alt={idea.market_title}
-                              className="object-cover w-full h-full" 
-                            />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center bg-muted">
-                              <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm truncate">{idea.market_title}</h4>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'} className="text-xs">
-                              {idea.outcome}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              ${idea.current_price.toFixed(2)} → ${idea.target_price.toFixed(2)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                            {idea.rationale}
-                          </p>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </TabsContent>
-                
-                <TabsContent value="markets" className="p-4 space-y-3">
-                  {markets.map((market, i) => (
-                    <Card key={i} className="p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="h-8 w-8 rounded overflow-hidden flex-shrink-0">
-                          {market.image ? (
-                            <img 
-                              src={market.image} 
-                              alt={market.question} 
-                              className="object-cover w-full h-full" 
-                            />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center bg-muted">
-                              <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm">{market.event_title}</h4>
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                            {market.question}
-                          </p>
-                          <div className="flex gap-3 mt-2 text-xs">
-                            <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
-                            <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </TabsContent>
-                
-                <TabsContent value="analysis" className="p-4 space-y-4">
-                  <div>
-                    <h3 className="font-medium text-sm mb-2">Your Insight</h3>
-                    <p className="text-xs text-muted-foreground border-l-2 border-primary/50 pl-3">
-                      {content}
-                    </p>
-                  </div>
-                  
-                  {news && (
-                    <div>
-                      <h3 className="font-medium text-sm mb-2">Market Context</h3>
-                      <p className="text-xs text-muted-foreground border-l-2 border-primary/50 pl-3">
-                        {news}
-                      </p>
-                    </div>
-                  )}
-                  
-                  {keywords && (
-                    <div>
-                      <h3 className="font-medium text-sm mb-2">Key Concepts</h3>
-                      <div className="flex flex-wrap gap-1">
-                        {keywords.split(',').map((keyword, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">
-                            {keyword.trim()}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </TabsContent>
-              </ScrollArea>
-            </Tabs>
-          )}
-          
-          {/* Close button */}
-          <div className="p-3 border-t flex justify-end">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setIsOpen(false)}
-            >
-              Close
-            </Button>
-          </div>
-        </div>
+      {/* Dropdown Content - Rendered as Portal */}
+      {isOpen && dropdownPosition && createPortal(
+        renderDropdownContent(),
+        document.body
       )}
     </div>
   );
