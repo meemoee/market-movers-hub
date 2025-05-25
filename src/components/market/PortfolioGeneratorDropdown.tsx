@@ -187,7 +187,6 @@ export function PortfolioGeneratorDropdown({
       
       // Start the portfolio generation process
       setCurrentStep('Starting portfolio generation...');
-      setProgress(5);
       
       const initResponse = await fetch(functionUrl, {
         method: 'POST',
@@ -205,74 +204,25 @@ export function PortfolioGeneratorDropdown({
       
       abortControllerRef.current = new AbortController();
       
-      // Start polling for progress updates
+      // Execute the portfolio generation and get results
       setCurrentStep('Processing your insight...');
-      setProgress(10);
       
-      let attempts = 0;
-      const maxAttempts = 60; // 60 seconds max
-      const pollInterval = 1000; // Poll every 1 second
+      const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
+      const portfolioResponse = await fetch(portfolioUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        signal: abortControllerRef.current.signal
+      });
       
-      const pollForProgress = async (): Promise<PortfolioResults> => {
-        while (attempts < maxAttempts) {
-          attempts++;
-          
-          try {
-            const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
-            const portfolioResponse = await fetch(portfolioUrl, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'Content-Type': 'application/json',
-              },
-              signal: abortControllerRef.current?.signal
-            });
-            
-            if (!portfolioResponse.ok) {
-              if (attempts < maxAttempts) {
-                // If it's still processing, wait and try again
-                await new Promise(resolve => setTimeout(resolve, pollInterval));
-                continue;
-              } else {
-                const errorText = await portfolioResponse.text();
-                throw new Error(`Portfolio generation failed: ${errorText}`);
-              }
-            }
-            
-            const results: PortfolioResults = await portfolioResponse.json();
-            
-            // Update progress based on completed steps
-            if (results.steps && results.steps.length > 0) {
-              updateProgressFromSteps(results.steps);
-            }
-            
-            // If completed, return results
-            if (results.status === 'completed' || results.status === 'error') {
-              return results;
-            }
-            
-            // Still processing, wait and continue polling
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-            
-          } catch (error) {
-            if (error.name === 'AbortError') {
-              throw error;
-            }
-            
-            // If we get an error but haven't reached max attempts, continue polling
-            if (attempts < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, pollInterval));
-              continue;
-            } else {
-              throw error;
-            }
-          }
-        }
-        
-        throw new Error('Portfolio generation timed out');
-      };
+      if (!portfolioResponse.ok) {
+        const errorText = await portfolioResponse.text();
+        throw new Error(`Portfolio generation failed: ${errorText}`);
+      }
       
-      const results = await pollForProgress();
+      const results: PortfolioResults = await portfolioResponse.json();
       
       // Handle errors
       if (results.errors && results.errors.length > 0) {
@@ -287,6 +237,11 @@ export function PortfolioGeneratorDropdown({
         if (!results.data.markets.length && !results.data.tradeIdeas.length) {
           setError(results.errors.map(e => `${e.step}: ${e.message}`).join('\n'));
         }
+      }
+      
+      // Update progress based on completed steps
+      if (results.steps && results.steps.length > 0) {
+        updateProgressFromSteps(results.steps);
       }
       
       // Set the data

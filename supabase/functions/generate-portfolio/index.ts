@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+   import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { getMarketsWithLatestPrices, getRelatedMarketsWithPrices } from "../_shared/db-helpers.ts";
 
@@ -85,6 +85,12 @@ serve(async (req) => {
     // Check if this is a streaming request
     const url = new URL(req.url);
     const isStreaming = url.searchParams.get('stream') === 'true';
+    
+    // Helper function to send SSE data
+    const sendSSE = (data: any, writer: WritableStreamDefaultWriter) => {
+      const message = `data: ${JSON.stringify(data)}\n\n`;
+      writer.write(new TextEncoder().encode(message));
+    };
     
     // Create a results object to track progress and collect data
     const results = {
@@ -328,7 +334,7 @@ serve(async (req) => {
         console.log(`[${new Date().toISOString()}] Successfully generated embedding with ${vecArr.length} dimensions`);
         
         logStepEnd(step);
-        addCompletedStep("embedding_creation", { dimensions: vecArr.length });
+        completeStep("embedding_creation", { dimensions: vecArr.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error creating embedding:`, error);
         addError("embedding_creation", error.message || "Error creating embedding");
@@ -370,7 +376,7 @@ serve(async (req) => {
         matches = pineconeData.matches || [];
         
         logStepEnd(step);
-        addCompletedStep("pinecone_search", { matchCount: matches.length });
+        completeStep("pinecone_search", { matchCount: matches.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error querying Pinecone:`, error);
         addError("pinecone_search", error.message || "Error querying Pinecone");
@@ -414,7 +420,7 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        addCompletedStep("market_details", { count: details.length });
+        completeStep("market_details", { count: details.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error fetching market details:`, error);
         addError("market_details", error.message || "Error fetching market details");
@@ -462,7 +468,7 @@ serve(async (req) => {
               no_price: 0.5
             }));
             
-            addCompletedStep("market_details_fallback", { count: details.length });
+            completeStep("market_details_fallback", { count: details.length });
             console.log(`[${new Date().toISOString()}] Fetched basic details for ${details.length} markets (fallback)`);
           }
           
@@ -500,7 +506,7 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        addCompletedStep("best_markets", { count: bests.length });
+        completeStep("best_markets", { count: bests.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error selecting best markets:`, error);
         addError("best_markets", error.message || "Error selecting best markets");
@@ -547,7 +553,7 @@ serve(async (req) => {
         results.data.markets = bests;
         
         logStepEnd(step);
-        addCompletedStep("related_markets");
+        completeStep("related_markets");
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error fetching related markets:`, error);
         addError("related_markets", error.message || "Error fetching related markets");
@@ -639,7 +645,7 @@ Suggest 3 trades as a JSON array of objects with:
         }
         
         logStepEnd(step);
-        addCompletedStep("trade_ideas", { count: tradeIdeas.length });
+        completeStep("trade_ideas", { count: tradeIdeas.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error generating trade ideas:`, error);
         addError("trade_ideas", error.message || "Error generating trade ideas");
