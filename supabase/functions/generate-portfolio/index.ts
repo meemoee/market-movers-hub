@@ -50,7 +50,13 @@ serve(async (req) => {
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, cache-control'
+      }
+    });
   }
 
   try {
@@ -75,6 +81,10 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
+
+    // Check if this is a streaming request
+    const url = new URL(req.url);
+    const isStreaming = url.searchParams.get('stream') === 'true';
     
     // Create a results object to track progress and collect data
     const results = {
@@ -90,14 +100,33 @@ serve(async (req) => {
       }
     };
     
-    // Utility function to add a completed step
-    const addCompletedStep = (name: string, details?: any) => {
+    // Utility function to add a step (starting)
+    const addStartingStep = (name: string) => {
       results.steps.push({
         name,
-        completed: true,
-        timestamp: new Date().toISOString(),
-        details
+        completed: false,
+        timestamp: new Date().toISOString()
       });
+      console.log(`[${new Date().toISOString()}] Step started: ${name}`);
+    };
+    
+    // Utility function to complete a step
+    const completeStep = (name: string, details?: any) => {
+      const stepIndex = results.steps.findIndex(s => s.name === name);
+      if (stepIndex >= 0) {
+        results.steps[stepIndex] = {
+          ...results.steps[stepIndex],
+          completed: true,
+          details
+        };
+      } else {
+        results.steps.push({
+          name,
+          completed: true,
+          timestamp: new Date().toISOString(),
+          details
+        });
+      }
       console.log(`[${new Date().toISOString()}] Step completed: ${name}`);
     };
     
@@ -182,7 +211,7 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        addCompletedStep("auth_validation", { userId: user.id });
+        completeStep("auth_validation", { userId: user.id });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Auth error:`, error);
         return new Response(
@@ -195,7 +224,7 @@ serve(async (req) => {
       let news = '';
       try {
         const step = logStepStart("News summary generation");
-        addCompletedStep("news_summary", { status: "starting" });
+        addStartingStep("news_summary");
         
         const newsResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -219,7 +248,7 @@ serve(async (req) => {
         results.data.news = news;
         
         logStepEnd(step);
-        addCompletedStep("news_summary", { status: "completed", length: news.length });
+        completeStep("news_summary", { status: "completed", length: news.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error generating news summary:`, error);
         addError("news_summary", error.message || "Error generating news summary");
@@ -254,7 +283,7 @@ serve(async (req) => {
         results.data.keywords = keywords;
         
         logStepEnd(step);
-        addCompletedStep("keywords_extraction", { keywordCount: keywords.split(',').length });
+        completeStep("keywords_extraction", { keywordCount: keywords.split(',').length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error extracting keywords:`, error);
         addError("keywords_extraction", error.message || "Error extracting keywords");
