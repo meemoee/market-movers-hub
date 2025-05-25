@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "../ui/card";
 import { ScrollArea } from "../ui/scroll-area";
-import { Separator } from "../ui/separator";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -202,30 +200,30 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId, selectedHo
   };
 
   if (isError) {
-    return <div className="text-sm text-red-500">Error loading holdings</div>;
+    return <div className="text-sm text-destructive">Error loading holdings</div>;
   }
 
   if (isLoading) {
     return (
       <div className="text-sm text-muted-foreground">
         <div className="animate-pulse space-y-2">
-          <div className="h-10 bg-gray-700/20 rounded"></div>
-          <div className="h-10 bg-gray-700/20 rounded"></div>
-          <div className="h-10 bg-gray-700/20 rounded"></div>
+          <div className="h-12 bg-muted/20 rounded-md"></div>
+          <div className="h-12 bg-muted/20 rounded-md"></div>
+          <div className="h-12 bg-muted/20 rounded-md"></div>
         </div>
       </div>
     );
   }
 
   if (holdings.length === 0) {
-    return <div className="text-sm text-muted-foreground">No holdings yet</div>;
+    return <div className="text-sm text-muted-foreground text-center py-8">No holdings yet</div>;
   }
 
   return (
-    <Card className="border p-0 overflow-hidden">
-      <ScrollArea className="h-[400px]">
-        <div>
-          {holdings.map((holding, index) => {
+    <div className="bg-muted/10 rounded-lg overflow-hidden">
+      <ScrollArea className="h-[300px]">
+        <div className="divide-y divide-border/50">
+          {holdings.map((holding) => {
             const rawCurrentPrice = latestPrices?.[holding.market_id];
             const isNoOutcome = holding.market?.outcomes ? holding.outcome === holding.market.outcomes[1] : false;
             
@@ -233,51 +231,53 @@ export function AccountHoldings({ onSelectHolding, selectedHoldingId, selectedHo
             const priceChange = calculatePriceChange(holding.entry_price, rawCurrentPrice, isNoOutcome);
             
             return (
-              <div key={holding.id}>
-                <div 
-                  className={`p-4 flex items-start gap-3 cursor-pointer hover:bg-accent/50 ${
-                    effectiveSelectedIds.includes(holding.id) ? 'bg-accent' : ''
-                  }`}
-                  onClick={() => onSelectHolding?.(holding)}
-                >
-                  {holding.market?.image && (
-                    <img
-                      src={holding.market.image}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm line-clamp-2 mb-1">
-                      {holding.market?.question || 'Unknown Market'}
-                    </p>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">
-                        Outcome: {holding.outcome}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Shares: {holding.amount?.toFixed(2) || '0.00'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
-                      </p>
-                      <p className="text-sm">
-                        Current Price: ${currentPrice?.toFixed(2) || (holding.entry_price?.toFixed(2) || '0.00')}
-                        {priceChange && (
-                          <span className={`ml-2 ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%)
-                          </span>
-                        )}
-                      </p>
+              <div 
+                key={holding.id}
+                className={`p-3 flex items-start gap-3 cursor-pointer hover:bg-muted/20 transition-colors ${
+                  effectiveSelectedIds.includes(holding.id) ? 'bg-primary/10' : ''
+                }`}
+                onClick={() => onSelectHolding?.(holding)}
+              >
+                {holding.market?.image && (
+                  <img
+                    src={holding.market.image}
+                    alt=""
+                    className="w-10 h-10 rounded-md object-cover flex-shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium line-clamp-2 mb-1">
+                    {holding.market?.question || 'Unknown Market'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Outcome:</span>
+                      <span className="ml-1 font-medium">{holding.outcome}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Shares:</span>
+                      <span className="ml-1 font-medium">{holding.amount?.toFixed(2) || '0.00'}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Entry:</span>
+                      <span className="ml-1 font-medium">${holding.entry_price?.toFixed(2) || '0.00'}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Current:</span>
+                      <span className="ml-1 font-medium">${currentPrice?.toFixed(2) || (holding.entry_price?.toFixed(2) || '0.00')}</span>
+                      {priceChange && (
+                        <span className={`ml-1 ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(1)}%)
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-                {index < holdings.length - 1 && <Separator />}
               </div>
             );
           })}
         </div>
       </ScrollArea>
-    </Card>
+    </div>
   );
 }
