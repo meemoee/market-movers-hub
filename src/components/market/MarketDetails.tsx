@@ -138,6 +138,14 @@ export function MarketDetails({
     (description ? `${question} - ${description}` : question) : 
     (description || 'No description available');
 
+  // Convert the price history to the format expected by PriceChart
+  const dataSeries = priceHistory?.points && priceHistory.points.length > 0 ? [{
+    id: marketId,
+    name: question || 'Market Price',
+    color: '#3b82f6',
+    data: priceHistory.points
+  }] : [];
+
   return (
     <div className="space-y-4">
       <div>
@@ -153,9 +161,9 @@ export function MarketDetails({
           <div className="h-[300px] flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : priceHistory?.points && priceHistory.points.length > 0 ? (
+        ) : dataSeries.length > 0 ? (
           <PriceChart
-            data={priceHistory.points}
+            dataSeries={dataSeries}
             events={marketEvents || []}
             selectedInterval={selectedChartInterval}
             onIntervalSelect={setSelectedChartInterval}
