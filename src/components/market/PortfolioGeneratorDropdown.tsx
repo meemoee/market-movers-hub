@@ -1,15 +1,14 @@
+
 import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronUp, Loader2, CheckCircle, XCircle, AlertCircle, ImageIcon, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Loader2, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Sparkle, ImageIcon } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useJobLogger } from "@/hooks/research/useJobLogger";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { cn } from "@/lib/utils";
 
@@ -24,15 +23,6 @@ interface TradeIdea {
   image?: string | null;
 }
 
-interface RelatedMarket {
-  id: string;
-  question: string;
-  yes_price: number;
-  no_price: number;
-  last_traded_price: number;
-  volume: number;
-}
-
 interface Market {
   market_id: string;
   event_id: string;
@@ -42,13 +32,6 @@ interface Market {
   image?: string;
   yes_price: number;
   no_price: number;
-  related_markets: RelatedMarket[];
-}
-
-interface PortfolioGeneratorDropdownProps {
-  content: string;
-  onGenerateClick?: () => void;
-  className?: string;
 }
 
 interface PortfolioResults {
@@ -65,11 +48,6 @@ interface PortfolioResults {
     timestamp: string;
     details?: any;
   }>;
-  warnings: Array<{
-    step: string;
-    message: string;
-    timestamp: string;
-  }>;
   data: {
     news: string;
     keywords: string;
@@ -78,153 +56,123 @@ interface PortfolioResults {
   }
 }
 
-const STEP_DESCRIPTIONS: Record<string, string> = {
-  'fetch_news': 'Analyzing market news and trends',
-  'extract_keywords': 'Extracting key investment themes',
-  'search_markets': 'Searching for relevant prediction markets',
-  'analyze_markets': 'Analyzing market opportunities',
-  'generate_ideas': 'Generating trade recommendations',
-  'validate_results': 'Validating portfolio suggestions'
-};
+interface PortfolioGeneratorDropdownProps {
+  content: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  triggerRef: React.RefObject<HTMLElement>;
+}
 
 export function PortfolioGeneratorDropdown({
   content,
-  onGenerateClick,
-  className
+  isOpen,
+  onOpenChange,
+  triggerRef
 }: PortfolioGeneratorDropdownProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState('');
-  const [expandedSteps, setExpandedSteps] = useState<string[]>([]);
+  const [status, setStatus] = useState<string>('');
+  const [progress, setProgress] = useState<number>(0);
+  const [currentStep, setCurrentStep] = useState<string>('');
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const [tradeIdeas, setTradeIdeas] = useState<TradeIdea[]>([]);
+  const [markets, setMarkets] = useState<Market[]>([]);
   const [news, setNews] = useState<string>('');
   const [keywords, setKeywords] = useState<string>('');
-  const [markets, setMarkets] = useState<Market[]>([]);
-  const [tradeIdeas, setTradeIdeas] = useState<TradeIdea[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<string>('ideas');
-  const [completedSteps, setCompletedSteps] = useState<Record<string, any>>({});
-  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
-  const { logUpdate } = useJobLogger('PortfolioGeneratorDropdown');
 
   useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
-
-  // Calculate dropdown position when opened
-  useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + window.scrollY + 8,
-        left: rect.left + window.scrollX,
-        width: Math.max(600, rect.width)
-      });
+    if (isOpen && content) {
+      generatePortfolio(content);
+    } else if (!isOpen) {
+      resetState();
     }
-  }, [isOpen]);
+  }, [isOpen, content]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (isOpen && buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
-        const dropdownElement = document.getElementById('portfolio-dropdown');
-        if (dropdownElement && !dropdownElement.contains(event.target as Node)) {
-          setIsOpen(false);
-        }
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target as Node)
+      ) {
+        onOpenChange(false);
       }
     };
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isOpen]);
 
-  const handleGenerateClick = async () => {
-    if (onGenerateClick) {
-      onGenerateClick();
-    }
-    
-    setIsOpen(true);
-    setIsGenerating(true);
-    setError('');
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onOpenChange, triggerRef]);
+
+  const resetState = () => {
+    setStatus('');
     setProgress(0);
-    setCurrentStep('Initializing...');
-    setCompletedSteps({});
-    setExpandedSteps([]);
-    
-    await generatePortfolio(content);
-  };
-
-  const toggleStepExpansion = (stepName: string) => {
-    setExpandedSteps(prev => 
-      prev.includes(stepName) 
-        ? prev.filter(s => s !== stepName)
-        : [...prev, stepName]
-    );
+    setCurrentStep('');
+    setCompletedSteps([]);
+    setTradeIdeas([]);
+    setMarkets([]);
+    setNews('');
+    setKeywords('');
+    setError('');
+    setExpandedSections({});
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
   };
 
   const updateProgressFromSteps = (steps: any[]) => {
     if (!steps || steps.length === 0) return;
     
-    const totalSteps = Object.keys(STEP_DESCRIPTIONS).length;
-    const completedCount = steps.filter(step => step.completed).length;
-    const progressPercentage = Math.min(Math.round((completedCount / totalSteps) * 100), 95);
+    const totalSteps = 8;
+    const completed = steps.filter(step => step.completed).length;
+    const progressPercentage = Math.min(Math.round((completed / totalSteps) * 100), 95);
     
     setProgress(progressPercentage);
+    setCompletedSteps(steps.filter(step => step.completed).map(step => step.name));
     
-    // Update current step description
-    const currentStepObj = steps.find(step => !step.completed) || steps[steps.length - 1];
-    if (currentStepObj) {
-      const description = STEP_DESCRIPTIONS[currentStepObj.name] || currentStepObj.name.replace(/_/g, ' ');
-      setCurrentStep(description);
+    const currentStepData = steps.find(step => !step.completed);
+    if (currentStepData) {
+      setCurrentStep(currentStepData.name.replace(/_/g, ' '));
+    } else if (completed === totalSteps) {
+      setCurrentStep('Complete');
+      setProgress(100);
     }
-    
-    // Store completed steps data
-    const completed: Record<string, any> = {};
-    steps.forEach(step => {
-      if (step.completed && step.details) {
-        completed[step.name] = step.details;
-      }
-    });
-    setCompletedSteps(completed);
   };
 
   const generatePortfolio = async (content: string) => {
     try {
-      logUpdate('info', `Starting portfolio generation for: ${content.substring(0, 30)}...`);
+      setLoading(true);
+      setError('');
+      setCurrentStep('Initializing...');
+      setProgress(5);
       
-      // Get the current session to retrieve the auth token
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token;
       
       if (!authToken) {
         setError('Authentication required. Please sign in to use this feature.');
-        setIsGenerating(false);
-        toast({
-          title: "Authentication required",
-          description: "Please sign in to generate portfolios",
-          variant: "destructive"
-        });
+        setLoading(false);
         return;
       }
 
-      // Clean up any existing fetch request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      setCurrentStep('Starting analysis...');
+      setProgress(10);
       
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
       
-      // First make a POST request to start the generation process
-      setCurrentStep('Initializing portfolio generation...');
       const initResponse = await fetch(functionUrl, {
         method: 'POST',
         headers: {
@@ -239,12 +187,11 @@ export function PortfolioGeneratorDropdown({
         throw new Error(`Failed to start portfolio generation: ${errorText}`);
       }
       
-      // Now make the actual request to generate the portfolio
       abortControllerRef.current = new AbortController();
       const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
       
-      logUpdate('info', `Making request to: ${portfolioUrl}`);
-      setProgress(10);
+      setCurrentStep('Analyzing your insight...');
+      setProgress(15);
       
       const portfolioResponse = await fetch(portfolioUrl, {
         method: 'GET',
@@ -257,31 +204,29 @@ export function PortfolioGeneratorDropdown({
       
       if (!portfolioResponse.ok) {
         const errorText = await portfolioResponse.text();
-        logUpdate('error', `Portfolio generation failed: ${errorText}`);
         throw new Error(`Portfolio generation failed: ${errorText}`);
       }
       
       const results: PortfolioResults = await portfolioResponse.json();
-      logUpdate('info', `Received portfolio results with status: ${results.status}`);
       
-      // Process errors if any
       if (results.errors && results.errors.length > 0) {
         results.errors.forEach(err => {
-          logUpdate('error', `Error in ${err.step}: ${err.message}`);
+          toast({
+            title: `Error in ${err.step}`,
+            description: err.message,
+            variant: "destructive"
+          });
         });
         
-        // Only set error if we have no data
         if (!results.data.markets.length && !results.data.tradeIdeas.length) {
           setError(results.errors.map(e => `${e.step}: ${e.message}`).join('\n'));
         }
       }
       
-      // Process all steps
       if (results.steps && results.steps.length > 0) {
         updateProgressFromSteps(results.steps);
       }
       
-      // Set data
       if (results.data) {
         setNews(results.data.news || '');
         setKeywords(results.data.keywords || '');
@@ -290,19 +235,20 @@ export function PortfolioGeneratorDropdown({
       }
       
       if (results.status === 'completed') {
-        setCurrentStep('Portfolio generation complete!');
+        setStatus('Portfolio generation complete');
+        setCurrentStep('Complete');
         setProgress(100);
       } else {
-        setCurrentStep('Portfolio generation completed with some issues');
+        setStatus('Portfolio generation completed with warnings');
+        setCurrentStep('Complete with warnings');
         setProgress(100);
       }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logUpdate('error', `Portfolio generation error: ${errorMessage}`);
       console.error('Portfolio generation error:', error);
       setError(errorMessage);
-      setCurrentStep('Generation failed');
+      setCurrentStep('Failed');
       
       toast({
         title: "Portfolio Generation Failed",
@@ -310,227 +256,169 @@ export function PortfolioGeneratorDropdown({
         variant: "destructive"
       });
     } finally {
-      setIsGenerating(false);
+      setLoading(false);
     }
   };
 
-  const renderDropdownContent = () => (
-    <div 
-      id="portfolio-dropdown"
-      className="w-[600px] max-h-[600px] bg-background border rounded-lg shadow-lg overflow-hidden"
-      style={{
-        position: 'fixed',
-        top: dropdownPosition?.top || 0,
-        left: dropdownPosition?.left || 0,
-        zIndex: 9999,
-        width: dropdownPosition?.width || 600
-      }}
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      ref={dropdownRef}
+      className="absolute top-full left-0 mt-1 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-96 overflow-hidden"
     >
-      {/* Progress Section */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : error && !markets.length && !tradeIdeas.length ? (
-              <XCircle className="h-4 w-4 text-destructive" />
-            ) : progress === 100 ? (
-              <CheckCircle className="h-4 w-4 text-primary" />
-            ) : null}
-            <span className="text-sm font-medium">{currentStep}</span>
+            <Sparkle className="h-4 w-4 text-primary" />
+            <span className="font-medium text-sm">Portfolio Generation</span>
           </div>
-          <span className="text-sm text-muted-foreground">{progress}%</span>
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
         </div>
-        <Progress value={progress} className="h-2" />
         
-        {/* Expandable Steps */}
-        {Object.keys(completedSteps).length > 0 && (
-          <div className="mt-3 space-y-1">
-            {Object.entries(completedSteps).map(([step, data]) => (
-              <div key={step} className="text-xs">
-                <button
-                  onClick={() => toggleStepExpansion(step)}
-                  className="flex items-center gap-1 hover:text-primary transition-colors"
-                >
-                  <CheckCircle className="h-3 w-3 text-green-500" />
-                  <span>{STEP_DESCRIPTIONS[step] || step}</span>
-                  {expandedSteps.includes(step) ? 
-                    <ChevronUp className="h-3 w-3" /> : 
-                    <ChevronDown className="h-3 w-3" />
-                  }
-                </button>
-                {expandedSteps.includes(step) && (
-                  <div className="ml-4 mt-1 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
-                    <pre className="whitespace-pre-wrap">
-                      {JSON.stringify(data, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            ))}
+        {loading && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{currentStep}</span>
+              <span>{progress}%</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        )}
+        
+        {error && (
+          <div className="flex items-start gap-2 p-2 bg-destructive/10 rounded-md">
+            <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-destructive">{error}</p>
           </div>
         )}
       </div>
 
-      {/* Error Display */}
-      {error && !markets.length && !tradeIdeas.length && (
-        <div className="p-4 bg-destructive/10">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-            <p className="text-sm">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Results Tabs */}
-      {(tradeIdeas.length > 0 || markets.length > 0) && (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-          <TabsList className="w-full justify-start rounded-none border-b">
-            <TabsTrigger value="ideas">
-              Trade Ideas ({tradeIdeas.length})
-            </TabsTrigger>
-            <TabsTrigger value="markets">
-              Markets ({markets.length})
-            </TabsTrigger>
-            <TabsTrigger value="analysis">Analysis</TabsTrigger>
-          </TabsList>
-          
-          <ScrollArea className="h-[400px]">
-            <TabsContent value="ideas" className="p-4 space-y-3">
-              {tradeIdeas.map((idea, i) => (
-                <Card key={i} className="p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="h-8 w-8 rounded overflow-hidden flex-shrink-0">
-                      {idea.image ? (
-                        <img 
-                          src={idea.image} 
-                          alt={idea.market_title}
-                          className="object-cover w-full h-full" 
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-muted">
-                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm truncate">{idea.market_title}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'} className="text-xs">
-                          {idea.outcome}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          ${idea.current_price.toFixed(2)} → ${idea.target_price.toFixed(2)}
-                        </span>
+      <ScrollArea className="max-h-64">
+        <div className="p-4 space-y-3">
+          {tradeIdeas.length > 0 && (
+            <div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                Trade Ideas ({tradeIdeas.length})
+              </h4>
+              <div className="space-y-2">
+                {tradeIdeas.slice(0, 2).map((idea, i) => (
+                  <Card key={i} className="p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-6 w-6 rounded overflow-hidden flex-shrink-0">
+                        {idea.image ? (
+                          <img src={idea.image} alt={idea.market_title} className="object-cover w-full h-full" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center bg-muted">
+                            <ImageIcon className="h-3 w-3 text-muted-foreground" />
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                        {idea.rationale}
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="markets" className="p-4 space-y-3">
-              {markets.map((market, i) => (
-                <Card key={i} className="p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="h-8 w-8 rounded overflow-hidden flex-shrink-0">
-                      {market.image ? (
-                        <img 
-                          src={market.image} 
-                          alt={market.question} 
-                          className="object-cover w-full h-full" 
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-muted">
-                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{idea.market_title}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'} className="text-xs px-1 py-0">
+                            {idea.outcome}
+                          </Badge>
+                          <span>${idea.current_price.toFixed(2)} → ${idea.target_price.toFixed(2)}</span>
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm">{market.event_title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {market.question}
-                      </p>
-                      <div className="flex gap-3 mt-2 text-xs">
+                    <p className="text-xs text-muted-foreground line-clamp-2">{idea.rationale}</p>
+                  </Card>
+                ))}
+                {tradeIdeas.length > 2 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{tradeIdeas.length - 2} more ideas available
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Expandable Sections */}
+          <div className="space-y-1">
+            {markets.length > 0 && (
+              <Collapsible open={expandedSections.markets} onOpenChange={() => toggleSection('markets')}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-muted/50 rounded text-sm">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Markets Found ({markets.length})
+                  </span>
+                  {expandedSections.markets ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-2 pl-6">
+                  {markets.slice(0, 3).map((market, i) => (
+                    <div key={i} className="text-xs p-2 border border-border/50 rounded">
+                      <p className="font-medium">{market.question}</p>
+                      <div className="flex gap-2 mt-1 text-muted-foreground">
                         <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
                         <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
                       </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="analysis" className="p-4 space-y-4">
-              <div>
-                <h3 className="font-medium text-sm mb-2">Your Insight</h3>
-                <p className="text-xs text-muted-foreground border-l-2 border-primary/50 pl-3">
-                  {content}
-                </p>
-              </div>
-              
-              {news && (
-                <div>
-                  <h3 className="font-medium text-sm mb-2">Market Context</h3>
-                  <p className="text-xs text-muted-foreground border-l-2 border-primary/50 pl-3">
-                    {news}
-                  </p>
-                </div>
-              )}
-              
-              {keywords && (
-                <div>
-                  <h3 className="font-medium text-sm mb-2">Key Concepts</h3>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {news && (
+              <Collapsible open={expandedSections.news} onOpenChange={() => toggleSection('news')}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-muted/50 rounded text-sm">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Market Context
+                  </span>
+                  {expandedSections.news ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-6">
+                  <p className="text-xs text-muted-foreground p-2 border-l-2 border-primary/50">{news}</p>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {keywords && (
+              <Collapsible open={expandedSections.keywords} onOpenChange={() => toggleSection('keywords')}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-muted/50 rounded text-sm">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Key Concepts
+                  </span>
+                  {expandedSections.keywords ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-6">
                   <div className="flex flex-wrap gap-1">
                     {keywords.split(',').map((keyword, i) => (
-                      <Badge key={i} variant="outline" className="text-xs">
+                      <Badge key={i} variant="outline" className="text-xs bg-primary/5">
                         {keyword.trim()}
                       </Badge>
                     ))}
                   </div>
-                </div>
-              )}
-            </TabsContent>
-          </ScrollArea>
-        </Tabs>
-      )}
-      
-      {/* Close button */}
-      <div className="p-3 border-t flex justify-end">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setIsOpen(false)}
-        >
-          Close
-        </Button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className={cn("relative", className)}>
-      {/* Generate Portfolio Button */}
-      <Button
-        ref={buttonRef}
-        onClick={handleGenerateClick}
-        disabled={isGenerating || !content}
-        variant="default"
-        className="w-full bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] hover:opacity-90 transition-opacity"
-      >
-        <Sparkles className="h-4 w-4 mr-2" />
-        Generate Portfolio
-        {isOpen ? <ChevronUp className="h-4 w-4 ml-2" /> : <ChevronDown className="h-4 w-4 ml-2" />}
-      </Button>
-
-      {/* Dropdown Content - Rendered as Portal */}
-      {isOpen && dropdownPosition && createPortal(
-        renderDropdownContent(),
-        document.body
-      )}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 }
