@@ -1,3 +1,4 @@
+
 import { useState, useMemo } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -47,7 +48,7 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
     return map;
   }, [effectiveMarketIds]);
 
-  // Fetch price history for each market
+  // Fetch price history for each market - ensure we always have an array
   const priceHistoryQueries = useQueries({
     queries: effectiveMarketIds.map(id => ({
       queryKey: ['priceHistory', id, selectedChartInterval],
@@ -89,12 +90,15 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
     }))
   });
 
-  const isLoading = priceHistoryQueries.some(query => query.isLoading);
-  const hasData = priceHistoryQueries.some(query => query.data?.points?.length > 0);
+  // Ensure priceHistoryQueries is always an array
+  const safeQueries = Array.isArray(priceHistoryQueries) ? priceHistoryQueries : [];
+  
+  const isLoading = safeQueries.some(query => query.isLoading);
+  const hasData = safeQueries.some(query => query.data?.points?.length > 0);
   
   // Combine all price histories into a format suitable for the chart
   const combinedPriceHistories = useMemo(() => {
-    const individualSeries = priceHistoryQueries
+    const individualSeries = safeQueries
       .filter(query => query.data?.points?.length > 0)
       .map(query => {
         const marketId = query.data!.marketId;
@@ -122,6 +126,10 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
           allTimestamps.push(point.time);
         });
       });
+      
+      if (allTimestamps.length === 0) {
+        return individualSeries;
+      }
       
       const minTime = Math.min(...allTimestamps);
       const maxTime = Math.max(...allTimestamps);
@@ -214,7 +222,7 @@ export function PriceHistoryView({ marketId, question, holdings = [] }: PriceHis
       console.error('Error calculating cumulative PnL:', error);
       return individualSeries;
     }
-  }, [priceHistoryQueries, holdings, colorMap, showCumulativePnL]);
+  }, [safeQueries, holdings, colorMap, showCumulativePnL]);
 
   // Fetch events for the first market only (if multiple are selected)
   // In the future, we could combine events from all markets
