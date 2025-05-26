@@ -30,11 +30,14 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
   const isYesOutcome = trade.outcome.toLowerCase().includes('yes');
   const outcomes = ['Yes', 'No'];
   
-  // For display purposes - if recommending "No", we need to show the inverted CURRENT price
-  // but keep target and stop as-is since the LLM already calculated them correctly
+  // For display purposes and positioning - if recommending "No", invert all prices for consistent visualization
   const displayCurrentPrice = isYesOutcome ? trade.current_price : (1 - trade.current_price);
-  const displayTargetPrice = trade.target_price; // Keep as-is from LLM
-  const displayStopPrice = trade.stop_price; // Keep as-is from LLM
+  const displayTargetPrice = isYesOutcome ? trade.target_price : (1 - trade.target_price);
+  const displayStopPrice = trade.stop_price ? (isYesOutcome ? trade.stop_price : (1 - trade.stop_price)) : undefined;
+  
+  // But for text display, keep the LLM's original values
+  const textTargetPrice = trade.target_price;
+  const textStopPrice = trade.stop_price;
   
   // Button prices - always show actual market prices
   const yesPrice = trade.current_price; // This is the "Yes" price from market data
@@ -44,7 +47,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
     return outcome.length > 8 ? `${outcome.slice(0, 6)}...` : outcome;
   };
 
-  // Calculate price change using display current price vs target
+  // Calculate price change using display prices for consistent visualization
   const displayPriceChange = displayTargetPrice - displayCurrentPrice;
   const displayIsPositive = displayPriceChange >= 0;
 
@@ -108,7 +111,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
               ) : (
                 <TrendingDown className="w-4 h-4" />
               )}
-              Target: {formatPrice(displayTargetPrice)}
+              Target: {formatPrice(textTargetPrice)}
             </span>
           </div>
           <div className="flex flex-col items-end justify-end h-[60px]">
@@ -116,7 +119,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
               Target
             </span>
             <span className="text-sm text-muted-foreground">
-              {displayStopPrice ? `Stop: ${formatPrice(displayStopPrice)}` : 'No stop set'}
+              {textStopPrice ? `Stop: ${formatPrice(textStopPrice)}` : 'No stop set'}
             </span>
           </div>
         </div>
@@ -139,7 +142,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             }}
           />
           
-          {/* Target price indicator - use original target from LLM */}
+          {/* Target price indicator - use display price for positioning */}
           <div 
             className="absolute h-4 w-0.5 bg-green-400 top-[-7px]"
             style={{ 
@@ -147,7 +150,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             }}
           />
           
-          {/* Stop price indicator - use original stop from LLM */}
+          {/* Stop price indicator - use display price for positioning */}
           {displayStopPrice && (
             <div 
               className="absolute h-4 w-0.5 bg-red-400 top-[-7px]"
@@ -157,7 +160,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             />
           )}
           
-          {/* Price change visualization */}
+          {/* Price change visualization using display prices */}
           {displayIsPositive ? (
             <div 
               className="absolute bg-green-500/30 h-2 top-[-4px]" 
