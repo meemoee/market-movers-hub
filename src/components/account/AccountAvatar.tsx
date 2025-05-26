@@ -6,12 +6,12 @@ interface AccountAvatarProps {
 }
 
 export function AccountAvatar({ email }: AccountAvatarProps) {
-  const initials = email?.split('@')[0]?.slice(0, 2).toUpperCase() || '??';
+  const initials = email?.charAt(0).toUpperCase() || '?';
   
   return (
-    <Avatar className="h-12 w-12 border border-border/50">
+    <Avatar className="h-16 w-16">
       <AvatarImage src="" alt="Profile picture" />
-      <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
+      <AvatarFallback className="bg-primary/10">
         {initials}
       </AvatarFallback>
     </Avatar>

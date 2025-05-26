@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
@@ -72,12 +73,12 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
   // Show loading state if auth status is still being determined
   if (isLoading) {
     return (
-      <Card className={`w-full ${isMobile ? 'rounded-md' : 'rounded-lg'} bg-card/50 backdrop-blur-sm border-border/50`}>
+      <Card className={`w-full ${isMobile ? 'rounded-md' : 'rounded-lg'} bg-transparent border-0 shadow-none`}>
         <div className={isMobile ? 'p-4' : 'p-6'}>
           <div className="animate-pulse flex flex-col space-y-4">
-            <div className="h-10 bg-muted/20 rounded-md w-2/3"></div>
-            <div className="h-8 bg-muted/20 rounded-md w-full"></div>
-            <div className="h-8 bg-muted/20 rounded-md w-full"></div>
+            <div className="h-10 bg-gray-700/50 rounded w-2/3"></div>
+            <div className="h-8 bg-gray-700/50 rounded w-full"></div>
+            <div className="h-8 bg-gray-700/50 rounded w-full"></div>
           </div>
         </div>
       </Card>
@@ -85,7 +86,7 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
   }
 
   return (
-    <Card className={`w-full ${isMobile ? 'rounded-md' : 'rounded-lg'} bg-card/50 backdrop-blur-sm border-border/50 shadow-lg hover:shadow-xl transition-all duration-300`}>
+    <Card className={`w-full ${isMobile ? 'rounded-md' : 'rounded-lg'} bg-transparent border-0 shadow-none`}>
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
@@ -102,31 +103,9 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
                 button: {
                   background: 'hsl(var(--primary))',
                   color: 'hsl(var(--primary-foreground))',
-                  borderRadius: 'var(--radius)',
-                  fontWeight: '500',
                 },
                 anchor: {
                   color: 'hsl(var(--primary))',
-                },
-                input: {
-                  background: 'hsl(var(--card))',
-                  borderColor: 'hsl(var(--border))',
-                  color: 'hsl(var(--foreground))',
-                  borderRadius: 'var(--radius)',
-                },
-                label: {
-                  color: 'hsl(var(--muted-foreground))',
-                },
-                message: {
-                  color: 'hsl(var(--destructive))',
-                },
-              },
-              variables: {
-                default: {
-                  colors: {
-                    brand: 'hsl(var(--primary))',
-                    brandAccent: 'hsl(var(--primary))',
-                  },
                 },
               },
             }}
@@ -135,43 +114,41 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
           />
         </div>
       ) : (
-        <div className={`space-y-4 ${isMobile ? 'p-4' : 'p-6'}`}>
-          <div className="flex items-center gap-3 pb-3 border-b border-border/50">
+        <div className={`space-y-6 ${isMobile ? 'p-4' : 'p-6'}`}>
+          <div className="flex items-start gap-4">
             <AccountAvatar email={session.user.email} />
             <div className="flex-1 min-w-0">
-              <Link to="/profile" className="block group">
-                <h2 className="text-lg font-semibold group-hover:text-primary transition-colors">Account</h2>
-                <p className="text-sm text-muted-foreground truncate">{session.user.email}</p>
+              <Link to="/profile" className="block hover:underline">
+                <h2 className="text-xl font-bold mb-1">Account</h2>
+                <p className="text-sm text-muted-foreground truncate overflow-hidden">{session.user.email}</p>
               </Link>
             </div>
             <Button 
               variant="ghost" 
               size="icon"
-              className="h-8 w-8 hover:bg-muted/50" 
+              className="ml-auto" 
               onClick={openSettings}
               title="Settings"
             >
-              <Settings size={16} />
+              <Settings size={18} />
             </Button>
           </div>
           
-          <div className="py-2">
-            <AccountBalance 
-              balance={balance}
-              onAddBalance={() => setBalance(b => (b ?? 0) + 100)}
-              onRemoveBalance={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
-            />
-          </div>
+          <AccountBalance 
+            balance={balance}
+            onAddBalance={() => setBalance(b => (b ?? 0) + 100)}
+            onRemoveBalance={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
+          />
 
-          <div className="space-y-3 py-2">
-            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Holdings</h3>
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold">Holdings</h3>
             <AccountHoldings />
           </div>
 
           <Button
             onClick={signOut}
-            className="w-full bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20"
-            variant="ghost"
+            className="w-full"
+            variant="destructive"
           >
             Sign Out
           </Button>
