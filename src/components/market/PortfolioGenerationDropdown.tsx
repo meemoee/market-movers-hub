@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, ChevronRight, Sparkle, TrendingUp, DollarSign } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface PortfolioStep {
   name: string;
@@ -63,6 +64,7 @@ export function PortfolioGenerationDropdown({
   const { session } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   const totalSteps = 8; // Based on the edge function steps
 
@@ -78,17 +80,41 @@ export function PortfolioGenerationDropdown({
     'trade_ideas': 'Generating trade ideas'
   };
 
-  // Calculate dropdown position when opened or on scroll
+  // Calculate dropdown position to match TopMoversList container
   useEffect(() => {
     if (!isOpen || !buttonRef?.current) return;
 
     const updatePosition = () => {
       if (buttonRef?.current) {
         const buttonRect = buttonRef.current.getBoundingClientRect();
+        
+        // Calculate the main content container position to match Index.tsx layout
+        const viewportWidth = window.innerWidth;
+        let containerLeft, containerWidth;
+        
+        if (isMobile) {
+          // Mobile: full width, no margins
+          containerLeft = 0;
+          containerWidth = viewportWidth;
+        } else {
+          // Desktop: match the main content area positioning from Index.tsx
+          const maxContainerWidth = Math.min(1280, viewportWidth);
+          const containerStart = (viewportWidth - maxContainerWidth) / 2;
+          
+          // Account for left margin (ml-[320px]) and right margin (xl:mr-[400px])
+          const leftMargin = 320;
+          const rightMargin = viewportWidth >= 1280 ? 400 : 0;
+          const availableWidth = maxContainerWidth - leftMargin - rightMargin;
+          const contentMaxWidth = Math.min(660, availableWidth);
+          
+          containerLeft = containerStart + leftMargin + 16; // +16 for px-4 padding
+          containerWidth = contentMaxWidth - 32; // -32 for px-4 padding on both sides
+        }
+        
         setDropdownPosition({
           top: buttonRect.bottom + 8,
-          left: buttonRect.left,
-          width: Math.max(500, buttonRect.width)
+          left: containerLeft,
+          width: containerWidth
         });
       }
     };
@@ -106,7 +132,7 @@ export function PortfolioGenerationDropdown({
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', handleResize);
     };
-  }, [isOpen, buttonRef]);
+  }, [isOpen, buttonRef, isMobile]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -242,15 +268,16 @@ export function PortfolioGenerationDropdown({
   const dropdownContent = (
     <div 
       ref={dropdownRef}
-      className="fixed z-40 bg-background border border-border rounded-lg shadow-2xl"
+      className={`fixed z-40 bg-background border border-border rounded-lg shadow-2xl ${
+        isMobile ? 'border border-white/5 bg-black/20' : 'border border-white/5 bg-black/20'
+      }`}
       style={{
         top: `${dropdownPosition.top}px`,
         left: `${dropdownPosition.left}px`,
-        width: `${Math.min(dropdownPosition.width, 600)}px`,
-        minWidth: '500px'
+        width: `${dropdownPosition.width}px`
       }}
     >
-      <Card className="border-0 shadow-none">
+      <Card className="border-0 shadow-none bg-transparent">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Sparkle className="h-5 w-5 text-primary" />
