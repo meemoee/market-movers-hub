@@ -30,11 +30,11 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
   const isYesOutcome = trade.outcome.toLowerCase().includes('yes');
   const outcomes = ['Yes', 'No'];
   
-  // For display purposes - if recommending "No", we need to show the inverted prices
-  // because the trade.current_price represents the "Yes" price from the market data
+  // For display purposes - if recommending "No", we need to show the inverted CURRENT price
+  // but keep target and stop as-is since the LLM already calculated them correctly
   const displayCurrentPrice = isYesOutcome ? trade.current_price : (1 - trade.current_price);
-  const displayTargetPrice = isYesOutcome ? trade.target_price : (1 - trade.target_price);
-  const displayStopPrice = trade.stop_price ? (isYesOutcome ? trade.stop_price : (1 - trade.stop_price)) : undefined;
+  const displayTargetPrice = trade.target_price; // Keep as-is from LLM
+  const displayStopPrice = trade.stop_price; // Keep as-is from LLM
   
   // Button prices - always show actual market prices
   const yesPrice = trade.current_price; // This is the "Yes" price from market data
@@ -44,7 +44,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
     return outcome.length > 8 ? `${outcome.slice(0, 6)}...` : outcome;
   };
 
-  // Recalculate price change using display prices
+  // Calculate price change using display current price vs target
   const displayPriceChange = displayTargetPrice - displayCurrentPrice;
   const displayIsPositive = displayPriceChange >= 0;
 
@@ -139,7 +139,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             }}
           />
           
-          {/* Target price indicator - positioned using display price */}
+          {/* Target price indicator - use original target from LLM */}
           <div 
             className="absolute h-4 w-0.5 bg-green-400 top-[-7px]"
             style={{ 
@@ -147,7 +147,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             }}
           />
           
-          {/* Stop price indicator - positioned using display price */}
+          {/* Stop price indicator - use original stop from LLM */}
           {displayStopPrice && (
             <div 
               className="absolute h-4 w-0.5 bg-red-400 top-[-7px]"
@@ -157,7 +157,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             />
           )}
           
-          {/* Price change visualization using display prices */}
+          {/* Price change visualization */}
           {displayIsPositive ? (
             <div 
               className="absolute bg-green-500/30 h-2 top-[-4px]" 
