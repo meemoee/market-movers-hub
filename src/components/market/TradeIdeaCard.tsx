@@ -26,13 +26,6 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
     return price * 100;
   };
 
-  const calculatePriceChange = (): number => {
-    return trade.target_price - trade.current_price;
-  };
-
-  const priceChange = calculatePriceChange();
-  const isPositive = priceChange >= 0;
-
   // Determine which outcome is being recommended
   const isYesOutcome = trade.outcome.toLowerCase().includes('yes');
   const outcomes = ['Yes', 'No'];
@@ -146,7 +139,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             }}
           />
           
-          {/* Target price indicator */}
+          {/* Target price indicator - positioned using display price */}
           <div 
             className="absolute h-4 w-0.5 bg-green-400 top-[-7px]"
             style={{ 
@@ -154,7 +147,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             }}
           />
           
-          {/* Stop price indicator (if exists) */}
+          {/* Stop price indicator - positioned using display price */}
           {displayStopPrice && (
             <div 
               className="absolute h-4 w-0.5 bg-red-400 top-[-7px]"
@@ -164,13 +157,13 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             />
           )}
           
-          {/* Price change visualization */}
+          {/* Price change visualization using display prices */}
           {displayIsPositive ? (
             <div 
               className="absolute bg-green-500/30 h-2 top-[-4px]" 
               style={{ 
                 left: `${calculatePosition(displayCurrentPrice)}%`,
-                width: `${Math.min(calculatePosition(displayTargetPrice) - calculatePosition(displayCurrentPrice), 100 - calculatePosition(displayCurrentPrice))}%`
+                width: `${Math.max(0, Math.min(calculatePosition(displayTargetPrice) - calculatePosition(displayCurrentPrice), 100 - calculatePosition(displayCurrentPrice)))}%`
               }}
             />
           ) : (
@@ -178,7 +171,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
               className="absolute bg-red-500/30 h-2 top-[-4px]" 
               style={{ 
                 left: `${Math.max(calculatePosition(displayTargetPrice), 0)}%`,
-                width: `${Math.min(calculatePosition(displayCurrentPrice) - calculatePosition(displayTargetPrice), calculatePosition(displayCurrentPrice))}%`
+                width: `${Math.max(0, Math.min(calculatePosition(displayCurrentPrice) - calculatePosition(displayTargetPrice), calculatePosition(displayCurrentPrice)))}%`
               }}
             />
           )}
