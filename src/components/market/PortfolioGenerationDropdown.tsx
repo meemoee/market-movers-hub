@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -44,19 +43,22 @@ interface PortfolioGenerationDropdownProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenChange: (open: boolean) => void;
+  buttonRef?: React.RefObject<HTMLButtonElement>;
 }
 
 export function PortfolioGenerationDropdown({ 
   content, 
   isOpen, 
   onClose, 
-  onOpenChange 
+  onOpenChange,
+  buttonRef 
 }: PortfolioGenerationDropdownProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
   const [results, setResults] = useState<PortfolioResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const { session } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -75,6 +77,18 @@ export function PortfolioGenerationDropdown({
     'trade_ideas': 'Generating trade ideas'
   };
 
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef?.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: buttonRect.bottom + 8,
+        left: buttonRect.left,
+        width: Math.max(buttonRect.width, 500)
+      });
+    }
+  }, [isOpen, buttonRef]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -82,12 +96,20 @@ export function PortfolioGenerationDropdown({
       }
     };
 
+    const handleScroll = () => {
+      if (isOpen) {
+        onClose();
+      }
+    };
+
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('scroll', handleScroll, true);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('scroll', handleScroll, true);
     };
   }, [isOpen, onClose]);
 
@@ -194,7 +216,13 @@ export function PortfolioGenerationDropdown({
   return (
     <div 
       ref={dropdownRef}
-      className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-background border border-border rounded-lg shadow-lg max-w-2xl"
+      className="fixed z-[10000] bg-background border border-border rounded-lg shadow-2xl"
+      style={{
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+        maxWidth: '600px'
+      }}
     >
       <Card className="border-0 shadow-none">
         <CardHeader className="pb-4">

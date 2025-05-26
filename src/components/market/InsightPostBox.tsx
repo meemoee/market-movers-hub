@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -183,6 +182,7 @@ export function InsightPostBox() {
                     isOpen={isPortfolioDropdownOpen}
                     onClose={() => setIsPortfolioDropdownOpen(false)}
                     onOpenChange={setIsPortfolioDropdownOpen}
+                    buttonRef={portfolioButtonRef}
                   />
                 </div>
               </div>
