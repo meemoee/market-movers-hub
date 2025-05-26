@@ -289,7 +289,7 @@ export function PortfolioGeneratorDropdown({
   if (!open) return null;
 
   return (
-    <div className="absolute top-full left-0 w-full max-w-4xl bg-background border rounded-lg shadow-lg z-50 mt-2">
+    <div className="fixed top-full left-0 w-full max-w-4xl bg-background border rounded-lg shadow-2xl z-[9999] mt-2 backdrop-blur-sm">
       <div className="p-4 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           {loading ? (
