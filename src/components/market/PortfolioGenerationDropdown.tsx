@@ -300,9 +300,9 @@ export function PortfolioGenerationDropdown({
   return (
     <div 
       ref={dropdownRef}
-      className="w-full mt-2 bg-background border border-white/5 rounded-lg shadow-2xl animate-in slide-in-from-top-2 duration-200"
+      className="w-full mt-2 animate-in slide-in-from-top-2 duration-200"
     >
-      <Card className="border-0 shadow-none">
+      <Card className="border-0 shadow-none bg-transparent">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Sparkle className="h-5 w-5 text-primary" />
