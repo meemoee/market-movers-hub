@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -95,8 +96,21 @@ export function PortfolioGeneratorDropdown({
   const [activeTab, setActiveTab] = useState<string>('ideas');
   const [isDetailsExpanded, setIsDetailsExpanded] = useState<boolean>(false);
   const [stepDetails, setStepDetails] = useState<any[]>([]);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
+  
+  // Calculate position based on trigger element
+  useEffect(() => {
+    if (open && triggerRef?.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 8, // 8px gap
+        left: rect.left + window.scrollX,
+        width: Math.min(rect.width * 4, window.innerWidth - 32) // max 4x button width, but not wider than viewport
+      });
+    }
+  }, [open, triggerRef]);
   
   // Clean up fetch request when component unmounts or dialog closes
   useEffect(() => {
@@ -288,8 +302,16 @@ export function PortfolioGeneratorDropdown({
 
   if (!open) return null;
 
-  return (
-    <div className="absolute top-full left-0 w-full max-w-4xl bg-background border rounded-lg shadow-2xl z-[9999] mt-2 backdrop-blur-sm">
+  const dropdownContent = (
+    <div 
+      className="fixed bg-background border rounded-lg shadow-2xl z-[99999] backdrop-blur-sm"
+      style={{
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+        maxWidth: '1024px' // max-w-4xl equivalent
+      }}
+    >
       <div className="p-4 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           {loading ? (
@@ -548,4 +570,7 @@ export function PortfolioGeneratorDropdown({
       </div>
     </div>
   );
+
+  // Use portal to render outside the current DOM hierarchy
+  return createPortal(dropdownContent, document.body);
 }
