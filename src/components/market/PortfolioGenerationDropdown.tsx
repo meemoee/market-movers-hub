@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Sparkle, TrendingUp, DollarSign, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkle, TrendingUp, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { TradeIdeaCard } from "./TradeIdeaCard";
 
 interface PortfolioStep {
   name: string;
@@ -361,34 +362,12 @@ export function PortfolioGenerationDropdown({
                   {expandedSections.has('trades') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </CollapsibleTrigger>
                 
-                <CollapsibleContent className="mt-2 space-y-2">
+                <CollapsibleContent className="mt-2 space-y-3">
                   {results.data.tradeIdeas?.map((trade, index) => (
-                    <div key={index} className="p-3 border border-border rounded-lg space-y-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm line-clamp-2">{trade.market_title}</h4>
-                          <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                            <span>Outcome: {trade.outcome}</span>
-                            <span className="flex items-center gap-1">
-                              <DollarSign className="h-3 w-3" />
-                              Current: {(trade.current_price * 100).toFixed(0)}¢
-                            </span>
-                            <span>Target: {(trade.target_price * 100).toFixed(0)}¢</span>
-                            {trade.stop_price && (
-                              <span>Stop: {(trade.stop_price * 100).toFixed(0)}¢</span>
-                            )}
-                          </div>
-                        </div>
-                        {trade.image && (
-                          <img 
-                            src={trade.image} 
-                            alt={trade.market_title}
-                            className="w-10 h-10 rounded object-cover flex-shrink-0 ml-2"
-                          />
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{trade.rationale}</p>
-                    </div>
+                    <TradeIdeaCard
+                      key={index}
+                      trade={trade}
+                    />
                   ))}
                 </CollapsibleContent>
               </Collapsible>
