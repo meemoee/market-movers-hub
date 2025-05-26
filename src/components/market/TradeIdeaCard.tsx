@@ -30,21 +30,29 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
   const isYesOutcome = trade.outcome.toLowerCase().includes('yes');
   const outcomes = ['Yes', 'No'];
   
-  // The LLM gives us prices on the "Yes" scale regardless of outcome
-  // So we need to convert everything to the actual outcome scale
-  const actualCurrentPrice = isYesOutcome ? trade.current_price : (1 - trade.current_price);
-  const actualTargetPrice = isYesOutcome ? trade.target_price : (1 - trade.target_price);
-  const actualStopPrice = trade.stop_price ? (isYesOutcome ? trade.stop_price : (1 - trade.stop_price)) : undefined;
+  // DON'T INVERT ANYTHING! The LLM now gives us the correct prices directly
+  const actualCurrentPrice = trade.current_price;
+  const actualTargetPrice = trade.target_price;
+  const actualStopPrice = trade.stop_price;
   
-  // Button prices - always show actual market prices
-  const yesPrice = trade.current_price; // This is the "Yes" price from market data
-  const noPrice = 1 - trade.current_price; // This is the "No" price (complement)
+  // For button prices, we need to show the actual market prices
+  // The LLM gives us the trading price, but we need to show both outcomes
+  let yesPrice, noPrice;
+  if (isYesOutcome) {
+    // If recommending Yes, current_price is the Yes price
+    yesPrice = trade.current_price;
+    noPrice = 1 - trade.current_price;
+  } else {
+    // If recommending No, current_price is the No price
+    noPrice = trade.current_price;
+    yesPrice = 1 - trade.current_price;
+  }
 
   const truncateOutcome = (outcome: string) => {
     return outcome.length > 8 ? `${outcome.slice(0, 6)}...` : outcome;
   };
 
-  // Calculate price change using actual outcome prices
+  // Calculate price change using the LLM's direct prices
   const priceChange = actualTargetPrice - actualCurrentPrice;
   const isPositive = priceChange >= 0;
 
