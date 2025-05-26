@@ -194,7 +194,7 @@ export function PortfolioGenerationDropdown({
   return (
     <div 
       ref={dropdownRef}
-      className="absolute top-full left-0 right-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg max-w-2xl"
+      className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-background border border-border rounded-lg shadow-lg max-w-2xl"
     >
       <Card className="border-0 shadow-none">
         <CardHeader className="pb-4">
