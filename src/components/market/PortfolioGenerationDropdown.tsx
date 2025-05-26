@@ -353,7 +353,7 @@ export function PortfolioGenerationDropdown({
                 open={expandedSections.has('trades')} 
                 onOpenChange={() => toggleSection('trades')}
               >
-                <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-accent/50 rounded-lg hover:bg-accent/70">
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
                     <span className="font-medium">Trade Ideas ({results.data.tradeIdeas?.length || 0})</span>
@@ -374,6 +374,9 @@ export function PortfolioGenerationDropdown({
                               Current: {(trade.current_price * 100).toFixed(0)}¢
                             </span>
                             <span>Target: {(trade.target_price * 100).toFixed(0)}¢</span>
+                            {trade.stop_price && (
+                              <span>Stop: {(trade.stop_price * 100).toFixed(0)}¢</span>
+                            )}
                           </div>
                         </div>
                         {trade.image && (
@@ -396,7 +399,7 @@ export function PortfolioGenerationDropdown({
                   open={expandedSections.has('news')} 
                   onOpenChange={() => toggleSection('news')}
                 >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-accent/30 rounded-lg hover:bg-accent/50">
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
                     <span className="font-medium text-sm">News Summary</span>
                     {expandedSections.has('news') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   </CollapsibleTrigger>
@@ -415,7 +418,7 @@ export function PortfolioGenerationDropdown({
                   open={expandedSections.has('keywords')} 
                   onOpenChange={() => toggleSection('keywords')}
                 >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-accent/30 rounded-lg hover:bg-accent/50">
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
                     <span className="font-medium text-sm">Keywords</span>
                     {expandedSections.has('keywords') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   </CollapsibleTrigger>
@@ -434,7 +437,7 @@ export function PortfolioGenerationDropdown({
                   open={expandedSections.has('markets')} 
                   onOpenChange={() => toggleSection('markets')}
                 >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-accent/30 rounded-lg hover:bg-accent/50">
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
                     <span className="font-medium text-sm">Related Markets ({results.data.markets.length})</span>
                     {expandedSections.has('markets') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   </CollapsibleTrigger>
