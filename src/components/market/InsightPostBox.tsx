@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -7,7 +6,7 @@ import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Sparkle 
 import { cn } from "@/lib/utils"
 import * as React from "react"
 import { useIsMobile } from '@/hooks/use-mobile';
-import { PortfolioResults } from "./PortfolioResults";
+import { PortfolioGeneratorDropdown } from "./PortfolioGeneratorDropdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -32,23 +31,27 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-  const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
+  const [isPortfolioDropdownOpen, setIsPortfolioDropdownOpen] = useState(false);
   const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
   const [portfolioContent, setPortfolioContent] = useState("");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const generateButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
       if (isPrivacyOpen) {
         setIsPrivacyOpen(false);
       }
+      if (isPortfolioDropdownOpen) {
+        setIsPortfolioDropdownOpen(false);
+      }
     };
 
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isPrivacyOpen]);
+  }, [isPrivacyOpen, isPortfolioDropdownOpen]);
 
   const handlePost = async () => {
     if (!content.trim()) return;
@@ -110,12 +113,12 @@ export function InsightPostBox() {
       toast({
         title: "No content provided",
         description: "Please share your market insight before generating a portfolio",
-        variant: "destructive" // Changed from "warning" to "destructive"
+        variant: "destructive"
       });
       return;
     }
     setPortfolioContent(content);
-    setIsPortfolioModalOpen(true);
+    setIsPortfolioDropdownOpen(true);
   };
 
   const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
@@ -125,7 +128,7 @@ export function InsightPostBox() {
 
   return (
     <>
-      <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border overflow-hidden`}>
+      <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border overflow-hidden relative`}>
         <div className="flex gap-3">
           <Avatar className="h-10 w-10 flex-shrink-0">
             <AvatarFallback className="bg-primary/10">
@@ -133,7 +136,7 @@ export function InsightPostBox() {
             </AvatarFallback>
           </Avatar>
           
-          <div className="flex-1 space-y-2 min-w-0">
+          <div className="flex-1 space-y-2 min-w-0 relative">
             <div className="flex items-center min-h-[40px]">
               <TextareaAutosize
                 ref={textareaRef}
@@ -160,6 +163,7 @@ export function InsightPostBox() {
                   <LinkIcon className="h-4 w-4" />
                 </Button>
                 <Button
+                  ref={generateButtonRef}
                   variant="ghost"
                   size="sm"
                   onClick={handleGeneratePortfolio}
@@ -233,15 +237,17 @@ export function InsightPostBox() {
                 </Button>
               </div>
             </div>
+            
+            {/* Portfolio Generator Dropdown positioned relative to the button */}
+            <PortfolioGeneratorDropdown
+              content={portfolioContent}
+              open={isPortfolioDropdownOpen}
+              onOpenChange={setIsPortfolioDropdownOpen}
+              triggerRef={generateButtonRef}
+            />
           </div>
         </div>
       </div>
-      
-      <PortfolioResults 
-        content={portfolioContent}
-        open={isPortfolioModalOpen}
-        onOpenChange={setIsPortfolioModalOpen}
-      />
     </>
   );
 }
