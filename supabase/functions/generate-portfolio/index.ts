@@ -54,31 +54,58 @@ serve(async (req) => {
   }
 
   try {
-    // Extract auth token from Authorization header
-    const authHeader = req.headers.get('authorization');
+    // Extract parameters from URL
+    const url = new URL(req.url);
+    const content = url.searchParams.get('content');
+    const authToken = url.searchParams.get('token');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error(`[${new Date().toISOString()}] Missing or invalid authorization header`);
+    // Validate required parameters
+    if (!content) {
+      console.error(`[${new Date().toISOString()}] No content provided in request`);
       return new Response(
-        JSON.stringify({ error: 'Missing or invalid authorization header' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        JSON.stringify({ error: 'No content provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
     
-    // Extract the token
-    const authToken = authHeader.substring(7);
-    
     if (!authToken) {
-      console.error(`[${new Date().toISOString()}] Missing authentication token`);
+      console.error(`[${new Date().toISOString()}] No authentication token provided`);
       return new Response(
-        JSON.stringify({ error: 'Missing authentication token' }),
+        JSON.stringify({ error: 'Authentication token required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
 
-    // Check if this is an SSE request
-    const acceptHeader = req.headers.get('accept');
-    const isSSERequest = acceptHeader?.includes('text/event-stream');
+    // Validate the auth token with Supabase
+    try {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        { auth: { persistSession: false } }
+      );
+      
+      // Verify the token
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(authToken);
+      
+      if (authError || !user) {
+        console.error(`[${new Date().toISOString()}] Authentication failed:`, authError);
+        return new Response(
+          JSON.stringify({ error: 'Invalid authentication token' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        );
+      }
+      
+      console.log(`[${new Date().toISOString()}] User authenticated: ${user.id}`);
+    } catch (authValidationError) {
+      console.error(`[${new Date().toISOString()}] Auth validation error:`, authValidationError);
+      return new Response(
+        JSON.stringify({ error: 'Authentication validation failed' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    
+    console.log(`[${new Date().toISOString()}] Starting portfolio generation for content: ${content.substring(0, 50)}...`);
     
     // Create a results object to track progress and collect data
     const results = {
@@ -99,7 +126,7 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     
     const sendSSEEvent = (eventType: string, data: any) => {
-      if (controller && isSSERequest) {
+      if (controller) {
         const eventData = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
         controller.enqueue(encoder.encode(eventData));
       }
@@ -166,127 +193,60 @@ serve(async (req) => {
       return Math.min(maxProgress, 95);
     };
 
-    // For POST requests - initial submission
-    if (req.method === 'POST') {
-      const contentType = req.headers.get('content-type') || '';
-      
-      // Parse the request body based on content-type
-      let content;
-      if (contentType.includes('application/json')) {
-        const body = await req.json();
-        content = body.content;
-      } else {
-        const formData = await req.formData();
-        content = formData.get('content')?.toString();
-      }
-
-      if (!content) {
-        console.error(`[${new Date().toISOString()}] No content provided in POST request`);
-        return new Response(
-          JSON.stringify({ error: 'No content provided' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        );
-      }
-
-      console.log(`[${new Date().toISOString()}] Processing initial portfolio generation request for content: ${content.substring(0, 50)}...`);
-      
-      // Return success to indicate the job has started
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Portfolio generation initiated",
-          content: content
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      );
-    } 
-    // For GET requests - generate portfolio
-    else if (req.method === 'GET') {
-      // Extract content from URL parameters
-      const url = new URL(req.url);
-      const content = url.searchParams.get('content');
-      
-      if (!content) {
-        console.error(`[${new Date().toISOString()}] No content provided in GET request URL parameters`);
-        return new Response(
-          JSON.stringify({ error: 'No content provided in request' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        );
-      }
-      
-      console.log(`[${new Date().toISOString()}] Starting portfolio generation for content: ${content.substring(0, 50)}...`);
-      console.log(`[${new Date().toISOString()}] SSE Request: ${isSSERequest}`);
-
-      // If this is an SSE request, create a streaming response
-      if (isSSERequest) {
-        const stream = new ReadableStream({
-          start(ctrl) {
-            controller = ctrl;
-            
-            // Send initial event
-            sendSSEEvent('progress', {
-              step: 'init',
-              progress: 0,
-              message: 'Starting portfolio generation...'
-            });
-          },
-          
-          cancel() {
-            controller = null;
-          }
+    // Create a streaming response
+    const stream = new ReadableStream({
+      start(ctrl) {
+        controller = ctrl;
+        
+        // Send initial event
+        sendSSEEvent('progress', {
+          step: 'init',
+          progress: 0,
+          message: 'Starting portfolio generation...'
         });
+      },
+      
+      cancel() {
+        controller = null;
+      }
+    });
 
-        // Start the portfolio generation process asynchronously
-        (async () => {
-          try {
-            await generatePortfolio(content, results, addCompletedStep, addError);
-            
-            // Send final results
-            sendSSEEvent('completed', {
-              status: results.status,
-              data: results.data,
-              progress: 100
-            });
-            
-            // Close the stream
-            if (controller) {
-              controller.close();
-            }
-          } catch (error) {
-            sendSSEEvent('error', {
-              message: error.message,
-              progress: 0
-            });
-            
-            if (controller) {
-              controller.close();
-            }
-          }
-        })();
-
-        return new Response(stream, {
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-          },
-        });
-      } else {
-        // Regular JSON response
+    // Start the portfolio generation process asynchronously
+    (async () => {
+      try {
         await generatePortfolio(content, results, addCompletedStep, addError);
         
-        return new Response(
-          JSON.stringify(results),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // Send final results
+        sendSSEEvent('completed', {
+          status: results.status,
+          data: results.data,
+          progress: 100
+        });
+        
+        // Close the stream
+        if (controller) {
+          controller.close();
+        }
+      } catch (error) {
+        sendSSEEvent('error', {
+          message: error.message,
+          progress: 0
+        });
+        
+        if (controller) {
+          controller.close();
+        }
       }
-    } else {
-      return new Response(
-        JSON.stringify({ error: `Unsupported method: ${req.method}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 405 }
-      );
-    }
+    })();
+
+    return new Response(stream, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error in generate-portfolio function:`, error);
     return new Response(
@@ -796,4 +756,26 @@ Suggest 3 trades as a JSON array of objects with:
           };
         });
         
-        results.data
+        results.data.tradeIdeas = tradeIdeas;
+      } catch (parseError) {
+        console.error(`[${new Date().toISOString()}] Error parsing trade ideas:`, parseError);
+        addError("trade_ideas", parseError.message || "Error parsing trade ideas");
+      }
+    }
+    
+    logStepEnd(step);
+    
+    // Update step status to completed
+    results.steps = results.steps.map(s => 
+      s.name === "trade_ideas" ? {...s, completed: true, details: { count: tradeIdeas.length }} : s
+    );
+    
+    addCompletedStep("trade_ideas", { count: tradeIdeas.length });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Error generating trade ideas:`, error);
+    addError("trade_ideas", error.message || "Error generating trade ideas");
+  }
+
+  results.status = "completed";
+  return results;
+}

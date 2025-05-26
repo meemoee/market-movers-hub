@@ -181,16 +181,12 @@ export function PortfolioGeneratorDropdown({
 
       addProgressMessage('Preparing portfolio generation...');
       
-      // Use Supabase function URL with SSE
+      // Use Supabase function URL with SSE - pass token as URL parameter
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-      const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
+      const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}&token=${encodeURIComponent(authToken)}`;
       
-      // Create EventSource for SSE
-      eventSourceRef.current = new EventSource(portfolioUrl, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
-      } as any);
+      // Create EventSource for SSE without headers
+      eventSourceRef.current = new EventSource(portfolioUrl);
       
       eventSourceRef.current.onopen = () => {
         console.log('SSE connection opened');
