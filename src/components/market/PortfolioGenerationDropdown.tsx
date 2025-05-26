@@ -58,7 +58,6 @@ export function PortfolioGenerationDropdown({
   const [currentStep, setCurrentStep] = useState('');
   const [results, setResults] = useState<PortfolioResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const { session } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -76,18 +75,6 @@ export function PortfolioGenerationDropdown({
     'related_markets': 'Finding related markets',
     'trade_ideas': 'Generating trade ideas'
   };
-
-  // Calculate dropdown position when opened
-  useEffect(() => {
-    if (isOpen && buttonRef?.current) {
-      const buttonRect = buttonRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: buttonRect.bottom + 8, // 8px gap below button
-        left: buttonRect.left,
-        width: Math.max(500, buttonRect.width) // Minimum 500px width
-      });
-    }
-  }, [isOpen, buttonRef]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -223,12 +210,12 @@ export function PortfolioGenerationDropdown({
   return (
     <div 
       ref={dropdownRef}
-      className="fixed z-[9999] bg-background border border-border rounded-lg shadow-2xl max-w-[600px]"
+      className="absolute z-[9999] bg-background border border-border rounded-lg shadow-2xl w-[500px] mt-2"
       style={{
-        top: `${dropdownPosition.top}px`,
-        left: `${dropdownPosition.left}px`,
-        width: `${Math.min(dropdownPosition.width, 600)}px`,
-        minWidth: '500px'
+        top: '100%',
+        left: '0',
+        minWidth: '500px',
+        maxWidth: '600px'
       }}
     >
       <Card className="border-0 shadow-none">
