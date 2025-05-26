@@ -242,7 +242,7 @@ export function PortfolioGenerationDropdown({
   const dropdownContent = (
     <div 
       ref={dropdownRef}
-      className="fixed z-[99999] bg-background border border-border rounded-lg shadow-2xl"
+      className="fixed z-40 bg-background border border-border rounded-lg shadow-2xl"
       style={{
         top: `${dropdownPosition.top}px`,
         left: `${dropdownPosition.left}px`,
