@@ -122,8 +122,8 @@ export function InsightPostBox() {
   };
 
   return (
-    <>
-      <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border overflow-hidden`}>
+    <div className="w-full">
+      <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border`}>
         <div className="flex gap-3">
           <Avatar className="h-10 w-10 flex-shrink-0">
             <AvatarFallback className="bg-primary/10">
@@ -157,32 +157,22 @@ export function InsightPostBox() {
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                   <LinkIcon className="h-4 w-4" />
                 </Button>
-                <div className="relative">
-                  <Button
-                    ref={portfolioButtonRef}
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleGeneratePortfolio}
-                    className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 ml-2"
-                  >
-                    {isMobile ? (
+                <Button
+                  ref={portfolioButtonRef}
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleGeneratePortfolio}
+                  className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 ml-2"
+                >
+                  {isMobile ? (
+                    <Sparkle className="h-3 w-3" />
+                  ) : (
+                    <>
+                      Generate portfolio
                       <Sparkle className="h-3 w-3" />
-                    ) : (
-                      <>
-                        Generate portfolio
-                        <Sparkle className="h-3 w-3" />
-                      </>
-                    )}
-                  </Button>
-                  
-                  <PortfolioGenerationDropdown
-                    content={content}
-                    isOpen={isPortfolioDropdownOpen}
-                    onClose={() => setIsPortfolioDropdownOpen(false)}
-                    onOpenChange={setIsPortfolioDropdownOpen}
-                    buttonRef={portfolioButtonRef}
-                  />
-                </div>
+                    </>
+                  )}
+                </Button>
               </div>
               
               <div className="flex items-center gap-2">
@@ -245,6 +235,15 @@ export function InsightPostBox() {
           </div>
         </div>
       </div>
-    </>
+      
+      {/* Inline Portfolio Dropdown - pushes content down naturally */}
+      <PortfolioGenerationDropdown
+        content={content}
+        isOpen={isPortfolioDropdownOpen}
+        onClose={() => setIsPortfolioDropdownOpen(false)}
+        onOpenChange={setIsPortfolioDropdownOpen}
+        buttonRef={portfolioButtonRef}
+      />
+    </div>
   );
 }

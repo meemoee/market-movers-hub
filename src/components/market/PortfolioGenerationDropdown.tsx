@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +6,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, ChevronRight, Sparkle, TrendingUp, DollarSign } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useIsMobile } from '@/hooks/use-mobile';
 
 interface PortfolioStep {
   name: string;
@@ -60,11 +58,9 @@ export function PortfolioGenerationDropdown({
   const [currentStep, setCurrentStep] = useState('');
   const [results, setResults] = useState<PortfolioResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const { session } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobile();
 
   const totalSteps = 8; // Based on the edge function steps
 
@@ -79,70 +75,6 @@ export function PortfolioGenerationDropdown({
     'related_markets': 'Finding related markets',
     'trade_ideas': 'Generating trade ideas'
   };
-
-  // Find the TopMoversList container and match its exact dimensions
-  useEffect(() => {
-    if (!isOpen || !buttonRef?.current) return;
-
-    const updatePosition = () => {
-      if (buttonRef?.current) {
-        const buttonRect = buttonRef.current.getBoundingClientRect();
-        
-        // Find the TopMoversList container by looking for its parent elements
-        let topMoversContainer = buttonRef.current.closest('[class*="flex flex-col items-center space-y-6"]');
-        
-        if (!topMoversContainer) {
-          // Fallback: calculate based on the main content area
-          const viewportWidth = window.innerWidth;
-          let containerLeft, containerWidth;
-          
-          if (isMobile) {
-            // Mobile: match mobile styling - full width with no margins
-            containerLeft = 0;
-            containerWidth = viewportWidth;
-          } else {
-            // Desktop: match the exact main content positioning
-            const maxContainerWidth = Math.min(1280, viewportWidth);
-            const containerStart = (viewportWidth - maxContainerWidth) / 2;
-            const leftMargin = 320; // ml-[320px]
-            const rightMargin = viewportWidth >= 1280 ? 400 : 0; // xl:mr-[400px]
-            const paddingX = 16; // px-4 = 16px on each side
-            
-            containerLeft = containerStart + leftMargin + paddingX;
-            containerWidth = Math.min(660, maxContainerWidth - leftMargin - rightMargin) - (paddingX * 2);
-          }
-          
-          setDropdownPosition({
-            top: buttonRect.bottom + 8,
-            left: containerLeft,
-            width: containerWidth
-          });
-        } else {
-          // Use the actual TopMoversList container dimensions
-          const containerRect = topMoversContainer.getBoundingClientRect();
-          setDropdownPosition({
-            top: buttonRect.bottom + 8,
-            left: containerRect.left,
-            width: containerRect.width
-          });
-        }
-      }
-    };
-
-    updatePosition();
-    
-    // Update position on scroll and resize
-    const handleScroll = () => updatePosition();
-    const handleResize = () => updatePosition();
-    
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [isOpen, buttonRef, isMobile]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -275,15 +207,10 @@ export function PortfolioGenerationDropdown({
 
   if (!isOpen) return null;
 
-  const dropdownContent = (
+  return (
     <div 
       ref={dropdownRef}
-      className="fixed z-40 bg-background border border-white/5 rounded-lg shadow-2xl"
-      style={{
-        top: `${dropdownPosition.top}px`,
-        left: `${dropdownPosition.left}px`,
-        width: `${dropdownPosition.width}px`
-      }}
+      className="w-full mt-2 bg-background border border-white/5 rounded-lg shadow-2xl animate-in slide-in-from-top-2 duration-200"
     >
       <Card className="border-0 shadow-none">
         <CardHeader className="pb-4">
@@ -425,7 +352,4 @@ export function PortfolioGenerationDropdown({
       </Card>
     </div>
   );
-
-  // Use portal to render outside of the clipped container
-  return createPortal(dropdownContent, document.body);
 }
