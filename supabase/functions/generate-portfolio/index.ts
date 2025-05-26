@@ -11,7 +11,10 @@ const corsHeaders = {
 const encoder = new TextEncoder()
 
 serve(async (req) => {
+  console.log('Portfolio generation function called with method:', req.method)
+  
   if (req.method === 'OPTIONS') {
+    console.log('Handling CORS preflight request')
     return new Response(null, { headers: corsHeaders })
   }
 
@@ -20,16 +23,22 @@ serve(async (req) => {
     let requestData = {}
     let userId = null
     
+    console.log('Processing request...')
+    
     if (req.method === 'GET') {
       // Parse URL parameters for GET requests (for EventSource compatibility)
       const url = new URL(req.url)
       const content = url.searchParams.get('content')
       const authToken = url.searchParams.get('authToken')
       
+      console.log('GET request received with content:', content ? 'provided' : 'missing')
+      console.log('Auth token:', authToken ? 'provided' : 'not provided')
+      
       requestData = { content, authToken }
     } else {
       // For POST requests, parse the JSON body as before
       requestData = await req.json()
+      console.log('POST request received')
     }
     
     const { content, authToken } = requestData
@@ -41,6 +50,7 @@ serve(async (req) => {
 
     // Validate required parameters
     if (!content) {
+      console.log('Missing content parameter')
       return new Response(
         JSON.stringify({ 
           error: 'Missing content parameter' 
@@ -60,24 +70,29 @@ serve(async (req) => {
       'Connection': 'keep-alive'
     }
     
+    console.log('Setting up SSE stream...')
+    
     // Create a new ReadableStream with a controller for proper SSE streaming
     const stream = new TransformStream()
     const writer = stream.writable.getWriter()
     
     // Helper function to send properly formatted SSE events
     const sendSSE = async (event: string, data: string) => {
+      console.log(`Sending SSE event: ${event}`)
       await writer.write(encoder.encode(`event: ${event}\ndata: ${data}\n\n`))
     }
     
     // Start the portfolio generation process
     ;(async () => {
       try {
+        console.log('Starting portfolio generation process...')
         await sendSSE('message', 'Starting portfolio generation...')
         await sendSSE('progress', JSON.stringify({ progress: 10, message: 'Initializing...' }))
         
         // Handle authentication AFTER stream setup (like historical event function)
         if (authToken) {
           try {
+            console.log('Attempting to authenticate user...')
             const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
             const supabaseAdmin = createClient(
               Deno.env.get('SUPABASE_URL') ?? '',
@@ -88,20 +103,23 @@ serve(async (req) => {
             const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken)
             if (!error && user) {
               userId = user.id
+              console.log('User authenticated successfully:', user.id)
               await sendSSE('message', 'User authenticated successfully')
             } else {
+              console.log('Authentication failed:', error)
               await sendSSE('message', 'Authentication failed, continuing without user context')
-              console.error("Error getting user from token:", error)
             }
           } catch (authError) {
-            await sendSSE('message', 'Authentication error, continuing without user context')
             console.error("Authentication error:", authError)
+            await sendSSE('message', 'Authentication error, continuing without user context')
           }
         } else {
+          console.log('No auth token provided')
           await sendSSE('message', 'No authentication token provided, continuing anonymously')
         }
         
         // Simulate portfolio generation steps
+        console.log('Simulating portfolio generation steps...')
         await sendSSE('progress', JSON.stringify({ progress: 20, message: 'Analyzing content...' }))
         await new Promise(resolve => setTimeout(resolve, 1000))
         
@@ -125,6 +143,7 @@ serve(async (req) => {
           }
         }
         
+        console.log('Portfolio generation completed successfully')
         await sendSSE('completed', JSON.stringify(portfolioData))
         await sendSSE('done', '[DONE]')
         
@@ -135,11 +154,13 @@ serve(async (req) => {
           type: 'generation_error'
         }))
       } finally {
+        console.log('Closing SSE stream')
         writer.close()
       }
     })()
 
     // Return the stream response immediately
+    console.log('Returning SSE stream response')
     return new Response(stream.readable, { headers })
 
   } catch (error) {
