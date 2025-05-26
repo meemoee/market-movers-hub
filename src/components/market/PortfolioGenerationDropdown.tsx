@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +59,7 @@ export function PortfolioGenerationDropdown({
   const [currentStep, setCurrentStep] = useState('');
   const [results, setResults] = useState<PortfolioResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const { session } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -75,6 +77,31 @@ export function PortfolioGenerationDropdown({
     'related_markets': 'Finding related markets',
     'trade_ideas': 'Generating trade ideas'
   };
+
+  // Calculate dropdown position when opened or on scroll
+  useEffect(() => {
+    if (!isOpen || !buttonRef?.current) return;
+
+    const updatePosition = () => {
+      if (buttonRef?.current) {
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        setDropdownPosition({
+          top: buttonRect.bottom + window.scrollY + 8,
+          left: buttonRect.left + window.scrollX,
+          width: Math.max(500, buttonRect.width)
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isOpen, buttonRef]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -207,15 +234,15 @@ export function PortfolioGenerationDropdown({
 
   if (!isOpen) return null;
 
-  return (
+  const dropdownContent = (
     <div 
       ref={dropdownRef}
-      className="absolute z-[99999] bg-background border border-border rounded-lg shadow-2xl w-[500px] mt-2"
+      className="fixed z-[99999] bg-background border border-border rounded-lg shadow-2xl"
       style={{
-        top: '100%',
-        left: '0',
-        minWidth: '500px',
-        maxWidth: '600px'
+        top: `${dropdownPosition.top}px`,
+        left: `${dropdownPosition.left}px`,
+        width: `${Math.min(dropdownPosition.width, 600)}px`,
+        minWidth: '500px'
       }}
     >
       <Card className="border-0 shadow-none">
@@ -331,7 +358,7 @@ export function PortfolioGenerationDropdown({
               {results.data.markets && results.data.markets.length > 0 && (
                 <Collapsible 
                   open={expandedSections.has('markets')} 
-                  onOpenChange={() => toggleSection('markets')}
+                  onUpdatePosition={() => toggleSection('markets')}
                 >
                   <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-accent/30 rounded-lg hover:bg-accent/50">
                     <span className="font-medium text-sm">Related Markets ({results.data.markets.length})</span>
@@ -358,4 +385,7 @@ export function PortfolioGenerationDropdown({
       </Card>
     </div>
   );
+
+  // Use portal to render outside of the clipped container
+  return createPortal(dropdownContent, document.body);
 }
