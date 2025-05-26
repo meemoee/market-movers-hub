@@ -26,37 +26,17 @@ serve(async (req) => {
       const content = url.searchParams.get('content')
       const authToken = url.searchParams.get('authToken')
       
-      // If we have an auth token in the URL, try to get the user
-      if (authToken) {
-        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
-        const supabaseAdmin = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-          { auth: { persistSession: false } }
-        )
-        
-        try {
-          const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken)
-          if (!error && user) {
-            userId = user.id
-          }
-        } catch (error) {
-          console.error("Error getting user from token:", error)
-        }
-      }
-      
-      requestData = { content, userId }
+      requestData = { content, authToken }
     } else {
       // For POST requests, parse the JSON body as before
       requestData = await req.json()
-      userId = requestData.userId
     }
     
-    const { content } = requestData
+    const { content, authToken } = requestData
     
     console.log('Received portfolio generation request:', { 
       content: content ? content.substring(0, 30) + '...' : 'none',
-      userId: userId ? 'provided' : 'not provided' 
+      authToken: authToken ? 'provided' : 'not provided' 
     })
 
     // Validate required parameters
@@ -72,7 +52,7 @@ serve(async (req) => {
       )
     }
 
-    // Set up SSE headers for proper streaming
+    // Set up SSE headers for proper streaming - BEFORE any auth validation
     const headers = {
       ...corsHeaders,
       'Content-Type': 'text/event-stream',
@@ -94,6 +74,32 @@ serve(async (req) => {
       try {
         await sendSSE('message', 'Starting portfolio generation...')
         await sendSSE('progress', JSON.stringify({ progress: 10, message: 'Initializing...' }))
+        
+        // Handle authentication AFTER stream setup (like historical event function)
+        if (authToken) {
+          try {
+            const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+            const supabaseAdmin = createClient(
+              Deno.env.get('SUPABASE_URL') ?? '',
+              Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+              { auth: { persistSession: false } }
+            )
+            
+            const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken)
+            if (!error && user) {
+              userId = user.id
+              await sendSSE('message', 'User authenticated successfully')
+            } else {
+              await sendSSE('message', 'Authentication failed, continuing without user context')
+              console.error("Error getting user from token:", error)
+            }
+          } catch (authError) {
+            await sendSSE('message', 'Authentication error, continuing without user context')
+            console.error("Authentication error:", authError)
+          }
+        } else {
+          await sendSSE('message', 'No authentication token provided, continuing anonymously')
+        }
         
         // Simulate portfolio generation steps
         await sendSSE('progress', JSON.stringify({ progress: 20, message: 'Analyzing content...' }))
@@ -124,13 +130,16 @@ serve(async (req) => {
         
       } catch (error) {
         console.error('Error in portfolio generation:', error)
-        await sendSSE('error', error.message)
+        await sendSSE('error', JSON.stringify({ 
+          message: error.message,
+          type: 'generation_error'
+        }))
       } finally {
         writer.close()
       }
     })()
 
-    // Return the stream response
+    // Return the stream response immediately
     return new Response(stream.readable, { headers })
 
   } catch (error) {
