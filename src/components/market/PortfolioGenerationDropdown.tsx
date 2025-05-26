@@ -80,7 +80,7 @@ export function PortfolioGenerationDropdown({
     'trade_ideas': 'Generating trade ideas'
   };
 
-  // Calculate dropdown position to match TopMoversList container
+  // Find the TopMoversList container and match its exact dimensions
   useEffect(() => {
     if (!isOpen || !buttonRef?.current) return;
 
@@ -88,34 +88,44 @@ export function PortfolioGenerationDropdown({
       if (buttonRef?.current) {
         const buttonRect = buttonRef.current.getBoundingClientRect();
         
-        // Calculate the main content container position to match Index.tsx layout
-        const viewportWidth = window.innerWidth;
-        let containerLeft, containerWidth;
+        // Find the TopMoversList container by looking for its parent elements
+        let topMoversContainer = buttonRef.current.closest('[class*="flex flex-col items-center space-y-6"]');
         
-        if (isMobile) {
-          // Mobile: full width, no margins
-          containerLeft = 0;
-          containerWidth = viewportWidth;
+        if (!topMoversContainer) {
+          // Fallback: calculate based on the main content area
+          const viewportWidth = window.innerWidth;
+          let containerLeft, containerWidth;
+          
+          if (isMobile) {
+            // Mobile: match mobile styling - full width with no margins
+            containerLeft = 0;
+            containerWidth = viewportWidth;
+          } else {
+            // Desktop: match the exact main content positioning
+            const maxContainerWidth = Math.min(1280, viewportWidth);
+            const containerStart = (viewportWidth - maxContainerWidth) / 2;
+            const leftMargin = 320; // ml-[320px]
+            const rightMargin = viewportWidth >= 1280 ? 400 : 0; // xl:mr-[400px]
+            const paddingX = 16; // px-4 = 16px on each side
+            
+            containerLeft = containerStart + leftMargin + paddingX;
+            containerWidth = Math.min(660, maxContainerWidth - leftMargin - rightMargin) - (paddingX * 2);
+          }
+          
+          setDropdownPosition({
+            top: buttonRect.bottom + 8,
+            left: containerLeft,
+            width: containerWidth
+          });
         } else {
-          // Desktop: match the main content area positioning from Index.tsx
-          const maxContainerWidth = Math.min(1280, viewportWidth);
-          const containerStart = (viewportWidth - maxContainerWidth) / 2;
-          
-          // Account for left margin (ml-[320px]) and right margin (xl:mr-[400px])
-          const leftMargin = 320;
-          const rightMargin = viewportWidth >= 1280 ? 400 : 0;
-          const availableWidth = maxContainerWidth - leftMargin - rightMargin;
-          const contentMaxWidth = Math.min(660, availableWidth);
-          
-          containerLeft = containerStart + leftMargin + 16; // +16 for px-4 padding
-          containerWidth = contentMaxWidth - 32; // -32 for px-4 padding on both sides
+          // Use the actual TopMoversList container dimensions
+          const containerRect = topMoversContainer.getBoundingClientRect();
+          setDropdownPosition({
+            top: buttonRect.bottom + 8,
+            left: containerRect.left,
+            width: containerRect.width
+          });
         }
-        
-        setDropdownPosition({
-          top: buttonRect.bottom + 8,
-          left: containerLeft,
-          width: containerWidth
-        });
       }
     };
 
@@ -268,16 +278,14 @@ export function PortfolioGenerationDropdown({
   const dropdownContent = (
     <div 
       ref={dropdownRef}
-      className={`fixed z-40 bg-background border border-border rounded-lg shadow-2xl ${
-        isMobile ? 'border border-white/5 bg-black/20' : 'border border-white/5 bg-black/20'
-      }`}
+      className="fixed z-40 bg-background border border-white/5 rounded-lg shadow-2xl"
       style={{
         top: `${dropdownPosition.top}px`,
         left: `${dropdownPosition.left}px`,
         width: `${dropdownPosition.width}px`
       }}
     >
-      <Card className="border-0 shadow-none bg-transparent">
+      <Card className="border-0 shadow-none">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Sparkle className="h-5 w-5 text-primary" />
