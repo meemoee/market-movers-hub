@@ -163,12 +163,14 @@ export function PortfolioGeneratorDropdown({
 
       // Start SSE connection
       const response = await fetch(
-        'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio-sse',
+        'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio',
         {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${authToken}`,
             'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+            'X-Stream': 'true',
           },
           body: JSON.stringify({ content }),
           signal: abortControllerRef.current.signal
