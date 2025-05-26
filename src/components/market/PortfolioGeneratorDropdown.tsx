@@ -282,7 +282,7 @@ export function PortfolioGeneratorDropdown({
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
       
-      // Use Supabase function URL with SSE headers
+      // Use Supabase function URL with SSE headers (removed Cache-Control to fix CORS)
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
       const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
       
@@ -293,7 +293,6 @@ export function PortfolioGeneratorDropdown({
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Accept': 'text/event-stream',
-          'Cache-Control': 'no-cache',
         },
         signal
       });
