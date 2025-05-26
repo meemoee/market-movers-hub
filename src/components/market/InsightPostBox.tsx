@@ -39,17 +39,15 @@ export function InsightPostBox() {
 
   useEffect(() => {
     const handleScroll = () => {
+      // Only close the privacy dropdown on scroll, not the portfolio dropdown
       if (isPrivacyOpen) {
         setIsPrivacyOpen(false);
-      }
-      if (isPortfolioDropdownOpen) {
-        setIsPortfolioDropdownOpen(false);
       }
     };
 
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isPrivacyOpen, isPortfolioDropdownOpen]);
+  }, [isPrivacyOpen]);
 
   const handlePost = async () => {
     if (!content.trim()) return;
