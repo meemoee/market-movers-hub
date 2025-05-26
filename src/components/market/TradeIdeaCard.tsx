@@ -30,14 +30,11 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
   const isYesOutcome = trade.outcome.toLowerCase().includes('yes');
   const outcomes = ['Yes', 'No'];
   
-  // For display purposes and positioning - if recommending "No", invert all prices for consistent visualization
-  const displayCurrentPrice = isYesOutcome ? trade.current_price : (1 - trade.current_price);
-  const displayTargetPrice = isYesOutcome ? trade.target_price : (1 - trade.target_price);
-  const displayStopPrice = trade.stop_price ? (isYesOutcome ? trade.stop_price : (1 - trade.stop_price)) : undefined;
-  
-  // But for text display, keep the LLM's original values
-  const textTargetPrice = trade.target_price;
-  const textStopPrice = trade.stop_price;
+  // The LLM gives us prices on the "Yes" scale regardless of outcome
+  // So we need to convert everything to the actual outcome scale
+  const actualCurrentPrice = isYesOutcome ? trade.current_price : (1 - trade.current_price);
+  const actualTargetPrice = isYesOutcome ? trade.target_price : (1 - trade.target_price);
+  const actualStopPrice = trade.stop_price ? (isYesOutcome ? trade.stop_price : (1 - trade.stop_price)) : undefined;
   
   // Button prices - always show actual market prices
   const yesPrice = trade.current_price; // This is the "Yes" price from market data
@@ -47,9 +44,9 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
     return outcome.length > 8 ? `${outcome.slice(0, 6)}...` : outcome;
   };
 
-  // Calculate price change using display prices for consistent visualization
-  const displayPriceChange = displayTargetPrice - displayCurrentPrice;
-  const displayIsPositive = displayPriceChange >= 0;
+  // Calculate price change using actual outcome prices
+  const priceChange = actualTargetPrice - actualCurrentPrice;
+  const isPositive = priceChange >= 0;
 
   return (
     <div className={`w-full ${isMobile ? 'px-2 py-2' : 'p-3'} space-y-3 overflow-hidden border border-border rounded-lg`}>
@@ -101,17 +98,17 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
         <div className="flex justify-between items-start pt-0.5">
           <div className="flex flex-col">
             <span className="text-3xl font-bold tracking-tight">
-              {formatPrice(displayCurrentPrice)}
+              {formatPrice(actualCurrentPrice)}
             </span>
             <span className={`text-sm font-medium flex items-center gap-1
-              ${displayIsPositive ? 'text-green-500' : 'text-red-500'}`}
+              ${isPositive ? 'text-green-500' : 'text-red-500'}`}
             >
-              {displayIsPositive ? (
+              {isPositive ? (
                 <TrendingUp className="w-4 h-4" />
               ) : (
                 <TrendingDown className="w-4 h-4" />
               )}
-              Target: {formatPrice(textTargetPrice)}
+              Target: {formatPrice(actualTargetPrice)}
             </span>
           </div>
           <div className="flex flex-col items-end justify-end h-[60px]">
@@ -119,7 +116,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
               Target
             </span>
             <span className="text-sm text-muted-foreground">
-              {textStopPrice ? `Stop: ${formatPrice(textStopPrice)}` : 'No stop set'}
+              {actualStopPrice ? `Stop: ${formatPrice(actualStopPrice)}` : 'No stop set'}
             </span>
           </div>
         </div>
@@ -130,7 +127,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
           <div 
             className="absolute bg-white/50 h-2 top-[-4px]" 
             style={{ 
-              width: `${calculatePosition(displayCurrentPrice)}%`
+              width: `${calculatePosition(actualCurrentPrice)}%`
             }}
           />
           
@@ -138,43 +135,43 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
           <div 
             className="absolute h-3 w-0.5 bg-white top-[-6px]"
             style={{ 
-              left: `${calculatePosition(displayCurrentPrice)}%`
+              left: `${calculatePosition(actualCurrentPrice)}%`
             }}
           />
           
-          {/* Target price indicator - use display price for positioning */}
+          {/* Target price indicator */}
           <div 
             className="absolute h-4 w-0.5 bg-green-400 top-[-7px]"
             style={{ 
-              left: `${Math.min(Math.max(calculatePosition(displayTargetPrice), 0), 100)}%`
+              left: `${Math.min(Math.max(calculatePosition(actualTargetPrice), 0), 100)}%`
             }}
           />
           
-          {/* Stop price indicator - use display price for positioning */}
-          {displayStopPrice && (
+          {/* Stop price indicator */}
+          {actualStopPrice && (
             <div 
               className="absolute h-4 w-0.5 bg-red-400 top-[-7px]"
               style={{ 
-                left: `${Math.min(Math.max(calculatePosition(displayStopPrice), 0), 100)}%`
+                left: `${Math.min(Math.max(calculatePosition(actualStopPrice), 0), 100)}%`
               }}
             />
           )}
           
-          {/* Price change visualization using display prices */}
-          {displayIsPositive ? (
+          {/* Price change visualization */}
+          {isPositive ? (
             <div 
               className="absolute bg-green-500/30 h-2 top-[-4px]" 
               style={{ 
-                left: `${calculatePosition(displayCurrentPrice)}%`,
-                width: `${Math.max(0, Math.min(calculatePosition(displayTargetPrice) - calculatePosition(displayCurrentPrice), 100 - calculatePosition(displayCurrentPrice)))}%`
+                left: `${calculatePosition(actualCurrentPrice)}%`,
+                width: `${Math.max(0, Math.min(calculatePosition(actualTargetPrice) - calculatePosition(actualCurrentPrice), 100 - calculatePosition(actualCurrentPrice)))}%`
               }}
             />
           ) : (
             <div 
               className="absolute bg-red-500/30 h-2 top-[-4px]" 
               style={{ 
-                left: `${Math.max(calculatePosition(displayTargetPrice), 0)}%`,
-                width: `${Math.max(0, Math.min(calculatePosition(displayCurrentPrice) - calculatePosition(displayTargetPrice), calculatePosition(displayCurrentPrice)))}%`
+                left: `${Math.max(calculatePosition(actualTargetPrice), 0)}%`,
+                width: `${Math.max(0, Math.min(calculatePosition(actualCurrentPrice) - calculatePosition(actualTargetPrice), calculatePosition(actualCurrentPrice)))}%`
               }}
             />
           )}
@@ -190,7 +187,7 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             <div className="w-0.5 h-4 bg-green-400"></div>
             <span>Target</span>
           </div>
-          {displayStopPrice && (
+          {actualStopPrice && (
             <div className="flex items-center gap-1">
               <div className="w-0.5 h-4 bg-red-400"></div>
               <span>Stop</span>
