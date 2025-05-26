@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -161,15 +162,30 @@ export function PortfolioGenerationDropdown({
             setIsGenerating(false);
             eventSource.close();
           } else if (data.steps) {
-            // Update progress based on completed steps
-            const completedSteps = data.steps.filter((step: PortfolioStep) => step.completed).length;
-            const progressPercent = Math.round((completedSteps / totalSteps) * 100);
+            // Get unique completed steps by removing duplicates based on step name
+            const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
+              const existingStepIndex = acc.findIndex(s => s.name === step.name);
+              if (existingStepIndex >= 0) {
+                // Update existing step with latest data
+                acc[existingStepIndex] = step;
+              } else {
+                // Add new step
+                acc.push(step);
+              }
+              return acc;
+            }, []);
+            
+            // Update progress based on unique completed steps
+            const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
+            const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
             setProgress(progressPercent);
             
-            // Find the current step
-            const currentStepData = data.steps.find((step: PortfolioStep) => !step.completed);
+            // Find the current step (first incomplete step)
+            const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
             if (currentStepData) {
               setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
+            } else if (completedSteps === totalSteps) {
+              setCurrentStep('Completing portfolio generation...');
             }
           }
         } catch (error) {
