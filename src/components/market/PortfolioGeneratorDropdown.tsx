@@ -270,7 +270,6 @@ export function PortfolioGeneratorDropdown({
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Accept': 'text/event-stream',
-          'Cache-Control': 'no-cache',
         },
         signal
       });
