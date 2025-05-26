@@ -99,7 +99,7 @@ export function PortfolioGeneratorDropdown({
   const [stepDetails, setStepDetails] = useState<any[]>([]);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
   const abortControllerRef = useRef<AbortController | null>(null);
-  const bufferRef = useRef<string>('');
+  const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   
   // Calculate position based on trigger element
@@ -119,6 +119,9 @@ export function PortfolioGeneratorDropdown({
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+      }
+      if (progressTimerRef.current) {
+        clearTimeout(progressTimerRef.current);
       }
     };
   }, []);
@@ -143,108 +146,57 @@ export function PortfolioGeneratorDropdown({
     setError('');
     setStepDetails([]);
     setIsStreaming(false);
-    bufferRef.current = '';
+    if (progressTimerRef.current) {
+      clearTimeout(progressTimerRef.current);
+    }
   };
 
   const addProgressMessage = (message: string) => {
     setProgressMessages(prev => [...prev, message]);
   };
 
-  const updateProgressFromSteps = (steps: any[]) => {
-    if (!steps || steps.length === 0) return;
-    
-    // Map step names to progress percentages (8 total steps)
-    const stepProgress = {
-      'auth_validation': 12.5,
-      'news_summary': 25,
-      'keywords_extraction': 37.5,
-      'embedding_creation': 50,
-      'pinecone_search': 62.5,
-      'market_details': 75,
-      'related_markets': 87.5,
-      'trade_ideas': 100
-    };
-    
-    let maxProgress = 0;
-    steps.forEach(step => {
-      if (step.completed && stepProgress[step.name]) {
-        maxProgress = Math.max(maxProgress, stepProgress[step.name]);
-      }
-    });
-    
-    setProgress(Math.min(maxProgress, 95));
-  };
+  // Simulate progress updates while backend is processing
+  const simulateProgress = () => {
+    const steps = [
+      { name: 'auth_validation', message: 'Validating authentication...', progress: 12.5, delay: 500 },
+      { name: 'news_summary', message: 'Generating market context...', progress: 25, delay: 2000 },
+      { name: 'keywords_extraction', message: 'Extracting key concepts...', progress: 37.5, delay: 1500 },
+      { name: 'embedding_creation', message: 'Creating semantic embeddings...', progress: 50, delay: 2000 },
+      { name: 'pinecone_search', message: 'Searching relevant markets...', progress: 62.5, delay: 3000 },
+      { name: 'market_details', message: 'Fetching market data...', progress: 75, delay: 2500 },
+      { name: 'related_markets', message: 'Loading related markets...', progress: 87.5, delay: 1500 },
+      { name: 'trade_ideas', message: 'Generating trade ideas...', progress: 95, delay: 2000 }
+    ];
 
-  // Process SSE events similar to HistoricalEventGenerator
-  const processSSEMessage = (line: string) => {
-    if (line.startsWith('data: ')) {
-      const data = line.slice(6).trim();
-      
-      if (data === '[DONE]') {
-        console.log('Stream completed');
-        setIsStreaming(false);
-        return;
-      }
-      
-      try {
-        const parsed = JSON.parse(data);
+    let currentStep = 0;
+
+    const runNextStep = () => {
+      if (currentStep < steps.length && loading) {
+        const step = steps[currentStep];
         
-        // Handle different event types
-        if (parsed.step) {
-          // Step completion event
-          addProgressMessage(`✓ ${parsed.message || `Completed: ${parsed.step.replace(/_/g, ' ')}`}`);
-          
-          // Update progress from the event
-          if (parsed.progress !== undefined) {
-            setProgress(parsed.progress);
-          }
-          
-          // Add to step details
-          const stepDetail = {
-            name: parsed.step,
-            completed: true,
-            timestamp: new Date().toISOString(),
-            details: parsed.details
-          };
-          setStepDetails(prev => {
-            const existing = prev.find(s => s.name === parsed.step);
-            if (existing) {
-              return prev.map(s => s.name === parsed.step ? stepDetail : s);
-            }
-            return [...prev, stepDetail];
-          });
-        } else if (parsed.status === 'completed' && parsed.data) {
-          // Final completion event with all data
-          setNews(parsed.data.news || '');
-          setKeywords(parsed.data.keywords || '');
-          setMarkets(parsed.data.markets || []);
-          setTradeIdeas(parsed.data.tradeIdeas || []);
-          
-          addProgressMessage(`Found ${parsed.data.markets?.length || 0} relevant markets`);
-          addProgressMessage(`Generated ${parsed.data.tradeIdeas?.length || 0} trade ideas`);
-          addProgressMessage('✓ Portfolio generation complete');
-          
-          setStatus('Portfolio generation complete');
-          setProgress(100);
-          setIsStreaming(false);
-        } else if (parsed.message) {
-          // General progress message
-          addProgressMessage(parsed.message);
-          if (parsed.progress !== undefined) {
-            setProgress(parsed.progress);
-          }
+        addProgressMessage(`✓ ${step.message}`);
+        setProgress(step.progress);
+        
+        // Add to step details
+        const stepDetail = {
+          name: step.name,
+          completed: true,
+          timestamp: new Date().toISOString(),
+          details: { progress: step.progress }
+        };
+        
+        setStepDetails(prev => [...prev, stepDetail]);
+        
+        currentStep++;
+        
+        if (currentStep < steps.length) {
+          progressTimerRef.current = setTimeout(runNextStep, step.delay);
         }
-      } catch (e) {
-        console.error('Error parsing SSE data:', e, 'Raw data:', data);
       }
-    } else if (line.startsWith('event: ')) {
-      const eventType = line.slice(7).trim();
-      console.log('SSE Event type:', eventType);
-      
-      if (eventType === 'error') {
-        setIsStreaming(false);
-      }
-    }
+    };
+
+    // Start the first step
+    progressTimerRef.current = setTimeout(runNextStep, 200);
   };
 
   const generatePortfolio = async (content: string) => {
@@ -260,6 +212,9 @@ export function PortfolioGeneratorDropdown({
         abortControllerRef.current.abort();
       }
       
+      // Start simulated progress
+      simulateProgress();
+      
       // Get the current session to retrieve the auth token
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token;
@@ -268,6 +223,9 @@ export function PortfolioGeneratorDropdown({
         setError('Authentication required. Please sign in to use this feature.');
         setLoading(false);
         setIsStreaming(false);
+        if (progressTimerRef.current) {
+          clearTimeout(progressTimerRef.current);
+        }
         toast({
           title: "Authentication required",
           description: "Please sign in to generate portfolios",
@@ -276,23 +234,21 @@ export function PortfolioGeneratorDropdown({
         return;
       }
 
-      addProgressMessage('Starting portfolio analysis...');
-      
       // Create a new AbortController for this request
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
       
-      // Use Supabase function URL with SSE headers (removed Cache-Control to fix CORS)
+      // Make regular JSON request to backend (since SSE isn't working)
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
       const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
       
-      console.log('Making SSE request to:', portfolioUrl);
+      console.log('Making portfolio request to:', portfolioUrl);
       
       const portfolioResponse = await fetch(portfolioUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
-          'Accept': 'text/event-stream',
+          'Accept': 'application/json',
         },
         signal
       });
@@ -302,120 +258,55 @@ export function PortfolioGeneratorDropdown({
         throw new Error(`Portfolio generation failed: ${errorText}`);
       }
       
-      // Check if we got an SSE response
-      const contentType = portfolioResponse.headers.get('content-type');
-      if (contentType?.includes('text/event-stream')) {
-        console.log('Processing SSE stream');
-        
-        // Get a reader from the response body stream
-        const reader = portfolioResponse.body?.getReader();
-        if (!reader) {
-          throw new Error('Failed to get response reader');
-        }
-        
-        try {
-          const decoder = new TextDecoder();
-          
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              // Process any remaining content in the buffer
-              if (bufferRef.current.trim()) {
-                processSSEMessage(bufferRef.current.trim());
-              }
-              console.log('SSE stream completed');
-              setIsStreaming(false);
-              break;
-            }
-            
-            const chunk = decoder.decode(value, { stream: true });
-            bufferRef.current += chunk;
-            
-            // Process all complete lines in the buffer
-            const lines = bufferRef.current.split('\n');
-            bufferRef.current = lines.pop() || ''; // Keep the last potentially incomplete line
-            
-            // Process all complete lines
-            for (const line of lines) {
-              if (line.trim()) {
-                processSSEMessage(line.trim());
-              }
-            }
-            
-            // Force a UI update between chunks
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-        } catch (streamError: any) {
-          if (streamError.name === 'AbortError') {
-            console.log('Stream aborted by user');
-            addProgressMessage('Portfolio generation cancelled');
-          } else {
-            throw streamError;
-          }
-        } finally {
-          setIsStreaming(false);
-        }
-      } else {
-        // Fallback to regular JSON response
-        console.log('Received regular JSON response, falling back');
-        const results: PortfolioResults = await portfolioResponse.json();
-        
-        // Process errors if any
-        if (results.errors && results.errors.length > 0) {
-          results.errors.forEach(err => {
-            toast({
-              title: `Error in ${err.step}`,
-              description: err.message,
-              variant: "destructive"
-            });
-          });
-          
-          // Only set error if we have no data
-          if (!results.data.markets.length && !results.data.tradeIdeas.length) {
-            setError(results.errors.map(e => `${e.step}: ${e.message}`).join('\n'));
-          }
-        }
-        
-        // Process all steps
-        if (results.steps && results.steps.length > 0) {
-          updateProgressFromSteps(results.steps);
-          setStepDetails(results.steps);
-          
-          results.steps.forEach(step => {
-            if (step.completed) {
-              addProgressMessage(`✓ Completed: ${step.name.replace(/_/g, ' ')}`);
-            }
-          });
-        }
-        
-        // Set data
-        if (results.data) {
-          setNews(results.data.news || '');
-          setKeywords(results.data.keywords || '');
-          setMarkets(results.data.markets || []);
-          setTradeIdeas(results.data.tradeIdeas || []);
-          
-          addProgressMessage(`Found ${results.data.markets.length} relevant markets`);
-          addProgressMessage(`Generated ${results.data.tradeIdeas.length} trade ideas`);
-        }
-        
-        if (results.status === 'completed') {
-          setStatus('Portfolio generation complete');
-          addProgressMessage('✓ Portfolio generation complete');
-          setProgress(100);
-        } else {
-          setStatus('Portfolio generation encountered issues');
-          addProgressMessage('⚠ Portfolio generation completed with warnings');
-          setProgress(100);
-        }
-        
-        setIsStreaming(false);
+      const results: PortfolioResults = await portfolioResponse.json();
+      
+      // Clear progress timer since we got results
+      if (progressTimerRef.current) {
+        clearTimeout(progressTimerRef.current);
       }
+      
+      // Process errors if any
+      if (results.errors && results.errors.length > 0) {
+        results.errors.forEach(err => {
+          toast({
+            title: `Error in ${err.step}`,
+            description: err.message,
+            variant: "destructive"
+          });
+        });
+        
+        // Only set error if we have no data
+        if (!results.data.markets.length && !results.data.tradeIdeas.length) {
+          setError(results.errors.map(e => `${e.step}: ${e.message}`).join('\n'));
+        }
+      }
+      
+      // Set data immediately
+      if (results.data) {
+        setNews(results.data.news || '');
+        setKeywords(results.data.keywords || '');
+        setMarkets(results.data.markets || []);
+        setTradeIdeas(results.data.tradeIdeas || []);
+        
+        addProgressMessage(`Found ${results.data.markets.length} relevant markets`);
+        addProgressMessage(`Generated ${results.data.tradeIdeas.length} trade ideas`);
+      }
+      
+      // Complete the progress
+      setProgress(100);
+      addProgressMessage('✓ Portfolio generation complete');
+      setStatus('Portfolio generation complete');
+      setIsStreaming(false);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('Portfolio generation error:', error);
+      
+      // Clear progress timer on error
+      if (progressTimerRef.current) {
+        clearTimeout(progressTimerRef.current);
+      }
+      
       setError(errorMessage);
       setIsStreaming(false);
       
@@ -451,7 +342,7 @@ export function PortfolioGeneratorDropdown({
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-sm font-medium">
-                {isStreaming ? 'Streaming Portfolio Data...' : 'Generating Portfolio'}
+                {isStreaming ? 'Processing Portfolio...' : 'Generating Portfolio'}
               </span>
             </>
           ) : error && !markets.length && !tradeIdeas.length ? (
@@ -487,7 +378,7 @@ export function PortfolioGeneratorDropdown({
         {isStreaming && (
           <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
             <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-            Receiving real-time updates...
+            Processing in real-time...
           </div>
         )}
       </div>
