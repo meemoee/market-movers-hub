@@ -289,7 +289,7 @@ export function PortfolioGeneratorDropdown({
   if (!open) return null;
 
   return (
-    <div className="fixed top-full left-0 w-full max-w-4xl bg-background border rounded-lg shadow-2xl z-[9999] mt-2 backdrop-blur-sm">
+    <div className="absolute top-full left-0 w-full max-w-4xl bg-background border rounded-lg shadow-2xl z-[9999] mt-2 backdrop-blur-sm">
       <div className="p-4 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           {loading ? (
@@ -380,12 +380,12 @@ export function PortfolioGeneratorDropdown({
                             </div>
                             <div className="flex-1 min-w-0">
                               <CardTitle className="text-sm truncate">{idea.market_title}</CardTitle>
-                              <CardDescription className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center gap-2 mt-1">
                                 <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'} className="text-xs">
                                   {idea.outcome}
                                 </Badge>
-                                <span className="text-xs">${idea.current_price.toFixed(2)} → ${idea.target_price.toFixed(2)}</span>
-                              </CardDescription>
+                                <span className="text-xs text-muted-foreground">${idea.current_price.toFixed(2)} → ${idea.target_price.toFixed(2)}</span>
+                              </div>
                             </div>
                           </div>
                         </CardHeader>
