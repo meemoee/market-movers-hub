@@ -1,4 +1,4 @@
-   import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { getMarketsWithLatestPrices, getRelatedMarketsWithPrices } from "../_shared/db-helpers.ts";
 
@@ -50,13 +50,7 @@ serve(async (req) => {
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
-      headers: {
-        ...corsHeaders,
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, cache-control'
-      }
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
@@ -81,16 +75,6 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
-
-    // Check if this is a streaming request
-    const url = new URL(req.url);
-    const isStreaming = url.searchParams.get('stream') === 'true';
-    
-    // Helper function to send SSE data
-    const sendSSE = (data: any, writer: WritableStreamDefaultWriter) => {
-      const message = `data: ${JSON.stringify(data)}\n\n`;
-      writer.write(new TextEncoder().encode(message));
-    };
     
     // Create a results object to track progress and collect data
     const results = {
@@ -106,33 +90,14 @@ serve(async (req) => {
       }
     };
     
-    // Utility function to add a step (starting)
-    const addStartingStep = (name: string) => {
+    // Utility function to add a completed step
+    const addCompletedStep = (name: string, details?: any) => {
       results.steps.push({
         name,
-        completed: false,
-        timestamp: new Date().toISOString()
+        completed: true,
+        timestamp: new Date().toISOString(),
+        details
       });
-      console.log(`[${new Date().toISOString()}] Step started: ${name}`);
-    };
-    
-    // Utility function to complete a step
-    const completeStep = (name: string, details?: any) => {
-      const stepIndex = results.steps.findIndex(s => s.name === name);
-      if (stepIndex >= 0) {
-        results.steps[stepIndex] = {
-          ...results.steps[stepIndex],
-          completed: true,
-          details
-        };
-      } else {
-        results.steps.push({
-          name,
-          completed: true,
-          timestamp: new Date().toISOString(),
-          details
-        });
-      }
       console.log(`[${new Date().toISOString()}] Step completed: ${name}`);
     };
     
@@ -217,7 +182,7 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        completeStep("auth_validation", { userId: user.id });
+        addCompletedStep("auth_validation", { userId: user.id });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Auth error:`, error);
         return new Response(
@@ -230,7 +195,11 @@ serve(async (req) => {
       let news = '';
       try {
         const step = logStepStart("News summary generation");
-        addStartingStep("news_summary");
+        results.steps.push({
+          name: "news_summary",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         const newsResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -254,7 +223,13 @@ serve(async (req) => {
         results.data.news = news;
         
         logStepEnd(step);
-        completeStep("news_summary", { status: "completed", length: news.length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "news_summary" ? {...s, completed: true} : s
+        );
+        
+        addCompletedStep("news_summary");
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error generating news summary:`, error);
         addError("news_summary", error.message || "Error generating news summary");
@@ -264,6 +239,11 @@ serve(async (req) => {
       let keywords = '';
       try {
         const step = logStepStart("Keywords extraction");
+        results.steps.push({
+          name: "keywords_extraction",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         const keywordPrompt = `Prediction: ${content} Return ONLY the 15-30 most relevant/specific nouns, names, or phrases deeply tied to the sentiment or prediction (comma-separated, no extra words). They must be specifically related to what circumstances might logically occur if the user is CORRECT in their sentiment or opinion, HIGHLY PRIORITIZING latest up-to-date happenings and news.`;
         
@@ -289,7 +269,13 @@ serve(async (req) => {
         results.data.keywords = keywords;
         
         logStepEnd(step);
-        completeStep("keywords_extraction", { keywordCount: keywords.split(',').length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "keywords_extraction" ? {...s, completed: true} : s
+        );
+        
+        addCompletedStep("keywords_extraction", { keywordCount: keywords.split(',').length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error extracting keywords:`, error);
         addError("keywords_extraction", error.message || "Error extracting keywords");
@@ -299,6 +285,11 @@ serve(async (req) => {
       let vecArr: number[] = [];
       try {
         const step = logStepStart("Embedding creation");
+        results.steps.push({
+          name: "embedding_creation",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         console.log(`[${new Date().toISOString()}] Getting embedding for keywords: ${keywords.substring(0, 50)}...`);
         
@@ -334,7 +325,13 @@ serve(async (req) => {
         console.log(`[${new Date().toISOString()}] Successfully generated embedding with ${vecArr.length} dimensions`);
         
         logStepEnd(step);
-        completeStep("embedding_creation", { dimensions: vecArr.length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "embedding_creation" ? {...s, completed: true, details: { dimensions: vecArr.length }} : s
+        );
+        
+        addCompletedStep("embedding_creation", { dimensions: vecArr.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error creating embedding:`, error);
         addError("embedding_creation", error.message || "Error creating embedding");
@@ -344,6 +341,11 @@ serve(async (req) => {
       let matches: any[] = [];
       try {
         const step = logStepStart("Pinecone search");
+        results.steps.push({
+          name: "pinecone_search",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         if (vecArr.length === 0) {
           throw new Error("No embedding vector available for search");
@@ -376,7 +378,13 @@ serve(async (req) => {
         matches = pineconeData.matches || [];
         
         logStepEnd(step);
-        completeStep("pinecone_search", { matchCount: matches.length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "pinecone_search" ? {...s, completed: true, details: { matchCount: matches.length }} : s
+        );
+        
+        addCompletedStep("pinecone_search", { matchCount: matches.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error querying Pinecone:`, error);
         addError("pinecone_search", error.message || "Error querying Pinecone");
@@ -386,6 +394,11 @@ serve(async (req) => {
       let details: any[] = [];
       try {
         const step = logStepStart("Market details fetching");
+        results.steps.push({
+          name: "market_details",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         // Create Supabase client
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -420,7 +433,13 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        completeStep("market_details", { count: details.length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "market_details" ? {...s, completed: true, details: { count: details.length }} : s
+        );
+        
+        addCompletedStep("market_details", { count: details.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error fetching market details:`, error);
         addError("market_details", error.message || "Error fetching market details");
@@ -468,7 +487,7 @@ serve(async (req) => {
               no_price: 0.5
             }));
             
-            completeStep("market_details_fallback", { count: details.length });
+            addCompletedStep("market_details_fallback", { count: details.length });
             console.log(`[${new Date().toISOString()}] Fetched basic details for ${details.length} markets (fallback)`);
           }
           
@@ -483,6 +502,11 @@ serve(async (req) => {
       let bests: any[] = [];
       try {
         const step = logStepStart("Best markets selection");
+        results.steps.push({
+          name: "best_markets",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         // Track event IDs we've already included to avoid duplicates
         const includedEventIds = new Set<string>();
@@ -506,7 +530,13 @@ serve(async (req) => {
         }
         
         logStepEnd(step);
-        completeStep("best_markets", { count: bests.length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "best_markets" ? {...s, completed: true, details: { count: bests.length }} : s
+        );
+        
+        addCompletedStep("best_markets", { count: bests.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error selecting best markets:`, error);
         addError("best_markets", error.message || "Error selecting best markets");
@@ -515,6 +545,11 @@ serve(async (req) => {
       // 7️⃣ Fetch related markets
       try {
         const step = logStepStart("Related markets fetching");
+        results.steps.push({
+          name: "related_markets",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         let relatedByEvent: Record<string, any[]> = {};
         const eventIds = bests.map(b => b.event_id);
@@ -553,7 +588,13 @@ serve(async (req) => {
         results.data.markets = bests;
         
         logStepEnd(step);
-        completeStep("related_markets");
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "related_markets" ? {...s, completed: true} : s
+        );
+        
+        addCompletedStep("related_markets");
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error fetching related markets:`, error);
         addError("related_markets", error.message || "Error fetching related markets");
@@ -563,6 +604,11 @@ serve(async (req) => {
       let tradeIdeas = [];
       try {
         const step = logStepStart("Trade ideas generation");
+        results.steps.push({
+          name: "trade_ideas",
+          completed: false,
+          timestamp: new Date().toISOString()
+        });
         
         if (bests.length > 0) {
           // Create a mapping of market details for easy lookup in the OpenRouter response
@@ -645,7 +691,13 @@ Suggest 3 trades as a JSON array of objects with:
         }
         
         logStepEnd(step);
-        completeStep("trade_ideas", { count: tradeIdeas.length });
+        
+        // Update step status to completed
+        results.steps = results.steps.map(s => 
+          s.name === "trade_ideas" ? {...s, completed: true, details: { count: tradeIdeas.length }} : s
+        );
+        
+        addCompletedStep("trade_ideas", { count: tradeIdeas.length });
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Error generating trade ideas:`, error);
         addError("trade_ideas", error.message || "Error generating trade ideas");
