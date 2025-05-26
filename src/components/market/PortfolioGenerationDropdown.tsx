@@ -86,20 +86,25 @@ export function PortfolioGenerationDropdown({
       if (buttonRef?.current) {
         const buttonRect = buttonRef.current.getBoundingClientRect();
         setDropdownPosition({
-          top: buttonRect.bottom + window.scrollY + 8,
-          left: buttonRect.left + window.scrollX,
+          top: buttonRect.bottom + 8,
+          left: buttonRect.left,
           width: Math.max(500, buttonRect.width)
         });
       }
     };
 
     updatePosition();
-    window.addEventListener('scroll', updatePosition);
-    window.addEventListener('resize', updatePosition);
+    
+    // Update position on scroll and resize
+    const handleScroll = () => updatePosition();
+    const handleResize = () => updatePosition();
+    
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      window.removeEventListener('scroll', updatePosition);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
     };
   }, [isOpen, buttonRef]);
 
@@ -358,7 +363,7 @@ export function PortfolioGenerationDropdown({
               {results.data.markets && results.data.markets.length > 0 && (
                 <Collapsible 
                   open={expandedSections.has('markets')} 
-                  onUpdatePosition={() => toggleSection('markets')}
+                  onOpenChange={() => toggleSection('markets')}
                 >
                   <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-accent/30 rounded-lg hover:bg-accent/50">
                     <span className="font-medium text-sm">Related Markets ({results.data.markets.length})</span>
