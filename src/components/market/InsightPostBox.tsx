@@ -7,7 +7,7 @@ import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Sparkle 
 import { cn } from "@/lib/utils"
 import * as React from "react"
 import { useIsMobile } from '@/hooks/use-mobile';
-import { PortfolioGeneratorDropdown } from "./PortfolioGeneratorDropdown";
+import { PortfolioResults } from "./PortfolioResults";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -32,12 +32,12 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-  const [isPortfolioDropdownOpen, setIsPortfolioDropdownOpen] = useState(false);
+  const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
+  const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
   const [portfolioContent, setPortfolioContent] = useState("");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const portfolioButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -115,7 +115,7 @@ export function InsightPostBox() {
       return;
     }
     setPortfolioContent(content);
-    setIsPortfolioDropdownOpen(true);
+    setIsPortfolioModalOpen(true);
   };
 
   const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
@@ -160,7 +160,6 @@ export function InsightPostBox() {
                   <LinkIcon className="h-4 w-4" />
                 </Button>
                 <Button
-                  ref={portfolioButtonRef}
                   variant="ghost"
                   size="sm"
                   onClick={handleGeneratePortfolio}
@@ -238,11 +237,10 @@ export function InsightPostBox() {
         </div>
       </div>
       
-      <PortfolioGeneratorDropdown 
+      <PortfolioResults 
         content={portfolioContent}
-        isOpen={isPortfolioDropdownOpen}
-        onClose={() => setIsPortfolioDropdownOpen(false)}
-        triggerRef={portfolioButtonRef}
+        open={isPortfolioModalOpen}
+        onOpenChange={setIsPortfolioModalOpen}
       />
     </>
   );
