@@ -116,7 +116,7 @@ export function PortfolioGenerationDropdown({
       // Then start SSE connection for real-time updates
       const authToken = session.access_token;
       const encodedContent = encodeURIComponent(content);
-      const eventSourceUrl = `${supabase.supabaseUrl}/functions/v1/generate-portfolio?content=${encodedContent}&authToken=${authToken}`;
+      const eventSourceUrl = `https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio?content=${encodedContent}&authToken=${authToken}`;
       
       console.log('Starting SSE connection to:', eventSourceUrl);
       
