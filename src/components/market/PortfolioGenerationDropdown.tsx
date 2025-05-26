@@ -210,7 +210,7 @@ export function PortfolioGenerationDropdown({
   return (
     <div 
       ref={dropdownRef}
-      className="absolute top-full left-0 mt-2 z-[50] bg-background border border-border rounded-lg shadow-2xl w-full min-w-[500px] max-w-[600px]"
+      className="absolute top-full left-0 mt-2 z-[9999] bg-background border border-border rounded-lg shadow-2xl w-full min-w-[500px] max-w-[600px]"
     >
       <Card className="border-0 shadow-none">
         <CardHeader className="pb-4">
