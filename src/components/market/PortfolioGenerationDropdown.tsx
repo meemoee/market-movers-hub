@@ -3,9 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Sparkle, TrendingUp, DollarSign } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkle, TrendingUp, DollarSign, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 interface PortfolioStep {
   name: string;
@@ -58,11 +59,17 @@ export function PortfolioGenerationDropdown({
   const [currentStep, setCurrentStep] = useState('');
   const [results, setResults] = useState<PortfolioResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
+  const [retryCount, setRetryCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const { session } = useAuth();
+  const { toast } = useToast();
   const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const totalSteps = 8; // Based on the edge function steps
+  const maxRetries = 3;
+  const retryDelay = 2000; // 2 seconds
 
   const stepNames = {
     'auth_validation': 'Validating authentication',
@@ -92,27 +99,51 @@ export function PortfolioGenerationDropdown({
     };
   }, [isOpen, onClose]);
 
-  const generatePortfolio = async () => {
+  const cleanupConnections = () => {
+    if (eventSourceRef.current) {
+      console.log('Closing existing SSE connection');
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  };
+
+  const generatePortfolio = async (isRetry = false) => {
     if (!session?.access_token) {
       console.error('No authentication token available');
+      setError('Authentication required. Please sign in and try again.');
       return;
+    }
+
+    if (!isRetry) {
+      setRetryCount(0);
+      setError(null);
     }
 
     setIsGenerating(true);
     setProgress(0);
-    setCurrentStep('Starting portfolio generation...');
-    setResults(null);
+    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Starting portfolio generation...');
+    
+    // Clean up any existing connections
+    cleanupConnections();
 
     try {
       // First make the POST request to initiate
+      console.log('Initiating portfolio generation...');
       const { error: postError } = await supabase.functions.invoke('generate-portfolio', {
         body: { content }
       });
 
       if (postError) {
         console.error('Error initiating portfolio generation:', postError);
-        return;
+        throw new Error(`Failed to start generation: ${postError.message}`);
       }
+
+      // Wait a moment for the server to process the request
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Then start SSE connection for real-time updates
       const authToken = session.access_token;
@@ -124,8 +155,17 @@ export function PortfolioGenerationDropdown({
       const eventSource = new EventSource(eventSourceUrl);
       eventSourceRef.current = eventSource;
 
+      // Set a timeout for the entire operation
+      const connectionTimeout = setTimeout(() => {
+        console.log('SSE connection timeout');
+        eventSource.close();
+        handleRetry('Connection timeout');
+      }, 60000); // 60 second timeout
+
       eventSource.onopen = () => {
-        console.log('SSE connection opened');
+        console.log('SSE connection opened successfully');
+        setCurrentStep('Connected - generating portfolio...');
+        clearTimeout(connectionTimeout);
       };
 
       eventSource.onmessage = (event) => {
@@ -134,11 +174,19 @@ export function PortfolioGenerationDropdown({
           console.log('Received SSE data:', data);
           
           if (data.status === 'completed') {
+            console.log('Portfolio generation completed successfully');
             setResults(data);
             setProgress(100);
             setCurrentStep('Portfolio generation complete!');
             setIsGenerating(false);
+            setError(null);
             eventSource.close();
+            clearTimeout(connectionTimeout);
+            
+            toast({
+              title: "Portfolio Generated",
+              description: "Your portfolio has been successfully generated!",
+            });
           } else if (data.steps) {
             // Get unique completed steps by removing duplicates based on step name
             const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
@@ -165,31 +213,73 @@ export function PortfolioGenerationDropdown({
             } else if (completedSteps === totalSteps) {
               setCurrentStep('Completing portfolio generation...');
             }
+          } else if (data.error) {
+            console.error('Server error:', data.error);
+            eventSource.close();
+            clearTimeout(connectionTimeout);
+            handleRetry(data.error);
           }
-        } catch (error) {
-          console.error('Error parsing SSE data:', error);
+        } catch (parseError) {
+          console.error('Error parsing SSE data:', parseError);
+          // Don't retry on parse errors, they're usually not recoverable
         }
       };
 
       eventSource.onerror = (error) => {
-        console.error('SSE error:', error);
-        setIsGenerating(false);
-        setCurrentStep('Error generating portfolio');
+        console.error('SSE error occurred:', error);
         eventSource.close();
+        clearTimeout(connectionTimeout);
+        
+        // Check if the connection was just closed normally
+        if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('SSE connection closed');
+          return;
+        }
+        
+        handleRetry('Connection error');
       };
 
     } catch (error) {
-      console.error('Error generating portfolio:', error);
-      setIsGenerating(false);
-      setCurrentStep('Error generating portfolio');
+      console.error('Error in generatePortfolio:', error);
+      handleRetry(error instanceof Error ? error.message : 'Unknown error');
     }
+  };
+
+  const handleRetry = (errorMessage: string) => {
+    console.log(`Portfolio generation failed: ${errorMessage}`);
+    
+    if (retryCount < maxRetries) {
+      console.log(`Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+      setRetryCount(prev => prev + 1);
+      setCurrentStep(`Retrying in ${retryDelay / 1000} seconds...`);
+      
+      retryTimeoutRef.current = setTimeout(() => {
+        generatePortfolio(true);
+      }, retryDelay);
+    } else {
+      console.log('Max retries reached, giving up');
+      setIsGenerating(false);
+      setError(`Failed after ${maxRetries} attempts: ${errorMessage}`);
+      setCurrentStep('Generation failed');
+      
+      toast({
+        title: "Portfolio Generation Failed",
+        description: `Failed after ${maxRetries} attempts. Please try again.`,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleManualRetry = () => {
+    setRetryCount(0);
+    setError(null);
+    setResults(null);
+    generatePortfolio(false);
   };
 
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+      cleanupConnections();
     };
   }, []);
 
@@ -221,10 +311,22 @@ export function PortfolioGenerationDropdown({
         </CardHeader>
         
         <CardContent className="space-y-4">
-          {!results && !isGenerating && (
+          {!results && !isGenerating && !error && (
             <div className="text-center py-4">
-              <Button onClick={generatePortfolio} className="w-full">
+              <Button onClick={() => generatePortfolio(false)} className="w-full">
                 Generate Portfolio
+              </Button>
+            </div>
+          )}
+
+          {error && !isGenerating && (
+            <div className="text-center py-4 space-y-3">
+              <div className="text-sm text-red-400 bg-red-500/10 p-3 rounded-lg">
+                {error}
+              </div>
+              <Button onClick={handleManualRetry} className="w-full" variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
               </Button>
             </div>
           )}
@@ -236,6 +338,11 @@ export function PortfolioGenerationDropdown({
                 <span className="text-sm font-medium">{progress}%</span>
               </div>
               <Progress value={progress} className="w-full" />
+              {retryCount > 0 && (
+                <div className="text-xs text-muted-foreground text-center">
+                  Attempt {retryCount + 1} of {maxRetries + 1}
+                </div>
+              )}
             </div>
           )}
 
