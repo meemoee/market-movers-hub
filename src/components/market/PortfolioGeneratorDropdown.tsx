@@ -161,16 +161,15 @@ export function PortfolioGeneratorDropdown({
         throw new Error('Authentication required. Please sign in.');
       }
 
-      // Start SSE connection
+      // Start SSE connection using URL parameter instead of custom header
       const response = await fetch(
-        'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio',
+        'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio?stream=true',
         {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${authToken}`,
             'Content-Type': 'application/json',
             'Accept': 'text/event-stream',
-            'X-Stream': 'true',
           },
           body: JSON.stringify({ content }),
           signal: abortControllerRef.current.signal
@@ -223,7 +222,34 @@ export function PortfolioGeneratorDropdown({
           }
         }
       } else {
-        throw new Error('Expected SSE response but got regular response');
+        // Fallback to regular JSON response
+        console.log('Falling back to regular JSON response');
+        const data = await response.json();
+        
+        // Simulate progress updates for better UX
+        setCurrentStep('processing');
+        setCurrentMessage('Processing portfolio data...');
+        setProgress(50);
+        
+        // Process the regular response
+        if (data.status === 'completed' && data.data) {
+          setNews(data.data.news || '');
+          setKeywords(data.data.keywords || '');
+          setMarkets(data.data.markets || []);
+          setTradeIdeas(data.data.tradeIdeas || []);
+          setIsComplete(true);
+          setCurrentMessage('Portfolio generation complete!');
+          setProgress(100);
+          
+          toast({
+            title: "Portfolio Generated",
+            description: `Found ${data.data.tradeIdeas?.length || 0} trade ideas and ${data.data.markets?.length || 0} markets`,
+          });
+        } else if (data.error) {
+          throw new Error(data.error);
+        } else {
+          throw new Error('Unexpected response format');
+        }
       }
 
     } catch (error: any) {

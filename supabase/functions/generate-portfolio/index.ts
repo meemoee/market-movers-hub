@@ -522,8 +522,11 @@ serve(async (req) => {
         );
       }
 
-      // Check if client wants SSE streaming
-      if (acceptHeader.includes('text/event-stream') || req.headers.get('x-stream') === 'true') {
+      // Check if client wants SSE streaming via URL parameter
+      const url = new URL(req.url);
+      const streamParam = url.searchParams.get('stream');
+      
+      if (acceptHeader.includes('text/event-stream') || streamParam === 'true') {
         console.log(`[${new Date().toISOString()}] Starting SSE streaming for content: ${content.substring(0, 50)}...`);
         
         // Return SSE stream
