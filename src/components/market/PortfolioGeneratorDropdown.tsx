@@ -97,7 +97,7 @@ export function PortfolioGeneratorDropdown({
   const [isDetailsExpanded, setIsDetailsExpanded] = useState<boolean>(false);
   const [stepDetails, setStepDetails] = useState<any[]>([]);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const { toast } = useToast();
   
   // Calculate position based on trigger element
@@ -112,11 +112,12 @@ export function PortfolioGeneratorDropdown({
     }
   }, [open, triggerRef]);
   
-  // Clean up fetch request when component unmounts or dialog closes
+  // Clean up SSE connection when component unmounts or dialog closes
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
     };
   }, []);
@@ -140,35 +141,14 @@ export function PortfolioGeneratorDropdown({
     setTradeIdeas([]);
     setError('');
     setStepDetails([]);
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
   };
 
   const addProgressMessage = (message: string) => {
     setProgressMessages(prev => [...prev, message]);
-  };
-
-  const updateProgressFromSteps = (steps: any[]) => {
-    if (!steps || steps.length === 0) return;
-    
-    // Map step names to progress percentages (8 total steps)
-    const stepProgress = {
-      'auth_validation': 12.5,
-      'news_summary': 25,
-      'keywords_extraction': 37.5,
-      'embedding_creation': 50,
-      'pinecone_search': 62.5,
-      'market_details': 75,
-      'related_markets': 87.5,
-      'trade_ideas': 100
-    };
-    
-    let maxProgress = 0;
-    steps.forEach(step => {
-      if (step.completed && stepProgress[step.name]) {
-        maxProgress = Math.max(maxProgress, stepProgress[step.name]);
-      }
-    });
-    
-    setProgress(Math.min(maxProgress, 95));
   };
 
   const generatePortfolio = async (content: string) => {
@@ -178,9 +158,10 @@ export function PortfolioGeneratorDropdown({
       addProgressMessage('Authenticating user...');
       setProgress(5);
       
-      // Clean up any existing fetch request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      // Clean up any existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
       
       // Get the current session to retrieve the auth token
@@ -200,86 +181,99 @@ export function PortfolioGeneratorDropdown({
 
       addProgressMessage('Preparing portfolio generation...');
       
-      // Create a new AbortController for this request
-      abortControllerRef.current = new AbortController();
-      
-      // Use Supabase function URL
+      // Use Supabase function URL with SSE
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-      
-      // Make GET request with content as parameter
-      addProgressMessage('Starting portfolio analysis...');
-      setProgress(10);
-      
       const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}`;
       
-      const portfolioResponse = await fetch(portfolioUrl, {
-        method: 'GET',
+      // Create EventSource for SSE
+      eventSourceRef.current = new EventSource(portfolioUrl, {
         headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        signal: abortControllerRef.current.signal
-      });
-      
-      if (!portfolioResponse.ok) {
-        const errorText = await portfolioResponse.text();
-        throw new Error(`Portfolio generation failed: ${errorText}`);
-      }
-      
-      const results: PortfolioResults = await portfolioResponse.json();
-      
-      // Process errors if any
-      if (results.errors && results.errors.length > 0) {
-        results.errors.forEach(err => {
-          toast({
-            title: `Error in ${err.step}`,
-            description: err.message,
-            variant: "destructive"
-          });
-        });
-        
-        // Only set error if we have no data
-        if (!results.data.markets.length && !results.data.tradeIdeas.length) {
-          setError(results.errors.map(e => `${e.step}: ${e.message}`).join('\n'));
+          'Authorization': `Bearer ${authToken}`
         }
-      }
+      } as any);
       
-      // Process all steps
-      if (results.steps && results.steps.length > 0) {
-        // Update progress
-        updateProgressFromSteps(results.steps);
-        setStepDetails(results.steps);
-        
-        // Add step messages to progress
-        results.steps.forEach(step => {
-          if (step.completed) {
-            addProgressMessage(`✓ Completed: ${step.name.replace(/_/g, ' ')}`);
+      eventSourceRef.current.onopen = () => {
+        console.log('SSE connection opened');
+        addProgressMessage('Connected to portfolio generation service...');
+        setProgress(10);
+      };
+      
+      eventSourceRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('SSE message received:', data);
+          
+          // Handle different event types
+          if (event.type === 'progress' || data.step) {
+            if (data.progress !== undefined) {
+              setProgress(data.progress);
+            }
+            if (data.message) {
+              addProgressMessage(data.message);
+            }
           }
-        });
-      }
+          
+          if (event.type === 'step_completed' || data.step) {
+            addProgressMessage(`✓ Completed: ${data.step?.replace(/_/g, ' ') || 'step'}`);
+            if (data.progress !== undefined) {
+              setProgress(data.progress);
+            }
+          }
+          
+          if (event.type === 'step_error' || data.error) {
+            const errorMsg = data.message || data.error || 'Unknown error';
+            addProgressMessage(`❌ Error: ${errorMsg}`);
+            toast({
+              title: "Step Error",
+              description: errorMsg,
+              variant: "destructive"
+            });
+          }
+          
+          if (event.type === 'completed' || data.status === 'completed') {
+            setProgress(100);
+            addProgressMessage('✓ Portfolio generation complete');
+            setStatus('Portfolio generation complete');
+            
+            if (data.data) {
+              setNews(data.data.news || '');
+              setKeywords(data.data.keywords || '');
+              setMarkets(data.data.markets || []);
+              setTradeIdeas(data.data.tradeIdeas || []);
+              
+              addProgressMessage(`Found ${data.data.markets?.length || 0} relevant markets`);
+              addProgressMessage(`Generated ${data.data.tradeIdeas?.length || 0} trade ideas`);
+            }
+            
+            setLoading(false);
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close();
+              eventSourceRef.current = null;
+            }
+          }
+        } catch (parseError) {
+          console.error('Error parsing SSE data:', parseError);
+          addProgressMessage(`❌ Error parsing response: ${parseError}`);
+        }
+      };
       
-      // Set data
-      if (results.data) {
-        setNews(results.data.news || '');
-        setKeywords(results.data.keywords || '');
-        setMarkets(results.data.markets || []);
-        setTradeIdeas(results.data.tradeIdeas || []);
+      eventSourceRef.current.onerror = (error) => {
+        console.error('SSE error:', error);
+        setError('Connection error during portfolio generation');
+        addProgressMessage('❌ Connection error');
+        setLoading(false);
         
-        // Add data summaries to progress
-        addProgressMessage(`Found ${results.data.markets.length} relevant markets`);
-        addProgressMessage(`Generated ${results.data.tradeIdeas.length} trade ideas`);
-      }
-      
-      if (results.status === 'completed') {
-        setStatus('Portfolio generation complete');
-        addProgressMessage('✓ Portfolio generation complete');
-        setProgress(100);
-      } else {
-        setStatus('Portfolio generation encountered issues');
-        addProgressMessage('⚠ Portfolio generation completed with warnings');
-        setProgress(100);
-      }
+        toast({
+          title: "Connection Error",
+          description: "Lost connection to portfolio generation service",
+          variant: "destructive"
+        });
+        
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+      };
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -293,7 +287,7 @@ export function PortfolioGeneratorDropdown({
         description: errorMessage,
         variant: "destructive"
       });
-    } finally {
+      
       setLoading(false);
     }
   };
