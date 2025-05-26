@@ -7,7 +7,7 @@ import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Sparkle 
 import { cn } from "@/lib/utils"
 import * as React from "react"
 import { useIsMobile } from '@/hooks/use-mobile';
-import { PortfolioResults } from "./PortfolioResults";
+import { PortfolioGenerationDropdown } from "./PortfolioGenerationDropdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -32,23 +32,25 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-  const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
-  const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
-  const [portfolioContent, setPortfolioContent] = useState("");
+  const [isPortfolioDropdownOpen, setIsPortfolioDropdownOpen] = useState(false);
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const portfolioButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
       if (isPrivacyOpen) {
         setIsPrivacyOpen(false);
       }
+      if (isPortfolioDropdownOpen) {
+        setIsPortfolioDropdownOpen(false);
+      }
     };
 
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isPrivacyOpen]);
+  }, [isPrivacyOpen, isPortfolioDropdownOpen]);
 
   const handlePost = async () => {
     if (!content.trim()) return;
@@ -110,12 +112,11 @@ export function InsightPostBox() {
       toast({
         title: "No content provided",
         description: "Please share your market insight before generating a portfolio",
-        variant: "destructive" // Changed from "warning" to "destructive"
+        variant: "destructive"
       });
       return;
     }
-    setPortfolioContent(content);
-    setIsPortfolioModalOpen(true);
+    setIsPortfolioDropdownOpen(true);
   };
 
   const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
@@ -159,21 +160,31 @@ export function InsightPostBox() {
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                   <LinkIcon className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleGeneratePortfolio}
-                  className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 ml-2"
-                >
-                  {isMobile ? (
-                    <Sparkle className="h-3 w-3" />
-                  ) : (
-                    <>
-                      Generate portfolio
+                <div className="relative">
+                  <Button
+                    ref={portfolioButtonRef}
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleGeneratePortfolio}
+                    className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 ml-2"
+                  >
+                    {isMobile ? (
                       <Sparkle className="h-3 w-3" />
-                    </>
-                  )}
-                </Button>
+                    ) : (
+                      <>
+                        Generate portfolio
+                        <Sparkle className="h-3 w-3" />
+                      </>
+                    )}
+                  </Button>
+                  
+                  <PortfolioGenerationDropdown
+                    content={content}
+                    isOpen={isPortfolioDropdownOpen}
+                    onClose={() => setIsPortfolioDropdownOpen(false)}
+                    onOpenChange={setIsPortfolioDropdownOpen}
+                  />
+                </div>
               </div>
               
               <div className="flex items-center gap-2">
@@ -236,12 +247,6 @@ export function InsightPostBox() {
           </div>
         </div>
       </div>
-      
-      <PortfolioResults 
-        content={portfolioContent}
-        open={isPortfolioModalOpen}
-        onOpenChange={setIsPortfolioModalOpen}
-      />
     </>
   );
 }

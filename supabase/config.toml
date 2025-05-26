@@ -1,63 +1,66 @@
 
 project_id = "lfmkoismabbhujycnqpn"
 
-# Define functions as an array of tables (using double brackets)
-[[functions]]
-name = "market-analysis"
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+ip_version = "ipv4"
+port = 54324
+max_header_length = 4096
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[inbucket]
+enabled = true
+port = 54325
+smtp_port = 54326
+pop3_port = 54327
+
+[storage]
+enabled = true
+port = 54326
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+port = 54324
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_signup = true
+enable_email_confirmations = false
+enable_sms_confirmations = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+[functions.generate-portfolio]
 verify_jwt = false
 
-[[functions]]
-name = "analyze-web-content"
-verify_jwt = false
-
-[[functions]]
-name = "brave-search"
-verify_jwt = false
-
-[[functions]]
-name = "web-scrape"
-verify_jwt = false
-
-[[functions]]
-name = "web-research"
-verify_jwt = false
-
-[[functions]]
-name = "extract-research-insights"
-verify_jwt = false
-
-[[functions]]
-name = "generate-qa-tree"
-verify_jwt = false
-
-[[functions]]
-name = "evaluate-qa-pair"
-verify_jwt = false
-
-[[functions]]
-name = "evaluate-qa-final"
-verify_jwt = false
-
-[[functions]]
-name = "get-orderbook"
-verify_jwt = false
-
-[[functions]]
-name = "polymarket-ws"
-verify_jwt = false
-
-[[functions]]
-name = "create-research-job"
-verify_jwt = false
-
-[[functions]]
-name = "generate-queries"
-verify_jwt = false
-
-[[functions]]
-name = "generate-historical-event"
-verify_jwt = false
-
-[[functions]]
-name = "generate-portfolio"
+[functions.generate-historical-event]
 verify_jwt = false
