@@ -210,7 +210,7 @@ export function PortfolioGenerationDropdown({
   return (
     <div 
       ref={dropdownRef}
-      className="absolute z-[9999] bg-background border border-border rounded-lg shadow-2xl w-[500px] mt-2"
+      className="absolute z-[99999] bg-background border border-border rounded-lg shadow-2xl w-[500px] mt-2"
       style={{
         top: '100%',
         left: '0',
