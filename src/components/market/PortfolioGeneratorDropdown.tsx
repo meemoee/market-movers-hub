@@ -155,7 +155,7 @@ export function PortfolioGeneratorDropdown({
     try {
       setLoading(true);
       setError('');
-      addProgressMessage('Authenticating user...');
+      addProgressMessage('Preparing portfolio generation...');
       setProgress(5);
       
       // Clean up any existing connection
@@ -168,24 +168,13 @@ export function PortfolioGeneratorDropdown({
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token;
       
-      if (!authToken) {
-        setError('Authentication required. Please sign in to use this feature.');
-        setLoading(false);
-        toast({
-          title: "Authentication required",
-          description: "Please sign in to generate portfolios",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      addProgressMessage('Preparing portfolio generation...');
+      addProgressMessage('Connecting to portfolio generation service...');
       
-      // Use Supabase function URL with SSE - pass token as URL parameter
+      // Use Supabase function URL with SSE - pass token as URL parameter like historical event function
       const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-      const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}&token=${encodeURIComponent(authToken)}`;
+      const portfolioUrl = `${functionUrl}?content=${encodeURIComponent(content)}${authToken ? `&authToken=${encodeURIComponent(authToken)}` : ''}`;
       
-      // Create EventSource for SSE without headers
+      // Create EventSource for SSE without headers (like historical event function)
       eventSourceRef.current = new EventSource(portfolioUrl);
       
       eventSourceRef.current.onopen = () => {
