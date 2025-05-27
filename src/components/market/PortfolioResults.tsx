@@ -175,7 +175,13 @@ export function PortfolioResults({
       setOrderBookData(null);
       return;
     }
+    console.log('[PortfolioResults] Selected market changed, setting loading:', selectedMarket);
     setIsOrderBookLoading(true);
+  }, [selectedMarket]);
+
+  // Debug effect to log selectedMarket changes
+  useEffect(() => {
+    console.log('[PortfolioResults] selectedMarket state updated:', selectedMarket);
   }, [selectedMarket]);
 
   const resetState = () => {
@@ -247,13 +253,38 @@ export function PortfolioResults({
     clobTokenId: string;
     selectedOutcome: string;
   } | null) => {
-    console.log('[PortfolioResults] Setting selected market:', market);
+    console.log('[PortfolioResults] handleMarketSelection called with:', market);
     
     if (market?.id !== selectedMarket?.id) {
       setOrderBookData(null);
     }
     
     setSelectedMarket(market);
+  };
+
+  // Debug function for button click
+  const handleTradeIdeaClick = (idea: TradeIdea) => {
+    console.log('[PortfolioResults] Trade idea button clicked:', idea);
+    console.log('[PortfolioResults] Current selectedMarket state:', selectedMarket);
+    
+    // Generate a mock clob token ID for the trade
+    const clobTokenId = `token_${idea.market_id}_${idea.outcome.toLowerCase()}`;
+    const marketData = { 
+      id: idea.market_id, 
+      action: 'buy' as const, 
+      clobTokenId,
+      selectedOutcome: idea.outcome
+    };
+    
+    console.log('[PortfolioResults] About to set market data:', marketData);
+    
+    handleMarketSelection(marketData);
+    
+    // Add immediate toast for debugging
+    toast({
+      title: "Debug: Button Clicked",
+      description: `Clicked ${idea.outcome} button for ${idea.market_title}`,
+    });
   };
 
   const generatePortfolio = async (content: string) => {
@@ -434,6 +465,9 @@ export function PortfolioResults({
       }
     : null;
 
+  console.log('[PortfolioResults] Rendering with selectedMarket:', selectedMarket);
+  console.log('[PortfolioResults] Rendering with selectedTopMover:', selectedTopMover);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -521,16 +555,11 @@ export function PortfolioResults({
                               <div className="flex-shrink-0">
                                 <HoverButton
                                   variant="buy"
-                                  onClick={() => {
-                                    console.log('[PortfolioResults] Trade idea clicked:', idea);
-                                    // Generate a mock clob token ID for the trade
-                                    const clobTokenId = `token_${idea.market_id}_${idea.outcome.toLowerCase()}`;
-                                    handleMarketSelection({ 
-                                      id: idea.market_id, 
-                                      action: 'buy', 
-                                      clobTokenId,
-                                      selectedOutcome: idea.outcome
-                                    });
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    console.log('[PortfolioResults] HoverButton onClick triggered');
+                                    handleTradeIdeaClick(idea);
                                   }}
                                   className="w-[80px] flex flex-col items-center justify-center h-10"
                                 >
@@ -682,16 +711,21 @@ export function PortfolioResults({
         </DialogContent>
       </Dialog>
 
-      {/* Transaction Dialog - same pattern as TopMoversList */}
-      <TransactionDialog
-        selectedMarket={selectedMarket}
-        topMover={selectedTopMover}
-        onClose={() => setSelectedMarket(null)}
-        orderBookData={orderBookData}
-        isOrderBookLoading={isOrderBookLoading}
-        onOrderBookData={handleOrderBookData}
-        onConfirm={handleTransaction}
-      />
+      {/* Transaction Dialog - same pattern as TopMoversList - render outside the main dialog */}
+      {selectedMarket && (
+        <TransactionDialog
+          selectedMarket={selectedMarket}
+          topMover={selectedTopMover}
+          onClose={() => {
+            console.log('[PortfolioResults] Transaction dialog onClose called');
+            setSelectedMarket(null);
+          }}
+          orderBookData={orderBookData}
+          isOrderBookLoading={isOrderBookLoading}
+          onOrderBookData={handleOrderBookData}
+          onConfirm={handleTransaction}
+        />
+      )}
     </>
   );
 }
