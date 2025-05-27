@@ -120,9 +120,6 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             </span>
           </div>
           <div className="flex flex-col items-end justify-end h-[60px]">
-            <span className="text-lg font-semibold text-primary">
-              Target
-            </span>
             <span className="text-sm text-muted-foreground">
               {actualStopPrice ? `Stop: ${formatPrice(actualStopPrice)}` : 'No stop set'}
             </span>
@@ -182,24 +179,6 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
                 width: `${Math.max(0, Math.min(calculatePosition(actualCurrentPrice) - calculatePosition(actualTargetPrice), calculatePosition(actualCurrentPrice)))}%`
               }}
             />
-          )}
-        </div>
-        
-        {/* Legend for the indicators */}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <div className="w-0.5 h-3 bg-white"></div>
-            <span>Current</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-0.5 h-4 bg-green-400"></div>
-            <span>Target</span>
-          </div>
-          {actualStopPrice && (
-            <div className="flex items-center gap-1">
-              <div className="w-0.5 h-4 bg-red-400"></div>
-              <span>Stop</span>
-            </div>
           )}
         </div>
       </div>
