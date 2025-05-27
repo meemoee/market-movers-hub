@@ -74,7 +74,6 @@ export function PortfolioGenerationDropdown({
   const { session } = useAuth();
   const { toast } = useToast();
   const eventSourceRef = useRef<EventSource | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Transaction dialog state - same pattern as TopMoversList and PortfolioResults
@@ -102,22 +101,6 @@ export function PortfolioGenerationDropdown({
     'related_markets': 'Finding related markets',
     'trade_ideas': 'Generating trade ideas'
   };
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen, onClose]);
 
   // Transaction dialog effects - same pattern as TopMoversList
   useEffect(() => {
@@ -174,6 +157,49 @@ export function PortfolioGenerationDropdown({
     setOrderBookData(null);
   };
 
+  // Helper function to get real CLOB token ID from market data
+  const getRealClobTokenId = (tradeIdea: TradeIdea): string | null => {
+    if (!results?.data.markets) return null;
+    
+    // Find the matching market based on market_id
+    const matchingMarket = results.data.markets.find(market => 
+      market.market_id === tradeIdea.market_id
+    );
+    
+    if (!matchingMarket) {
+      console.warn('[PortfolioGenerationDropdown] No matching market found for trade idea:', tradeIdea.market_id);
+      return null;
+    }
+    
+    console.log('[PortfolioGenerationDropdown] Found matching market:', matchingMarket);
+    
+    // Look for CLOB token IDs in the market data
+    // The structure might vary, so we'll check different possible fields
+    const clobTokenIds = matchingMarket.clobtokenids || 
+                        matchingMarket.clob_token_ids || 
+                        matchingMarket.tokenIds ||
+                        matchingMarket.token_ids;
+    
+    if (!clobTokenIds || !Array.isArray(clobTokenIds)) {
+      console.warn('[PortfolioGenerationDropdown] No CLOB token IDs found in market:', matchingMarket);
+      return null;
+    }
+    
+    // For Yes outcome, use first token ID; for No outcome, use second token ID
+    const isYesOutcome = tradeIdea.outcome.toLowerCase().includes('yes');
+    const tokenIndex = isYesOutcome ? 0 : 1;
+    
+    const tokenId = clobTokenIds[tokenIndex];
+    
+    if (!tokenId) {
+      console.warn('[PortfolioGenerationDropdown] No token ID found at index', tokenIndex, 'for market:', matchingMarket);
+      return null;
+    }
+    
+    console.log('[PortfolioGenerationDropdown] Using real CLOB token ID:', tokenId, 'for outcome:', tradeIdea.outcome);
+    return tokenId;
+  };
+
   const handleTradeClick = (market: {
     id: string;
     action: 'buy' | 'sell';
@@ -181,6 +207,28 @@ export function PortfolioGenerationDropdown({
     selectedOutcome: string;
   }) => {
     console.log('[PortfolioGenerationDropdown] Trade button clicked:', market);
+    
+    // If this is a mock token ID, try to get the real one
+    if (market.clobTokenId.startsWith('token_') && results) {
+      const tradeIdea = results.data.tradeIdeas.find(idea => idea.market_id === market.id);
+      if (tradeIdea) {
+        const realClobTokenId = getRealClobTokenId(tradeIdea);
+        if (realClobTokenId) {
+          console.log('[PortfolioGenerationDropdown] Replacing mock token ID with real one:', realClobTokenId);
+          market = {
+            ...market,
+            clobTokenId: realClobTokenId
+          };
+        } else {
+          toast({
+            title: "Market Data Unavailable",
+            description: "Unable to find real market data for this trade idea. Please try a different trade.",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+    }
     
     if (market?.id !== selectedMarket?.id) {
       setOrderBookData(null);
@@ -190,8 +238,8 @@ export function PortfolioGenerationDropdown({
     
     // Add debug toast
     toast({
-      title: "DEBUG: Trade Button Clicked",
-      description: `Clicked ${market.selectedOutcome} for market ${market.id}`,
+      title: "Trade Button Clicked",
+      description: `Loading orderbook for ${market.selectedOutcome}`,
     });
   };
 
@@ -259,6 +307,9 @@ export function PortfolioGenerationDropdown({
           
           if (data.status === 'completed') {
             console.log('Portfolio generation completed successfully');
+            console.log('Markets data structure:', data.data?.markets);
+            console.log('Trade ideas data structure:', data.data?.tradeIdeas);
+            
             setResults(data);
             setProgress(100);
             setCurrentStep('Portfolio generation complete!');
@@ -393,10 +444,7 @@ export function PortfolioGenerationDropdown({
 
   return (
     <>
-      <div 
-        ref={dropdownRef}
-        className="w-full mt-2 animate-in slide-in-from-top-2 duration-200"
-      >
+      <div className="w-full mt-2 animate-in slide-in-from-top-2 duration-200">
         <Card className="border-0 shadow-none bg-transparent">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -467,6 +515,35 @@ export function PortfolioGenerationDropdown({
                   </CollapsibleContent>
                 </Collapsible>
 
+                {/* Markets Section */}
+                {results.data.markets && results.data.markets.length > 0 && (
+                  <Collapsible 
+                    open={expandedSections.has('markets')} 
+                    onOpenChange={() => toggleSection('markets')}
+                  >
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
+                      <span className="font-medium text-sm">Related Markets ({results.data.markets.length})</span>
+                      {expandedSections.has('markets') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </CollapsibleTrigger>
+                    
+                    <CollapsibleContent className="mt-2">
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {results.data.markets.slice(0, 10).map((market, index) => (
+                          <div key={index} className="p-2 border border-border rounded text-xs">
+                            <div className="font-medium line-clamp-1">{market.question}</div>
+                            <div className="text-muted-foreground">
+                              ID: {market.market_id} | Yes: {(market.yes_price * 100).toFixed(0)}¢ | No: {(market.no_price * 100).toFixed(0)}¢
+                              {market.clobtokenids && (
+                                <div className="text-xs mt-1">Tokens: {market.clobtokenids.join(', ')}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
                 {/* News Summary Section */}
                 {results.data.news && (
                   <Collapsible 
@@ -500,32 +577,6 @@ export function PortfolioGenerationDropdown({
                     <CollapsibleContent className="mt-2">
                       <div className="p-3 border border-border rounded-lg">
                         <p className="text-sm text-muted-foreground">{results.data.keywords}</p>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
-
-                {/* Markets Section */}
-                {results.data.markets && results.data.markets.length > 0 && (
-                  <Collapsible 
-                    open={expandedSections.has('markets')} 
-                    onOpenChange={() => toggleSection('markets')}
-                  >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
-                      <span className="font-medium text-sm">Related Markets ({results.data.markets.length})</span>
-                      {expandedSections.has('markets') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    </CollapsibleTrigger>
-                    
-                    <CollapsibleContent className="mt-2">
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {results.data.markets.slice(0, 10).map((market, index) => (
-                          <div key={index} className="p-2 border border-border rounded text-xs">
-                            <div className="font-medium line-clamp-1">{market.question}</div>
-                            <div className="text-muted-foreground">
-                              Yes: {(market.yes_price * 100).toFixed(0)}¢ | No: {(market.no_price * 100).toFixed(0)}¢
-                            </div>
-                          </div>
-                        ))}
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
