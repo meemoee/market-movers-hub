@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { ProgressDisplay } from "../market/research/ProgressDisplay";
 import { useJobLogger } from "@/hooks/research/useJobLogger";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { TransactionDialog } from './TransactionDialog';
+import { HoverButton } from "@/components/ui/hover-button";
 
 interface TradeIdea {
   market_id: string;
@@ -82,6 +84,14 @@ interface PortfolioResults {
   }
 }
 
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
+
 // CRITICAL FIX: Validate and correct trade idea pricing
 const validateAndFixTradeIdea = (idea: TradeIdea): TradeIdea => {
   console.log(`Validating trade idea: ${idea.market_title}`);
@@ -131,6 +141,16 @@ export function PortfolioResults({
   const { toast } = useToast();
   const { logUpdate } = useJobLogger('PortfolioResults');
   
+  // Transaction dialog state - same pattern as TopMoversList
+  const [selectedMarket, setSelectedMarket] = useState<{ 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+    selectedOutcome: string;
+  } | null>(null);
+  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
+  const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
+  
   // Clean up fetch request when component unmounts or dialog closes
   useEffect(() => {
     return () => {
@@ -149,6 +169,15 @@ export function PortfolioResults({
     generatePortfolio(content);
   }, [open, content]);
 
+  // Transaction dialog effects - same pattern as TopMoversList
+  useEffect(() => {
+    if (!selectedMarket) {
+      setOrderBookData(null);
+      return;
+    }
+    setIsOrderBookLoading(true);
+  }, [selectedMarket]);
+
   const resetState = () => {
     setStatus('Starting portfolio generation...');
     setProgress(0);
@@ -158,6 +187,10 @@ export function PortfolioResults({
     setMarkets([]);
     setTradeIdeas([]);
     setError('');
+    // Reset transaction dialog state
+    setSelectedMarket(null);
+    setOrderBookData(null);
+    setIsOrderBookLoading(false);
   };
 
   const addProgressMessage = (message: string) => {
@@ -173,6 +206,54 @@ export function PortfolioResults({
     const progressPercentage = Math.min(Math.round((completedSteps / totalSteps) * 100), 95);
     
     setProgress(progressPercentage);
+  };
+
+  // Transaction dialog handlers - same pattern as TopMoversList
+  const handleOrderBookData = (data: OrderBookData | null) => {
+    console.log('[PortfolioResults] Setting orderbook data:', data);
+    
+    if (data === null) {
+      setOrderBookData(null);
+      setIsOrderBookLoading(false);
+      return;
+    }
+    
+    if (selectedMarket) {
+      setOrderBookData(data);
+      setIsOrderBookLoading(false);
+    } else {
+      console.warn('[PortfolioResults] Received orderbook data but no market is selected');
+      setOrderBookData(null);
+    }
+  };
+
+  const handleTransaction = () => {
+    if (!selectedMarket || !orderBookData) return;
+    
+    const action = selectedMarket.action;
+    const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+    
+    toast({
+      title: "Transaction Submitted",
+      description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
+    });
+    setSelectedMarket(null);
+    setOrderBookData(null);
+  };
+
+  const handleMarketSelection = (market: { 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+    selectedOutcome: string;
+  } | null) => {
+    console.log('[PortfolioResults] Setting selected market:', market);
+    
+    if (market?.id !== selectedMarket?.id) {
+      setOrderBookData(null);
+    }
+    
+    setSelectedMarket(market);
   };
 
   const generatePortfolio = async (content: string) => {
@@ -343,68 +424,160 @@ export function PortfolioResults({
 
   const progressStatus = loading ? 'processing' : error ? 'failed' : progress === 100 ? 'completed' : null;
 
+  // Find the selected top mover for transaction dialog - same pattern as TopMoversList
+  const selectedTopMover = selectedMarket 
+    ? {
+        market_id: selectedMarket.id,
+        question: tradeIdeas.find(idea => idea.market_id === selectedMarket.id)?.market_title || 'Portfolio Trade',
+        image: tradeIdeas.find(idea => idea.market_id === selectedMarket.id)?.image || '/placeholder.svg',
+        outcomes: [selectedMarket.selectedOutcome, selectedMarket.selectedOutcome === 'Yes' ? 'No' : 'Yes']
+      }
+    : null;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Generating Portfolio
-              </>
-            ) : error && !markets.length && !tradeIdeas.length ? (
-              <>
-                <XCircle className="h-4 w-4 text-destructive" />
-                Portfolio Generation Failed
-              </>
-            ) : (
-              <>
-                <CheckCircle className="h-4 w-4 text-primary" />
-                Portfolio Generated
-              </>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-        
-        {/* Progress display */}
-        <ProgressDisplay 
-          messages={progressMessages}
-          progress={progress}
-          status={progressStatus}
-        />
-        
-        {error && !markets.length && !tradeIdeas.length && (
-          <div className="bg-destructive/10 p-3 rounded-md mb-4">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-              <p className="text-sm whitespace-pre-wrap">{error}</p>
-            </div>
-          </div>
-        )}
-        
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <TabsList className="grid grid-cols-3 mb-4">
-            <TabsTrigger value="ideas">Trade Ideas</TabsTrigger>
-            <TabsTrigger value="markets">Markets</TabsTrigger>
-            <TabsTrigger value="analysis">Analysis</TabsTrigger>
-          </TabsList>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating Portfolio
+                </>
+              ) : error && !markets.length && !tradeIdeas.length ? (
+                <>
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  Portfolio Generation Failed
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 text-primary" />
+                  Portfolio Generated
+                </>
+              )}
+            </DialogTitle>
+          </DialogHeader>
           
-          <div className="flex-1 overflow-hidden">
-            <TabsContent value="ideas" className="h-full overflow-hidden flex flex-col m-0">
-              <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
-                {tradeIdeas.length > 0 ? (
-                  <div className="space-y-4">
-                    {tradeIdeas.map((idea, i) => (
-                      <Card key={i}>
-                        <CardHeader className="pb-2">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-md overflow-hidden">
-                              {idea.image ? (
+          {/* Progress display */}
+          <ProgressDisplay 
+            messages={progressMessages}
+            progress={progress}
+            status={progressStatus}
+          />
+          
+          {error && !markets.length && !tradeIdeas.length && (
+            <div className="bg-destructive/10 p-3 rounded-md mb-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+                <p className="text-sm whitespace-pre-wrap">{error}</p>
+              </div>
+            </div>
+          )}
+          
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <TabsList className="grid grid-cols-3 mb-4">
+              <TabsTrigger value="ideas">Trade Ideas</TabsTrigger>
+              <TabsTrigger value="markets">Markets</TabsTrigger>
+              <TabsTrigger value="analysis">Analysis</TabsTrigger>
+            </TabsList>
+            
+            <div className="flex-1 overflow-hidden">
+              <TabsContent value="ideas" className="h-full overflow-hidden flex flex-col m-0">
+                <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
+                  {tradeIdeas.length > 0 ? (
+                    <div className="space-y-4">
+                      {tradeIdeas.map((idea, i) => (
+                        <Card key={i}>
+                          <CardHeader className="pb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-md overflow-hidden">
+                                {idea.image ? (
+                                  <AspectRatio ratio={1} className="bg-muted/20">
+                                    <img 
+                                      src={idea.image} 
+                                      alt={idea.market_title}
+                                      className="object-cover w-full h-full" 
+                                    />
+                                  </AspectRatio>
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center bg-muted">
+                                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <CardTitle className="text-base">{idea.market_title}</CardTitle>
+                                <CardDescription className="flex items-center gap-2 mt-1">
+                                  <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'}>
+                                    {idea.outcome}
+                                  </Badge>
+                                  <span>Current: ${idea.current_price.toFixed(2)}</span>
+                                  <span>⟶</span>
+                                  <span>Target: ${idea.target_price.toFixed(2)}</span>
+                                </CardDescription>
+                              </div>
+                              {/* Add outcome button - same pattern as MarketHeader */}
+                              <div className="flex-shrink-0">
+                                <HoverButton
+                                  variant="buy"
+                                  onClick={() => {
+                                    console.log('[PortfolioResults] Trade idea clicked:', idea);
+                                    // Generate a mock clob token ID for the trade
+                                    const clobTokenId = `token_${idea.market_id}_${idea.outcome.toLowerCase()}`;
+                                    handleMarketSelection({ 
+                                      id: idea.market_id, 
+                                      action: 'buy', 
+                                      clobTokenId,
+                                      selectedOutcome: idea.outcome
+                                    });
+                                  }}
+                                  className="w-[80px] flex flex-col items-center justify-center h-10"
+                                >
+                                  <span className="text-xs truncate max-w-full px-1">{idea.outcome}</span>
+                                  <span className="text-[11px] font-medium opacity-90">
+                                    {(idea.current_price * 100).toFixed(1)}¢
+                                  </span>
+                                </HoverButton>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm">{idea.rationale}</p>
+                          </CardContent>
+                          <CardFooter className="pt-0">
+                            <div className="text-xs text-muted-foreground">
+                              Stop price: ${idea.stop_price.toFixed(2)}
+                            </div>
+                          </CardFooter>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-8 text-center">
+                      {loading ? (
+                        <p className="text-muted-foreground text-sm">Generating trade ideas...</p>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">No trade ideas generated yet</p>
+                      )}
+                    </div>
+                  )}
+                </ScrollArea>
+              </TabsContent>
+              
+              <TabsContent value="markets" className="h-full overflow-hidden flex flex-col m-0">
+                <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
+                  {markets.length > 0 ? (
+                    <div className="space-y-6">
+                      {markets.map((market, i) => (
+                        <div key={i} className="border rounded-lg p-4">
+                          <div className="flex gap-3 mb-3">
+                            <div className="h-12 w-12 rounded-md overflow-hidden flex-shrink-0">
+                              {market.image ? (
                                 <AspectRatio ratio={1} className="bg-muted/20">
                                   <img 
-                                    src={idea.image} 
-                                    alt={idea.market_title}
+                                    src={market.image} 
+                                    alt={market.question} 
                                     className="object-cover w-full h-full" 
                                   />
                                 </AspectRatio>
@@ -415,156 +588,110 @@ export function PortfolioResults({
                               )}
                             </div>
                             <div>
-                              <CardTitle className="text-base">{idea.market_title}</CardTitle>
-                              <CardDescription className="flex items-center gap-2 mt-1">
-                                <Badge variant={idea.outcome.toLowerCase() === 'yes' ? 'default' : 'outline'}>
-                                  {idea.outcome}
-                                </Badge>
-                                <span>Current: ${idea.current_price.toFixed(2)}</span>
-                                <span>⟶</span>
-                                <span>Target: ${idea.target_price.toFixed(2)}</span>
-                              </CardDescription>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm">{idea.rationale}</p>
-                        </CardContent>
-                        <CardFooter className="pt-0">
-                          <div className="text-xs text-muted-foreground">
-                            Stop price: ${idea.stop_price.toFixed(2)}
-                          </div>
-                        </CardFooter>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-8 text-center">
-                    {loading ? (
-                      <p className="text-muted-foreground text-sm">Generating trade ideas...</p>
-                    ) : (
-                      <p className="text-muted-foreground text-sm">No trade ideas generated yet</p>
-                    )}
-                  </div>
-                )}
-              </ScrollArea>
-            </TabsContent>
-            
-            <TabsContent value="markets" className="h-full overflow-hidden flex flex-col m-0">
-              <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
-                {markets.length > 0 ? (
-                  <div className="space-y-6">
-                    {markets.map((market, i) => (
-                      <div key={i} className="border rounded-lg p-4">
-                        <div className="flex gap-3 mb-3">
-                          <div className="h-12 w-12 rounded-md overflow-hidden flex-shrink-0">
-                            {market.image ? (
-                              <AspectRatio ratio={1} className="bg-muted/20">
-                                <img 
-                                  src={market.image} 
-                                  alt={market.question} 
-                                  className="object-cover w-full h-full" 
-                                />
-                              </AspectRatio>
-                            ) : (
-                              <div className="h-full w-full flex items-center justify-center bg-muted">
-                                <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                              <h3 className="font-medium text-lg">{market.event_title}</h3>
+                              <div className="flex gap-3 text-sm text-muted-foreground">
+                                <span>ID: {market.market_id}</span>
                               </div>
-                            )}
-                          </div>
-                          <div>
-                            <h3 className="font-medium text-lg">{market.event_title}</h3>
-                            <div className="flex gap-3 text-sm text-muted-foreground">
-                              <span>ID: {market.market_id}</span>
                             </div>
                           </div>
-                        </div>
-                        
-                        <div className="border-l-2 border-primary/50 pl-3 mb-3">
-                          <p className="font-medium">{market.question}</p>
-                          <div className="flex gap-3 mt-1 text-sm">
-                            <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
-                            <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
+                          
+                          <div className="border-l-2 border-primary/50 pl-3 mb-3">
+                            <p className="font-medium">{market.question}</p>
+                            <div className="flex gap-3 mt-1 text-sm">
+                              <span>Yes: ${market.yes_price?.toFixed(2) || 'N/A'}</span>
+                              <span>No: ${market.no_price?.toFixed(2) || 'N/A'}</span>
+                            </div>
                           </div>
-                        </div>
-                        
-                        {market.related_markets?.length > 0 && (
-                          <>
-                            <p className="text-sm text-muted-foreground mb-2">Related markets:</p>
-                            <div className="space-y-2">
-                              {market.related_markets.map((related, j) => (
-                                <div key={j} className="text-sm border border-border/50 rounded-md p-2">
-                                  <p>{related.question}</p>
-                                  <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                                    <span>Yes: ${related.yes_price?.toFixed(2) || 'N/A'}</span>
-                                    <span>No: ${related.no_price?.toFixed(2) || 'N/A'}</span>
+                          
+                          {market.related_markets?.length > 0 && (
+                            <>
+                              <p className="text-sm text-muted-foreground mb-2">Related markets:</p>
+                              <div className="space-y-2">
+                                {market.related_markets.map((related, j) => (
+                                  <div key={j} className="text-sm border border-border/50 rounded-md p-2">
+                                    <p>{related.question}</p>
+                                    <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                                      <span>Yes: ${related.yes_price?.toFixed(2) || 'N/A'}</span>
+                                      <span>No: ${related.no_price?.toFixed(2) || 'N/A'}</span>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-8 text-center">
+                      {loading ? (
+                        <p className="text-muted-foreground text-sm">Finding relevant markets...</p>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">No markets found</p>
+                      )}
+                    </div>
+                  )}
+                </ScrollArea>
+              </TabsContent>
+              
+              <TabsContent value="analysis" className="h-full overflow-hidden flex flex-col m-0">
+                <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-medium mb-2">Your Insight</h3>
+                      <div className="border-l-2 border-primary/50 pl-3 py-1">
+                        <p className="text-sm">{content}</p>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-8 text-center">
-                    {loading ? (
-                      <p className="text-muted-foreground text-sm">Finding relevant markets...</p>
-                    ) : (
-                      <p className="text-muted-foreground text-sm">No markets found</p>
+                    </div>
+                    
+                    {news && (
+                      <div>
+                        <h3 className="font-medium mb-2">Market Context</h3>
+                        <div className="border-l-2 border-primary/50 pl-3 py-1">
+                          <p className="text-sm">{news}</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {keywords && (
+                      <div>
+                        <h3 className="font-medium mb-2">Key Concepts</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {keywords.split(',').map((keyword, i) => (
+                            <Badge key={i} variant="outline" className="bg-primary/5">
+                              {keyword.trim()}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                )}
-              </ScrollArea>
-            </TabsContent>
-            
-            <TabsContent value="analysis" className="h-full overflow-hidden flex flex-col m-0">
-              <ScrollArea className="h-[60vh] pr-4 overflow-y-auto">
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="font-medium mb-2">Your Insight</h3>
-                    <div className="border-l-2 border-primary/50 pl-3 py-1">
-                      <p className="text-sm">{content}</p>
-                    </div>
-                  </div>
-                  
-                  {news && (
-                    <div>
-                      <h3 className="font-medium mb-2">Market Context</h3>
-                      <div className="border-l-2 border-primary/50 pl-3 py-1">
-                        <p className="text-sm">{news}</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {keywords && (
-                    <div>
-                      <h3 className="font-medium mb-2">Key Concepts</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {keywords.split(',').map((keyword, i) => (
-                          <Badge key={i} variant="outline" className="bg-primary/5">
-                            {keyword.trim()}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
+                </ScrollArea>
+              </TabsContent>
+            </div>
+          </Tabs>
+          
+          <div className="flex justify-end mt-4">
+            <Button 
+              onClick={() => onOpenChange(false)} 
+              variant="outline"
+            >
+              Close
+            </Button>
           </div>
-        </Tabs>
-        
-        <div className="flex justify-end mt-4">
-          <Button 
-            onClick={() => onOpenChange(false)} 
-            variant="outline"
-          >
-            Close
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Dialog - same pattern as TopMoversList */}
+      <TransactionDialog
+        selectedMarket={selectedMarket}
+        topMover={selectedTopMover}
+        onClose={() => setSelectedMarket(null)}
+        orderBookData={orderBookData}
+        isOrderBookLoading={isOrderBookLoading}
+        onOrderBookData={handleOrderBookData}
+        onConfirm={handleTransaction}
+      />
+    </>
   );
 }
