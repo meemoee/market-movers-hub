@@ -108,57 +108,47 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
             <span className="text-3xl font-bold tracking-tight">
               {formatPrice(actualCurrentPrice)}
             </span>
-            <span className={`text-sm font-medium flex items-center gap-1
-              ${isPositive ? 'text-green-500' : 'text-red-500'}`}
-            >
-              {isPositive ? (
-                <TrendingUp className="w-4 h-4" />
-              ) : (
-                <TrendingDown className="w-4 h-4" />
-              )}
-              {formatPrice(actualTargetPrice)} Target
-            </span>
           </div>
         </div>
         
         {/* Price visualization with target and stop indicators */}
-        <div className="relative h-[20px] w-full">
-          {/* Labels positioned above their respective indicators */}
+        <div className="relative h-[30px] w-full">
+          {/* Labels positioned above their respective indicators with actual values */}
           
-          {/* Current price label */}
+          {/* Current price label with value */}
           <div 
-            className="absolute text-[10px] text-white font-medium top-[-12px] transform -translate-x-1/2"
+            className="absolute text-[10px] text-white font-medium top-0 transform -translate-x-1/2"
             style={{ 
               left: `${calculatePosition(actualCurrentPrice)}%`
             }}
           >
-            Current
+            {formatPrice(actualCurrentPrice)}
           </div>
           
-          {/* Target price label */}
+          {/* Target price label with value */}
           <div 
-            className="absolute text-[10px] text-green-400 font-medium top-[-12px] transform -translate-x-1/2"
+            className="absolute text-[10px] text-green-400 font-medium top-0 transform -translate-x-1/2"
             style={{ 
               left: `${Math.min(Math.max(calculatePosition(actualTargetPrice), 0), 100)}%`
             }}
           >
-            Target
+            {formatPrice(actualTargetPrice)}
           </div>
           
-          {/* Stop price label */}
+          {/* Stop price label with value */}
           {actualStopPrice && (
             <div 
-              className="absolute text-[10px] text-red-400 font-medium top-[-12px] transform -translate-x-1/2"
+              className="absolute text-[10px] text-red-400 font-medium top-0 transform -translate-x-1/2"
               style={{ 
                 left: `${Math.min(Math.max(calculatePosition(actualStopPrice), 0), 100)}%`
               }}
             >
-              Stop
+              {formatPrice(actualStopPrice)}
             </div>
           )}
           
-          {/* Price visualization bar - positioned lower to make room for labels */}
-          <div className="absolute top-[4px] w-full h-[3px]">
+          {/* Price visualization bar - positioned lower with more space */}
+          <div className="absolute top-[16px] w-full h-[3px]">
             {/* Base line showing current price position */}
             <div 
               className="absolute bg-white/50 h-2 top-[-4px]" 
