@@ -17,7 +17,6 @@ import { ProgressDisplay } from "../market/research/ProgressDisplay";
 import { useJobLogger } from "@/hooks/research/useJobLogger";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { TransactionDialog } from './TransactionDialog';
-import { HoverButton } from "@/components/ui/hover-button";
 
 interface TradeIdea {
   market_id: string;
@@ -264,7 +263,8 @@ export function PortfolioResults({
 
   // Debug function for button click
   const handleTradeIdeaClick = (idea: TradeIdea) => {
-    console.log('[PortfolioResults] Trade idea button clicked:', idea);
+    console.log('[PortfolioResults] ===== TRADE IDEA BUTTON CLICKED =====');
+    console.log('[PortfolioResults] Trade idea:', idea);
     console.log('[PortfolioResults] Current selectedMarket state:', selectedMarket);
     
     // Generate a mock clob token ID for the trade
@@ -282,9 +282,11 @@ export function PortfolioResults({
     
     // Add immediate toast for debugging
     toast({
-      title: "Debug: Button Clicked",
-      description: `Clicked ${idea.outcome} button for ${idea.market_title}`,
+      title: "DEBUG: Button Clicked!",
+      description: `Clicked ${idea.outcome} for ${idea.market_title}`,
     });
+    
+    console.log('[PortfolioResults] ===== END BUTTON CLICK =====');
   };
 
   const generatePortfolio = async (content: string) => {
@@ -551,23 +553,22 @@ export function PortfolioResults({
                                   <span>Target: ${idea.target_price.toFixed(2)}</span>
                                 </CardDescription>
                               </div>
-                              {/* Add outcome button - same pattern as MarketHeader */}
+                              {/* SIMPLIFIED TEST BUTTON - Use regular Button instead of HoverButton */}
                               <div className="flex-shrink-0">
-                                <HoverButton
-                                  variant="buy"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    console.log('[PortfolioResults] HoverButton onClick triggered');
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    console.log('[PortfolioResults] SIMPLE BUTTON CLICKED!!!');
                                     handleTradeIdeaClick(idea);
                                   }}
-                                  className="w-[80px] flex flex-col items-center justify-center h-10"
+                                  className="min-w-[80px] h-10 flex flex-col items-center justify-center text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/20"
                                 >
-                                  <span className="text-xs truncate max-w-full px-1">{idea.outcome}</span>
-                                  <span className="text-[11px] font-medium opacity-90">
+                                  <span className="truncate">{idea.outcome}</span>
+                                  <span className="text-[10px] font-medium">
                                     {(idea.current_price * 100).toFixed(1)}¢
                                   </span>
-                                </HoverButton>
+                                </Button>
                               </div>
                             </div>
                           </CardHeader>
@@ -711,8 +712,8 @@ export function PortfolioResults({
         </DialogContent>
       </Dialog>
 
-      {/* Transaction Dialog - same pattern as TopMoversList - render outside the main dialog */}
-      {selectedMarket && (
+      {/* Transaction Dialog - render conditionally and outside the main dialog */}
+      {selectedMarket && selectedTopMover && (
         <TransactionDialog
           selectedMarket={selectedMarket}
           topMover={selectedTopMover}
