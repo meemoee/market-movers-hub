@@ -110,7 +110,81 @@ export function PortfolioGenerationDropdown({
     }
     console.log('[PortfolioGenerationDropdown] Selected market changed, setting loading:', selectedMarket);
     setIsOrderBookLoading(true);
+    
+    // For mock token IDs, provide mock orderbook data after a delay
+    if (selectedMarket.clobTokenId.startsWith('token_')) {
+      console.log('[PortfolioGenerationDropdown] Mock token ID detected, generating mock orderbook data');
+      setTimeout(() => {
+        generateMockOrderBookData(selectedMarket);
+      }, 1000);
+    }
   }, [selectedMarket]);
+
+  // Generate realistic mock orderbook data for portfolio trades (when real data isn't available)
+  const generateMockOrderBookData = (market: typeof selectedMarket) => {
+    if (!market || !results) return;
+    
+    console.log('[PortfolioGenerationDropdown] Generating mock orderbook data for:', market);
+    
+    // Find the trade idea to get the current price
+    const tradeIdea = results.data.tradeIdeas.find(idea => idea.market_id === market.id);
+    if (!tradeIdea) {
+      console.error('[PortfolioGenerationDropdown] Could not find trade idea for market:', market.id);
+      return;
+    }
+    
+    const currentPrice = tradeIdea.current_price;
+    const isYesOutcome = market.selectedOutcome === 'Yes';
+    
+    // Calculate realistic bid/ask prices
+    const spread = 0.02; // 2 cent spread
+    let bestBid, bestAsk;
+    
+    if (isYesOutcome) {
+      bestAsk = currentPrice;
+      bestBid = currentPrice - spread;
+    } else {
+      // For No outcome, use complement prices
+      const noPrice = 1 - currentPrice;
+      bestAsk = noPrice;
+      bestBid = noPrice - spread;
+    }
+    
+    // Ensure prices are within valid bounds
+    bestBid = Math.max(0.01, bestBid);
+    bestAsk = Math.min(0.99, bestAsk);
+    
+    // Generate mock order book with multiple price levels
+    const bids: Record<string, number> = {};
+    const asks: Record<string, number> = {};
+    
+    // Generate 5 bid levels
+    for (let i = 0; i < 5; i++) {
+      const price = Math.max(0.01, bestBid - (i * 0.01));
+      const size = Math.floor(Math.random() * 1000) + 100;
+      bids[price.toFixed(3)] = size;
+    }
+    
+    // Generate 5 ask levels  
+    for (let i = 0; i < 5; i++) {
+      const price = Math.min(0.99, bestAsk + (i * 0.01));
+      const size = Math.floor(Math.random() * 1000) + 100;
+      asks[price.toFixed(3)] = size;
+    }
+    
+    const mockOrderBookData: OrderBookData = {
+      bids,
+      asks,
+      best_bid: bestBid,
+      best_ask: bestAsk,
+      spread: bestAsk - bestBid
+    };
+    
+    console.log('[PortfolioGenerationDropdown] Generated mock orderbook:', mockOrderBookData);
+    
+    setOrderBookData(mockOrderBookData);
+    setIsOrderBookLoading(false);
+  };
 
   const cleanupConnections = () => {
     if (eventSourceRef.current) {
@@ -149,9 +223,11 @@ export function PortfolioGenerationDropdown({
     const action = selectedMarket.action;
     const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
     
+    const isDemo = selectedMarket.clobTokenId.startsWith('token_');
+    
     toast({
-      title: "Transaction Submitted",
-      description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
+      title: isDemo ? "Demo Transaction Submitted" : "Transaction Submitted",
+      description: `Your ${isDemo ? 'demo ' : ''}${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
     });
     setSelectedMarket(null);
     setOrderBookData(null);
@@ -174,7 +250,6 @@ export function PortfolioGenerationDropdown({
     console.log('[PortfolioGenerationDropdown] Found matching market:', matchingMarket);
     
     // Look for CLOB token IDs in the market data
-    // The structure might vary, so we'll check different possible fields
     const clobTokenIds = matchingMarket.clobtokenids || 
                         matchingMarket.clob_token_ids || 
                         matchingMarket.tokenIds ||
@@ -208,39 +283,43 @@ export function PortfolioGenerationDropdown({
   }) => {
     console.log('[PortfolioGenerationDropdown] Trade button clicked:', market);
     
-    // If this is a mock token ID, try to get the real one
+    let finalMarket = { ...market };
+    
+    // Try to get real CLOB token ID if this is a mock token
     if (market.clobTokenId.startsWith('token_') && results) {
+      console.log('[PortfolioGenerationDropdown] Attempting to find real CLOB token ID for mock token:', market.clobTokenId);
+      
       const tradeIdea = results.data.tradeIdeas.find(idea => idea.market_id === market.id);
       if (tradeIdea) {
         const realClobTokenId = getRealClobTokenId(tradeIdea);
         if (realClobTokenId) {
-          console.log('[PortfolioGenerationDropdown] Replacing mock token ID with real one:', realClobTokenId);
-          market = {
+          console.log('[PortfolioGenerationDropdown] Successfully found real CLOB token ID:', realClobTokenId);
+          finalMarket = {
             ...market,
             clobTokenId: realClobTokenId
           };
-        } else {
+          
           toast({
-            title: "Market Data Unavailable",
-            description: "Unable to find real market data for this trade idea. Please try a different trade.",
-            variant: "destructive"
+            title: "Real Market Data Found",
+            description: `Loading live orderbook for ${market.selectedOutcome}`,
           });
-          return;
+        } else {
+          console.log('[PortfolioGenerationDropdown] Could not find real CLOB token ID, using mock data');
+          
+          toast({
+            title: "Demo Mode",
+            description: `Loading demo orderbook for ${market.selectedOutcome}`,
+          });
         }
       }
     }
     
-    if (market?.id !== selectedMarket?.id) {
+    // Always open the dialog, regardless of whether we found real data
+    if (finalMarket?.id !== selectedMarket?.id) {
       setOrderBookData(null);
     }
     
-    setSelectedMarket(market);
-    
-    // Add debug toast
-    toast({
-      title: "Trade Button Clicked",
-      description: `Loading orderbook for ${market.selectedOutcome}`,
-    });
+    setSelectedMarket(finalMarket);
   };
 
   const generatePortfolio = async (isRetry = false) => {

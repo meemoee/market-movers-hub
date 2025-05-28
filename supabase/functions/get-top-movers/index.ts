@@ -20,6 +20,26 @@ function cleanTextFields(market: any) {
   return market;
 }
 
+// Helper function to check if market matches selected tags
+function matchesTags(market: any, selectedTags: string[]) {
+  if (!selectedTags || selectedTags.length === 0) {
+    return true; // No tag filter applied
+  }
+  
+  // Check if market has primary_tags field and it's an array
+  if (!market.primary_tags || !Array.isArray(market.primary_tags)) {
+    return false; // Market has no tags, doesn't match filter
+  }
+  
+  // Check if ANY of the selected tags are present in the market's tags
+  return selectedTags.some(selectedTag => 
+    market.primary_tags.some((marketTag: string) => 
+      marketTag.toLowerCase().includes(selectedTag.toLowerCase()) ||
+      selectedTag.toLowerCase().includes(marketTag.toLowerCase())
+    )
+  );
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -44,8 +64,25 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change' } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}`);
+    const { 
+      interval = '1440', 
+      openOnly = false, 
+      page = 1, 
+      limit = 20, 
+      searchQuery = '', 
+      marketId, 
+      marketIds, 
+      probabilityMin, 
+      probabilityMax, 
+      priceChangeMin, 
+      priceChangeMax, 
+      volumeMin, 
+      volumeMax, 
+      sortBy = 'price_change',
+      selectedTags = []
+    } = await req.json();
+    
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}, selectedTags: ${selectedTags?.length || 0}`);
 
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
@@ -318,6 +355,12 @@ serve(async (req) => {
       }
     }
     console.log(`Retrieved ${allMarkets.length} markets total for interval ${interval}`);
+
+    // Apply tag filtering FIRST (before other filters)
+    if (selectedTags && selectedTags.length > 0) {
+      allMarkets = allMarkets.filter(market => matchesTags(market, selectedTags));
+      console.log(`Filtered to ${allMarkets.length} markets matching tags: [${selectedTags.join(', ')}]`);
+    }
 
     // First apply probability filters if they exist
     if (probabilityMin !== undefined || probabilityMax !== undefined) {

@@ -1,0 +1,236 @@
+import { useState, useEffect } from 'react';
+import { ChevronDown, X, Tag, Filter } from 'lucide-react';
+import { useSupabase } from '@/integrations/supabase/hooks/useSupabase';
+
+interface TagOption {
+  name: string;
+  count: number;
+}
+
+interface TagFilterProps {
+  selectedTags: string[];
+  onTagsChange: (tags: string[]) => void;
+  disabled?: boolean;
+}
+
+export function TagFilter({ selectedTags, onTagsChange, disabled = false }: TagFilterProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [availableTags, setAvailableTags] = useState<TagOption[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const supabase = useSupabase();
+
+  // Default top tags based on your successful data collection
+  const defaultTags: TagOption[] = [
+    { name: 'Sports', count: 1505 },
+    { name: 'Politics', count: 1052 },
+    { name: 'World', count: 603 },
+    { name: 'Global Elections', count: 425 },
+    { name: 'Trump', count: 409 },
+    { name: 'Trump Presidency', count: 394 },
+    { name: 'NFL', count: 350 },
+    { name: 'Crypto', count: 316 },
+    { name: 'Awards', count: 316 },
+    { name: 'NBA', count: 268 },
+    { name: 'Games', count: 200 },
+    { name: 'Culture', count: 180 },
+    { name: 'Technology', count: 150 },
+    { name: 'Entertainment', count: 120 }
+  ];
+
+  // Fetch available tags from Supabase
+  useEffect(() => {
+    const fetchAvailableTags = async () => {
+      if (!supabase) return;
+      
+      setIsLoading(true);
+      try {
+        // Query to get tag counts from your markets table
+        const { data, error } = await supabase
+          .rpc('get_tag_counts')
+          .select('*');
+
+        if (error) {
+          console.warn('Error fetching tags, using defaults:', error);
+          setAvailableTags(defaultTags);
+        } else if (data && data.length > 0) {
+          const processedTags = data.map((row: any) => ({
+            name: row.tag_name,
+            count: row.tag_count
+          }));
+          setAvailableTags(processedTags);
+        } else {
+          setAvailableTags(defaultTags);
+        }
+      } catch (error) {
+        console.warn('Error fetching tags, using defaults:', error);
+        setAvailableTags(defaultTags);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAvailableTags();
+  }, [supabase]);
+
+  const filteredTags = availableTags.filter(tag =>
+    tag.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleTagToggle = (tagName: string) => {
+    const newSelectedTags = selectedTags.includes(tagName)
+      ? selectedTags.filter(t => t !== tagName)
+      : [...selectedTags, tagName];
+    
+    onTagsChange(newSelectedTags);
+  };
+
+  const clearAllTags = () => {
+    onTagsChange([]);
+  };
+
+  const getTagColor = (tagName: string) => {
+    const colors: Record<string, string> = {
+      'Sports': 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
+      'Politics': 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800',
+      'Crypto': 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800',
+      'World': 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800',
+      'NFL': 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
+      'NBA': 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800',
+      'Trump': 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800',
+      'Games': 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
+    };
+    return colors[tagName] || 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-700';
+  };
+
+  return (
+    <div className="relative">
+      {/* Filter Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="flex items-center gap-2 px-3 py-1.5 bg-background border border-border rounded-md hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Filter size={14} className="text-muted-foreground" />
+        <span className="text-sm font-medium">
+          Tags
+        </span>
+        {selectedTags.length > 0 && (
+          <span className="bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+            {selectedTags.length}
+          </span>
+        )}
+        <ChevronDown 
+          size={14} 
+          className={`text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} 
+        />
+      </button>
+
+      {/* Selected Tags Display */}
+      {selectedTags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {selectedTags.map(tag => (
+            <span
+              key={tag}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getTagColor(tag)}`}
+            >
+              <Tag size={10} />
+              {tag}
+              <button
+                onClick={() => handleTagToggle(tag)}
+                className="hover:bg-black/10 dark:hover:bg-white/10 rounded-full p-0.5"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={clearAllTags}
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 w-80 bg-background/95 backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
+          {/* Header */}
+          <div className="p-3 border-b border-border">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-medium text-foreground">Filter by Tags</h3>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search tags..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
+          {/* Tags List */}
+          <div className="max-h-64 overflow-y-auto">
+            {isLoading ? (
+              <div className="p-4 text-center text-muted-foreground">
+                Loading tags...
+              </div>
+            ) : filteredTags.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground">
+                No tags found
+              </div>
+            ) : (
+              <div className="p-2">
+                {filteredTags.map(tag => (
+                  <label
+                    key={tag.name}
+                    className="flex items-center justify-between p-2 hover:bg-accent/50 rounded cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(tag.name)}
+                        onChange={() => handleTagToggle(tag.name)}
+                        className="rounded border-border bg-transparent"
+                      />
+                      <span className="text-sm font-medium text-foreground">
+                        {tag.name}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded">
+                      {tag.count.toLocaleString()}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-3 border-t border-border bg-accent/20 rounded-b-lg">
+            <div className="flex justify-between items-center text-xs text-muted-foreground">
+              <span>{selectedTags.length} tags selected</span>
+              {selectedTags.length > 0 && (
+                <button
+                  onClick={clearAllTags}
+                  className="text-primary hover:text-primary/80 font-medium"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

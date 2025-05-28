@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +61,7 @@ interface TopMoversListProps {
   showVolumeMinThumb: boolean;
   showVolumeMaxThumb: boolean;
   sortBy: 'price_change' | 'volume';
+  selectedTags: string[];
 }
 
 interface OrderBookData {
@@ -89,6 +89,7 @@ export default function TopMoversList({
   showVolumeMinThumb,
   showVolumeMaxThumb,
   sortBy,
+  selectedTags,
 }: TopMoversListProps) {
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -104,6 +105,7 @@ export default function TopMoversList({
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
   const debouncedVolumeRange = useDebounce(volumeRange, 300);
+  const debouncedSelectedTags = useDebounce(selectedTags, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
   const isMobile = useIsMobile();
@@ -119,14 +121,16 @@ export default function TopMoversList({
     showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
     showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
     showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
-    sortBy
+    sortBy,
+    debouncedSelectedTags
   );
 
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
     searchPage, 
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
-    showMaxThumb ? debouncedProbabilityRange[1] : undefined
+    showMaxThumb ? debouncedProbabilityRange[1] : undefined,
+    debouncedSelectedTags
   );
 
   useEffect(() => {
@@ -139,7 +143,7 @@ export default function TopMoversList({
 
   useEffect(() => {
     setSearchPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, debouncedSelectedTags]);
 
   useEffect(() => {
     if (!selectedMarket) {

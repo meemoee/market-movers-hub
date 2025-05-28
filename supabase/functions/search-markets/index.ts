@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -7,6 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to check if market matches selected tags
+function matchesTags(market: any, selectedTags: string[]) {
+  if (!selectedTags || selectedTags.length === 0) {
+    return true; // No tag filter applied
+  }
+  
+  // Check if market has primary_tags field and it's an array
+  if (!market.primary_tags || !Array.isArray(market.primary_tags)) {
+    return false; // Market has no tags, doesn't match filter
+  }
+  
+  // Check if ANY of the selected tags are present in the market's tags
+  return selectedTags.some(selectedTag => 
+    market.primary_tags.some((marketTag: string) => 
+      marketTag.toLowerCase().includes(selectedTag.toLowerCase()) ||
+      selectedTag.toLowerCase().includes(marketTag.toLowerCase())
+    )
+  );
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -14,8 +33,16 @@ serve(async (req) => {
 
   let redis;
   try {
-    const { searchQuery = '', page = 1, limit = 20, probabilityMin = 0, probabilityMax = 100 } = await req.json();
-    console.log(`Searching markets with query: "${searchQuery}", page: ${page}, limit: ${limit}, probability range: ${probabilityMin}-${probabilityMax}`);
+    const { 
+      searchQuery = '', 
+      page = 1, 
+      limit = 20, 
+      probabilityMin = 0, 
+      probabilityMax = 100,
+      selectedTags = []
+    } = await req.json();
+    
+    console.log(`Searching markets with query: "${searchQuery}", page: ${page}, limit: ${limit}, probability range: ${probabilityMin}-${probabilityMax}, tags: [${selectedTags.join(', ')}]`);
 
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
@@ -83,11 +110,17 @@ serve(async (req) => {
       }
     }
 
-    // Apply search filtering and probability range filtering
+    // Apply tag filtering FIRST
     let searchResults = allMarkets;
+    if (selectedTags && selectedTags.length > 0) {
+      searchResults = searchResults.filter(market => matchesTags(market, selectedTags));
+      console.log(`Filtered to ${searchResults.length} markets matching tags: [${selectedTags.join(', ')}]`);
+    }
+
+    // Apply search filtering
     if (searchQuery) {
       const searchTerms = searchQuery.toLowerCase().split(' ');
-      searchResults = allMarkets.filter(market => {
+      searchResults = searchResults.filter(market => {
         const searchableText = [
           market.question,
           market.subtitle,
@@ -119,7 +152,7 @@ serve(async (req) => {
     const paginatedMarkets = searchResults.slice(start, start + limit);
     const hasMore = searchResults.length > start + limit;
 
-    console.log(`Found ${searchResults.length} markets matching search query "${searchQuery}" and probability range ${probabilityMin}-${probabilityMax}`);
+    console.log(`Found ${searchResults.length} markets matching search query "${searchQuery}", tags [${selectedTags.join(', ')}], and probability range ${probabilityMin}-${probabilityMax}`);
     console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
 
     await redis.close();

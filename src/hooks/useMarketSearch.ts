@@ -1,4 +1,3 @@
-
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { TopMover } from '@/components/TopMoversList'
@@ -9,11 +8,17 @@ interface MarketSearchResponse {
   total?: number;
 }
 
-export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number) {
+export function useMarketSearch(
+  searchQuery: string = '', 
+  page: number = 1, 
+  probabilityMin?: number, 
+  probabilityMax?: number,
+  selectedTags: string[] = []
+) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax],
+    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax, selectedTags],
     queryFn: async () => {
-      console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
+      console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax, selectedTags });
       
       // Ensure search query is properly trimmed
       const trimmedQuery = searchQuery.trim();
@@ -24,7 +29,8 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
           page,
           limit: 20,
           probabilityMin,
-          probabilityMax
+          probabilityMax,
+          selectedTags: selectedTags.length > 0 ? selectedTags : undefined
         }
       });
 

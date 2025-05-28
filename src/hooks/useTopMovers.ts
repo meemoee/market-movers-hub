@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -48,11 +47,12 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
-  sortBy: 'price_change' | 'volume' = 'price_change'
+  sortBy: 'price_change' | 'volume' = 'price_change',
+  selectedTags: string[] = []
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
-    queryKey: ['market', marketId, interval],
+    queryKey: ['market', marketId, interval, selectedTags],
     queryFn: async () => {
       if (!marketId) return null;
       
@@ -61,7 +61,8 @@ export function useTopMovers(
         const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
           body: { 
             marketId,
-            interval
+            interval,
+            selectedTags: selectedTags.length > 0 ? selectedTags : undefined
           }
         });
 
@@ -92,7 +93,7 @@ export function useTopMovers(
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy, selectedTags],
     queryFn: async ({ pageParam = 1 }) => {
       console.log('Fetching top movers list:', { 
         interval, 
@@ -105,7 +106,8 @@ export function useTopMovers(
         priceChangeMax,
         volumeMin,
         volumeMax,
-        sortBy
+        sortBy,
+        selectedTags
       });
       
       try {
@@ -122,7 +124,8 @@ export function useTopMovers(
             priceChangeMax,
             volumeMin: volumeMin !== undefined ? Number(volumeMin) : undefined,
             volumeMax: volumeMax !== undefined ? Number(volumeMax) : undefined,
-            sortBy
+            sortBy,
+            selectedTags: selectedTags.length > 0 ? selectedTags : undefined
           }
         });
 

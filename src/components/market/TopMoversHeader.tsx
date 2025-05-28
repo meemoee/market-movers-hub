@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -6,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { MultiRangeSlider } from '@/components/ui/multi-range-slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TagFilter } from './TagFilter';
 
 interface TimeInterval {
   label: string;
@@ -40,6 +40,8 @@ interface TopMoversHeaderProps {
   setShowVolumeMaxThumb: (show: boolean) => void;
   sortBy: 'price_change' | 'volume';
   onSortChange: (value: 'price_change' | 'volume') => void;
+  selectedTags: string[];
+  onTagsChange: (tags: string[]) => void;
 }
 
 export function TopMoversHeader({
@@ -70,12 +72,14 @@ export function TopMoversHeader({
   setShowVolumeMaxThumb,
   sortBy,
   onSortChange,
+  selectedTags,
+  onTagsChange,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
   return (
     <div className="p-4 w-full relative">
-      <div className="flex items-center justify-between w-full">
+      <div className="flex items-center justify-between w-full mb-3">
         <div className="flex items-center flex-shrink-1">
           <h2 className={`${isMobile ? 'text-lg' : 'text-xl sm:text-2xl'} font-bold whitespace-nowrap mr-1`}>What happened in the last</h2>
           <div className="relative">
@@ -303,6 +307,14 @@ export function TopMoversHeader({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      </div>
+
+      {/* Tag Filter Row */}
+      <div className="flex items-center gap-2 w-full">
+        <TagFilter
+          selectedTags={selectedTags}
+          onTagsChange={onTagsChange}
+        />
       </div>
     </div>
   );
