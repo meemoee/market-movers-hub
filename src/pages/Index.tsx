@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -47,7 +48,6 @@ export default function Index() {
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const isMobile = useIsMobile();
 
   const handleIntervalChange = (newInterval: string) => {
@@ -155,8 +155,6 @@ export default function Index() {
                 setShowVolumeMaxThumb={setShowVolumeMaxThumb}
                 sortBy={sortBy}
                 onSortChange={setSortBy}
-                selectedTags={selectedTags}
-                onTagsChange={setSelectedTags}
               />
             </div>
             
@@ -180,7 +178,6 @@ export default function Index() {
                   showVolumeMinThumb={showVolumeMinThumb}
                   showVolumeMaxThumb={showVolumeMaxThumb}
                   sortBy={sortBy}
-                  selectedTags={selectedTags}
                 />
               </div>
             </div>
