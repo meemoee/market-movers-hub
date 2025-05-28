@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, X, Tag, Filter } from 'lucide-react';
-import { useSupabase } from '@/integrations/supabase/hooks/useSupabase';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TagOption {
   name: string;
@@ -18,7 +18,6 @@ export function TagFilter({ selectedTags, onTagsChange, disabled = false }: TagF
   const [searchTerm, setSearchTerm] = useState('');
   const [availableTags, setAvailableTags] = useState<TagOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const supabase = useSupabase();
 
   // Default top tags based on your successful data collection
   const defaultTags: TagOption[] = [
@@ -41,8 +40,6 @@ export function TagFilter({ selectedTags, onTagsChange, disabled = false }: TagF
   // Fetch available tags from Supabase
   useEffect(() => {
     const fetchAvailableTags = async () => {
-      if (!supabase) return;
-      
       setIsLoading(true);
       try {
         // Query to get tag counts from your markets table
@@ -71,7 +68,7 @@ export function TagFilter({ selectedTags, onTagsChange, disabled = false }: TagF
     };
 
     fetchAvailableTags();
-  }, [supabase]);
+  }, []);
 
   const filteredTags = availableTags.filter(tag =>
     tag.name.toLowerCase().includes(searchTerm.toLowerCase())

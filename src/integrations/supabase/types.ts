@@ -388,10 +388,13 @@ export type Database = {
           no_sub_title: string | null
           open_time: string | null
           outcomes: Json | null
+          primary_tags: string[] | null
           question: string
           slug: string | null
           status: string | null
           subtitle: string | null
+          tag_slugs: string[] | null
+          tags_json: Json | null
           updated_at: string | null
           url: string | null
           yes_sub_title: string | null
@@ -413,10 +416,13 @@ export type Database = {
           no_sub_title?: string | null
           open_time?: string | null
           outcomes?: Json | null
+          primary_tags?: string[] | null
           question: string
           slug?: string | null
           status?: string | null
           subtitle?: string | null
+          tag_slugs?: string[] | null
+          tags_json?: Json | null
           updated_at?: string | null
           url?: string | null
           yes_sub_title?: string | null
@@ -438,10 +444,13 @@ export type Database = {
           no_sub_title?: string | null
           open_time?: string | null
           outcomes?: Json | null
+          primary_tags?: string[] | null
           question?: string
           slug?: string | null
           status?: string | null
           subtitle?: string | null
+          tag_slugs?: string[] | null
+          tags_json?: Json | null
           updated_at?: string | null
           url?: string | null
           yes_sub_title?: string | null
