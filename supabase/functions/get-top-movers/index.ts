@@ -44,8 +44,8 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change' } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change', selectedTags } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}, selectedTags: ${selectedTags?.length}`);
 
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
@@ -378,6 +378,27 @@ serve(async (req) => {
       });
       
       console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
+    }
+
+    // Apply tag filtering if selectedTags are provided
+    if (selectedTags && selectedTags.length > 0) {
+      allMarkets = allMarkets.filter(market => {
+        // Check if market has any of the required tags
+        // Assuming the market object has a primary_tags array or similar
+        if (!market.primary_tags || !Array.isArray(market.primary_tags)) {
+          return false;
+        }
+        
+        // Use AND logic: market must have ALL selected tags
+        // Change to selectedTags.some() for OR logic if preferred
+        return selectedTags.every(tag => 
+          market.primary_tags.some((marketTag: string) => 
+            marketTag.toLowerCase() === tag.toLowerCase()
+          )
+        );
+      });
+      
+      console.log(`Filtered to ${allMarkets.length} markets matching selected tags: ${selectedTags.join(', ')}`);
     }
 
     // Sort all filtered results based on sortBy parameter
