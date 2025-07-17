@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -107,7 +106,7 @@ export function useTopMovers(
         volumeMin,
         volumeMax,
         sortBy,
-        selectedTags: selectedTags.length > 0 ? selectedTags : undefined
+        selectedTags
       });
       
       try {
