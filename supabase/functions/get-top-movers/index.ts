@@ -389,11 +389,10 @@ serve(async (req) => {
           return false;
         }
         
-        // Use AND logic: market must have ALL selected tags
-        // Change to selectedTags.some() for OR logic if preferred
-        return selectedTags.every(tag => 
+        // Use OR logic: market must have AT LEAST ONE of the selected tags
+        return selectedTags.some(tag => 
           market.primary_tags.some((marketTag: string) => 
-            marketTag.toLowerCase() === tag.toLowerCase()
+            marketTag.toLowerCase().includes(tag.toLowerCase())
           )
         );
       });
