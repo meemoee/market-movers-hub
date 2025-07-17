@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -382,22 +383,56 @@ serve(async (req) => {
 
     // Apply tag filtering if selectedTags are provided
     if (selectedTags && selectedTags.length > 0) {
-      allMarkets = allMarkets.filter(market => {
-        // Check if market has any of the required tags
-        // Assuming the market object has a primary_tags array or similar
-        if (!market.primary_tags || !Array.isArray(market.primary_tags)) {
-          return false;
-        }
-        
-        // Use OR logic: market must have AT LEAST ONE of the selected tags
-        return selectedTags.some(tag => 
-          market.primary_tags.some((marketTag: string) => 
-            marketTag.toLowerCase().includes(tag.toLowerCase())
-          )
-        );
-      });
+      console.log(`Tag filtering requested for: ${selectedTags.join(', ')}`);
       
-      console.log(`Filtered to ${allMarkets.length} markets matching selected tags: ${selectedTags.join(', ')}`);
+      // Initialize Supabase client to fetch market metadata
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      // Get market IDs from our filtered results so far
+      const marketIds = allMarkets.map(market => market.market_id);
+      console.log(`Fetching primary_tags for ${marketIds.length} markets from database`);
+      
+      // Fetch primary_tags for all markets in our current result set
+      const { data: marketTagData, error } = await supabase
+        .from('markets')
+        .select('id, primary_tags')
+        .in('id', marketIds);
+      
+      if (error) {
+        console.error('Error fetching market tags from database:', error);
+        // Continue without tag filtering rather than failing completely
+      } else {
+        console.log(`Retrieved tag data for ${marketTagData?.length || 0} markets`);
+        
+        // Create a lookup map for market tags
+        const tagLookup = new Map();
+        marketTagData?.forEach(market => {
+          tagLookup.set(market.id, market.primary_tags || []);
+        });
+        
+        // Filter markets based on tags using database data
+        allMarkets = allMarkets.filter(market => {
+          const marketTags = tagLookup.get(market.market_id);
+          
+          if (!marketTags || !Array.isArray(marketTags) || marketTags.length === 0) {
+            return false;
+          }
+          
+          // Use OR logic: market must have AT LEAST ONE of the selected tags
+          const hasMatchingTag = selectedTags.some(tag => 
+            marketTags.some((marketTag: string) => 
+              marketTag.toLowerCase().includes(tag.toLowerCase())
+            )
+          );
+          
+          return hasMatchingTag;
+        });
+        
+        console.log(`Filtered to ${allMarkets.length} markets matching selected tags: ${selectedTags.join(', ')}`);
+      }
     }
 
     // Sort all filtered results based on sortBy parameter
