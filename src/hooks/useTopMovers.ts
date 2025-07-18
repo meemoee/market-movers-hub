@@ -34,6 +34,7 @@ interface TopMover {
   price_change: number;
   volume_change: number;
   volume_change_percentage: number;
+  primary_tags?: string[];
 }
 
 export function useTopMovers(
