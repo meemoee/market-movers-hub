@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -382,22 +383,76 @@ serve(async (req) => {
 
     // Apply tag filtering if selectedTags are provided
     if (selectedTags && selectedTags.length > 0) {
-      allMarkets = allMarkets.filter(market => {
-        // Check if market has any of the required tags
-        // Assuming the market object has a primary_tags array or similar
-        if (!market.primary_tags || !Array.isArray(market.primary_tags)) {
-          return false;
+      console.log(`Tag filtering requested for: ${selectedTags.join(', ')}`);
+      console.log(`Selected tags array:`, selectedTags);
+      console.log(`Markets before tag filtering: ${allMarkets.length}`);
+      
+      // Initialize Supabase client to fetch market metadata
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      // Get market IDs from our filtered results so far
+      const marketIds = allMarkets.map(market => market.market_id);
+      console.log(`Fetching primary_tags for ${marketIds.length} markets from database`);
+      console.log(`Sample market IDs:`, marketIds.slice(0, 3));
+      
+      // Fetch primary_tags for all markets in our current result set
+      const { data: marketTagData, error } = await supabase
+        .from('markets')
+        .select('id, primary_tags')
+        .in('id', marketIds);
+      
+      if (error) {
+        console.error('Error fetching market tags from database:', error);
+        // Continue without tag filtering rather than failing completely
+      } else {
+        console.log(`Retrieved tag data for ${marketTagData?.length || 0} markets`);
+        
+        // Log some sample tag data
+        if (marketTagData && marketTagData.length > 0) {
+          console.log(`Sample tag data:`, marketTagData.slice(0, 3).map(m => ({
+            id: m.id,
+            tags: m.primary_tags
+          })));
         }
         
-        // Use OR logic: market must have AT LEAST ONE of the selected tags
-        return selectedTags.some(tag => 
-          market.primary_tags.some((marketTag: string) => 
-            marketTag.toLowerCase().includes(tag.toLowerCase())
-          )
-        );
-      });
-      
-      console.log(`Filtered to ${allMarkets.length} markets matching selected tags: ${selectedTags.join(', ')}`);
+        // Create a lookup map for market tags
+        const tagLookup = new Map();
+        marketTagData?.forEach(market => {
+          tagLookup.set(market.id, market.primary_tags || []);
+        });
+        
+        // Filter markets based on tags using database data
+        allMarkets = allMarkets.filter(market => {
+          const marketTags = tagLookup.get(market.market_id);
+          
+          if (!marketTags || !Array.isArray(marketTags) || marketTags.length === 0) {
+            console.log(`Market ${market.market_id} has no tags, excluding`);
+            return false;
+          }
+          
+          // Use OR logic: market must have AT LEAST ONE of the selected tags
+          const hasMatchingTag = selectedTags.some(tag => 
+            marketTags.some((marketTag: string) => 
+              marketTag.toLowerCase().includes(tag.toLowerCase())
+            )
+          );
+          
+          if (hasMatchingTag) {
+            console.log(`Market ${market.market_id} matches tags: ${marketTags.join(', ')}`);
+          }
+          
+          return hasMatchingTag;
+        });
+        
+        console.log(`After tag filtering: ${allMarkets.length} markets remaining`);
+        console.log(`Filtered markets sample:`, allMarkets.slice(0, 3).map(m => ({
+          id: m.market_id,
+          question: m.question?.substring(0, 50) + '...'
+        })));
+      }
     }
 
     // Sort all filtered results based on sortBy parameter
@@ -410,10 +465,50 @@ serve(async (req) => {
       return Math.abs(b.price_change) - Math.abs(a.price_change);
     });
 
+    // Fetch primary_tags for final result set to include in response
+    let finalMarkets = allMarkets;
+    
+    if (allMarkets.length > 0) {
+      console.log(`Fetching primary_tags for final ${allMarkets.length} markets to include in response`);
+      
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      const finalMarketIds = allMarkets.map(market => market.market_id);
+      
+      const { data: finalTagData, error: finalTagError } = await supabase
+        .from('markets')
+        .select('id, primary_tags')
+        .in('id', finalMarketIds);
+      
+      if (!finalTagError && finalTagData) {
+        const finalTagLookup = new Map();
+        finalTagData.forEach(market => {
+          finalTagLookup.set(market.id, market.primary_tags || []);
+        });
+        
+        // Add primary_tags to each market in the final result
+        finalMarkets = allMarkets.map(market => ({
+          ...market,
+          primary_tags: finalTagLookup.get(market.market_id) || []
+        }));
+        
+        console.log(`Added primary_tags to ${finalMarkets.length} markets`);
+        console.log(`Sample market with tags:`, {
+          id: finalMarkets[0]?.market_id,
+          tags: finalMarkets[0]?.primary_tags
+        });
+      } else if (finalTagError) {
+        console.error('Error fetching final tag data:', finalTagError);
+      }
+    }
+
     // Apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
-    const paginatedMarkets = allMarkets.slice(start, start + limit);
-    const hasMore = allMarkets.length > start + limit;
+    const paginatedMarkets = finalMarkets.slice(start, start + limit);
+    const hasMore = finalMarkets.length > start + limit;
     console.log(`Returning ${paginatedMarkets.length} markets, sorted by ${sortBy === 'volume' ? 'volume change' : 'price change'}, hasMore: ${hasMore}`);
 
     await redis.close();
@@ -422,7 +517,7 @@ serve(async (req) => {
       JSON.stringify({
         data: paginatedMarkets,
         hasMore,
-        total: allMarkets.length
+        total: finalMarkets.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

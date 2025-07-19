@@ -22,6 +22,7 @@ interface Market {
   description?: string;
   outcomes?: string[];
   event_id?: string;
+  primary_tags?: string[];
 }
 
 interface MarketCardProps {
@@ -72,18 +73,32 @@ export function MarketCard({
         isExpanded={isExpanded}
       />
       {isExpanded && (
-        <MarketDetails
-          description={market.description}
-          marketId={market.market_id}
-          question={market.question}
-          selectedInterval={selectedInterval}
-          eventId={market.event_id}
-          bestBid={market.final_best_bid}
-          bestAsk={market.final_best_ask}
-          noBestBid={market.final_no_best_bid}
-          noBestAsk={market.final_no_best_ask}
-          outcomes={market.outcomes}
-        />
+        <>
+          {market.primary_tags && market.primary_tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {market.primary_tags.map((tag, index) => (
+                <span
+                  key={index}
+                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          <MarketDetails
+            description={market.description}
+            marketId={market.market_id}
+            question={market.question}
+            selectedInterval={selectedInterval}
+            eventId={market.event_id}
+            bestBid={market.final_best_bid}
+            bestAsk={market.final_best_ask}
+            noBestBid={market.final_no_best_bid}
+            noBestAsk={market.final_no_best_ask}
+            outcomes={market.outcomes}
+          />
+        </>
       )}
       <Separator className="mt-3" />
     </div>
