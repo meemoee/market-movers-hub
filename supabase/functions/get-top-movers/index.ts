@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -6,6 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Deployment timestamp to verify new version is running
+const DEPLOYMENT_VERSION = "2025-07-19T04:00:00Z";
 
 // Helper function to clean text fields
 function cleanTextFields(market: any) {
@@ -29,6 +33,8 @@ serve(async (req) => {
 
   let redis;
   try {
+    console.log(`🚀 DEPLOYMENT VERSION: ${DEPLOYMENT_VERSION} - Function starting`);
+    
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
       console.error('REDIS_URL environment variable is not set');
@@ -46,18 +52,18 @@ serve(async (req) => {
     console.log('Connected to Redis successfully');
     
     const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change', selectedTags } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}, selectedTags: ${selectedTags?.length}`);
+    console.log(`📊 REQUEST PARAMS - interval: ${interval}, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, selectedTags: ${selectedTags?.length}`);
 
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
     
     // Handle single marketId request first
     if (marketId) {
-      console.log(`Fetching single market with ID: ${marketId}`);
+      console.log(`🔍 SINGLE MARKET REQUEST for ID: ${marketId}`);
       const latestKey = await redis.get(`topMovers:${interval}:latest`);
       
       if (!latestKey) {
-        console.log('No latest key found for marketId request');
+        console.log('❌ No latest key found for marketId request');
         return new Response(
           JSON.stringify({
             data: [],
@@ -72,7 +78,7 @@ serve(async (req) => {
       const manifestData = await redis.get(manifestKey);
       
       if (!manifestData) {
-        console.log('No manifest found for marketId request');
+        console.log('❌ No manifest found for marketId request');
         return new Response(
           JSON.stringify({
             data: [],
@@ -94,7 +100,7 @@ serve(async (req) => {
           foundMarket = markets.find(m => m.market_id === marketId);
           if (foundMarket) {
             foundMarket = cleanTextFields(foundMarket);
-            console.log(`Found market ${marketId} in chunk ${i}`);
+            console.log(`✅ Found market ${marketId} in chunk ${i}`);
             break;
           }
         }
@@ -102,7 +108,7 @@ serve(async (req) => {
 
       // If market not found in current interval, try other intervals
       if (!foundMarket) {
-        console.log(`Market ${marketId} not found in interval ${interval}, trying other intervals`);
+        console.log(`⚠️ Market ${marketId} not found in interval ${interval}, trying other intervals`);
         const intervals = ['5', '10', '30', '60', '240', '480', '1440', '10080'];
         
         for (const currentInterval of intervals) {
@@ -125,13 +131,36 @@ serve(async (req) => {
               foundMarket = markets.find(m => m.market_id === marketId);
               if (foundMarket) {
                 foundMarket = cleanTextFields(foundMarket);
-                console.log(`Found market ${marketId} in interval ${currentInterval}`);
+                console.log(`✅ Found market ${marketId} in interval ${currentInterval}`);
                 break;
               }
             }
           }
           
           if (foundMarket) break;
+        }
+      }
+
+      // 🏷️ CRITICAL: Add primary_tags for single market request
+      if (foundMarket) {
+        console.log(`🏷️ FETCHING TAGS for single market: ${foundMarket.market_id}`);
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+        
+        const { data: tagData, error: tagError } = await supabase
+          .from('markets')
+          .select('id, primary_tags')
+          .eq('id', foundMarket.market_id)
+          .single();
+          
+        if (!tagError && tagData) {
+          foundMarket.primary_tags = tagData.primary_tags || [];
+          console.log(`✅ TAGS ADDED for market ${foundMarket.market_id}:`, foundMarket.primary_tags);
+        } else {
+          console.error(`❌ ERROR fetching tags for market ${foundMarket.market_id}:`, tagError);
+          foundMarket.primary_tags = [];
         }
       }
 
@@ -148,11 +177,11 @@ serve(async (req) => {
 
     // If specific marketIds are provided, prioritize fetching their data
     if (marketIds?.length) {
-      console.log(`Fetching data for ${marketIds.length} specific markets`);
+      console.log(`🔍 MULTIPLE MARKETS REQUEST for ${marketIds.length} markets`);
       const latestKey = await redis.get(`topMovers:${interval}:latest`);
       
       if (!latestKey) {
-        console.log('No latest key found, returning empty data');
+        console.log('❌ No latest key found, returning empty data');
         return new Response(
           JSON.stringify({
             data: [],
@@ -167,7 +196,7 @@ serve(async (req) => {
       const manifestData = await redis.get(manifestKey);
       
       if (!manifestData) {
-        console.log('No manifest found');
+        console.log('❌ No manifest found');
         return new Response(
           JSON.stringify({
             data: [],
@@ -200,7 +229,7 @@ serve(async (req) => {
       );
 
       if (missingMarketIds.length > 0) {
-        console.log(`Looking for ${missingMarketIds.length} markets in other intervals`);
+        console.log(`⚠️ Looking for ${missingMarketIds.length} markets in other intervals`);
         const intervals = ['5', '10', '30', '60', '240', '480', '1440', '10080'];
         
         for (const currentInterval of intervals) {
@@ -242,7 +271,7 @@ serve(async (req) => {
 
       // If we still have missing markets, create placeholder data with zero changes
       if (missingMarketIds.length > 0) {
-        console.log(`Creating placeholder data for ${missingMarketIds.length} markets`);
+        console.log(`⚠️ Creating placeholder data for ${missingMarketIds.length} markets`);
         const placeholderMarkets = missingMarketIds.map(market_id => ({
           market_id,
           final_last_traded_price: 0,
@@ -258,8 +287,8 @@ serve(async (req) => {
         allMarkets.push(...placeholderMarkets);
       }
 
-      // Add primary_tags to the markets for marketIds requests too
-      console.log(`Fetching primary_tags for ${allMarkets.length} markets in marketIds request`);
+      // 🏷️ CRITICAL: Add primary_tags to the markets for marketIds requests
+      console.log(`🏷️ FETCHING TAGS for ${allMarkets.length} markets in marketIds request`);
       if (allMarkets.length > 0) {
         const supabase = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
@@ -285,13 +314,13 @@ serve(async (req) => {
             primary_tags: finalTagLookup.get(market.market_id) || []
           }));
           
-          console.log(`Added primary_tags to ${allMarkets.length} markets in marketIds request`);
-          console.log(`Sample market with tags:`, {
+          console.log(`✅ TAGS ADDED to ${allMarkets.length} markets in marketIds request`);
+          console.log(`📝 Sample market with tags:`, {
             id: allMarkets[0]?.market_id,
             tags: allMarkets[0]?.primary_tags
           });
         } else {
-          console.error('Error fetching final tag data for marketIds request:', finalTagError);
+          console.error('❌ Error fetching final tag data for marketIds request:', finalTagError);
           // Set empty tags for all markets
           allMarkets = allMarkets.map(market => ({
             ...market,
@@ -319,10 +348,10 @@ serve(async (req) => {
 
     // Original top movers logic for when no specific marketIds are provided
     const latestKey = await redis.get(`topMovers:${interval}:latest`);
-    console.log(`Latest key lookup result for interval ${interval}:`, latestKey);
+    console.log(`📋 MAIN REQUEST - Latest key lookup result for interval ${interval}:`, latestKey);
     
     if (!latestKey) {
-      console.log(`No latest key found for interval: ${interval}`);
+      console.log(`❌ No latest key found for interval: ${interval}`);
       return new Response(
         JSON.stringify({
           data: [],
@@ -337,11 +366,11 @@ serve(async (req) => {
 
     // Get manifest
     const manifestKey = `topMovers:${interval}:${latestKey}:manifest`;
-    console.log(`Looking for manifest at key: ${manifestKey}`);
+    console.log(`📋 Looking for manifest at key: ${manifestKey}`);
     const manifestData = await redis.get(manifestKey);
     
     if (!manifestData) {
-      console.log(`No manifest found at key: ${manifestKey}`);
+      console.log(`❌ No manifest found at key: ${manifestKey}`);
       return new Response(
         JSON.stringify({
           data: [],
@@ -355,7 +384,7 @@ serve(async (req) => {
     }
 
     const manifest = JSON.parse(manifestData);
-    console.log(`Found manifest with ${manifest.chunks} chunks for interval ${interval}`);
+    console.log(`📋 Found manifest with ${manifest.chunks} chunks for interval ${interval}`);
 
     // Get all markets from chunks
     for (let i = 0; i < manifest.chunks; i++) {
@@ -366,7 +395,7 @@ serve(async (req) => {
         allMarkets.push(...markets);
       }
     }
-    console.log(`Retrieved ${allMarkets.length} markets total for interval ${interval}`);
+    console.log(`📋 Retrieved ${allMarkets.length} markets total for interval ${interval}`);
 
     // First apply probability filters if they exist
     if (probabilityMin !== undefined || probabilityMax !== undefined) {
@@ -376,7 +405,7 @@ serve(async (req) => {
         const meetsMax = probabilityMax === undefined || probability <= probabilityMax;
         return meetsMin && meetsMax;
       });
-      console.log(`Filtered to ${allMarkets.length} markets within probability range ${probabilityMin}% - ${probabilityMax}%`);
+      console.log(`🎯 Filtered to ${allMarkets.length} markets within probability range ${probabilityMin}% - ${probabilityMax}%`);
     }
 
     // Apply price change filters if they exist
@@ -387,27 +416,25 @@ serve(async (req) => {
         const meetsMax = priceChangeMax === undefined || priceChange <= priceChangeMax;
         return meetsMin && meetsMax;
       });
-      console.log(`Filtered to ${allMarkets.length} markets within price change range ${priceChangeMin}% - ${priceChangeMax}%`);
+      console.log(`📈 Filtered to ${allMarkets.length} markets within price change range ${priceChangeMin}% - ${priceChangeMax}%`);
     }
 
     // Apply volume filters if they exist
     if (volumeMin !== undefined || volumeMax !== undefined) {
-      console.log(`Applying volume filters: min=${volumeMin}, max=${volumeMax}`);
+      console.log(`📊 Applying volume filters: min=${volumeMin}, max=${volumeMax}`);
       allMarkets = allMarkets.filter(market => {
         const volume = market.final_volume;
         const meetsMin = volumeMin === undefined || volume >= volumeMin;
         const meetsMax = volumeMax === undefined || volume <= volumeMax;
-        const result = meetsMin && meetsMax;
-        console.log(`Market ${market.market_id} volume=${volume}, meetsMin=${meetsMin}, meetsMax=${meetsMax}, kept=${result}`);
-        return result;
+        return meetsMin && meetsMax;
       });
-      console.log(`Filtered to ${allMarkets.length} markets within volume range ${volumeMin} - ${volumeMax}`);
+      console.log(`📊 Filtered to ${allMarkets.length} markets within volume range ${volumeMin} - ${volumeMax}`);
     }
 
     // Then apply openOnly filter
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
-      console.log(`Filtered to ${allMarkets.length} open markets for interval ${interval}`);
+      console.log(`🔓 Filtered to ${allMarkets.length} open markets for interval ${interval}`);
     }
 
     // Apply search if query exists (before sorting and pagination)
@@ -426,14 +453,14 @@ serve(async (req) => {
         return searchTerms.every(term => searchableText.includes(term));
       });
       
-      console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
+      console.log(`🔍 Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
     }
 
     // Apply tag filtering if selectedTags are provided
     if (selectedTags && selectedTags.length > 0) {
-      console.log(`Tag filtering requested for: ${selectedTags.join(', ')}`);
-      console.log(`Selected tags array:`, selectedTags);
-      console.log(`Markets before tag filtering: ${allMarkets.length}`);
+      console.log(`🏷️  TAG FILTERING REQUESTED for: ${selectedTags.join(', ')}`);
+      console.log(`🏷️  Selected tags array:`, selectedTags);
+      console.log(`🏷️  Markets before tag filtering: ${allMarkets.length}`);
       
       // Initialize Supabase client to fetch market metadata
       const supabase = createClient(
@@ -443,8 +470,8 @@ serve(async (req) => {
       
       // Get market IDs from our filtered results so far
       const marketIds = allMarkets.map(market => market.market_id);
-      console.log(`Fetching primary_tags for ${marketIds.length} markets from database`);
-      console.log(`Sample market IDs:`, marketIds.slice(0, 3));
+      console.log(`🏷️  Fetching primary_tags for ${marketIds.length} markets from database`);
+      console.log(`🏷️  Sample market IDs:`, marketIds.slice(0, 3));
       
       // Fetch primary_tags for all markets in our current result set
       const { data: marketTagData, error } = await supabase
@@ -453,14 +480,14 @@ serve(async (req) => {
         .in('id', marketIds);
       
       if (error) {
-        console.error('Error fetching market tags from database:', error);
+        console.error('❌ Error fetching market tags from database:', error);
         // Continue without tag filtering rather than failing completely
       } else {
-        console.log(`Retrieved tag data for ${marketTagData?.length || 0} markets`);
+        console.log(`✅ Retrieved tag data for ${marketTagData?.length || 0} markets`);
         
         // Log some sample tag data
         if (marketTagData && marketTagData.length > 0) {
-          console.log(`Sample tag data:`, marketTagData.slice(0, 3).map(m => ({
+          console.log(`🏷️  Sample tag data:`, marketTagData.slice(0, 3).map(m => ({
             id: m.id,
             tags: m.primary_tags
           })));
@@ -477,7 +504,7 @@ serve(async (req) => {
           const marketTags = tagLookup.get(market.market_id);
           
           if (!marketTags || !Array.isArray(marketTags) || marketTags.length === 0) {
-            console.log(`Market ${market.market_id} has no tags, excluding`);
+            console.log(`🏷️  Market ${market.market_id} has no tags, excluding`);
             return false;
           }
           
@@ -489,14 +516,14 @@ serve(async (req) => {
           );
           
           if (hasMatchingTag) {
-            console.log(`Market ${market.market_id} matches tags: ${marketTags.join(', ')}`);
+            console.log(`✅ Market ${market.market_id} matches tags: ${marketTags.join(', ')}`);
           }
           
           return hasMatchingTag;
         });
         
-        console.log(`After tag filtering: ${allMarkets.length} markets remaining`);
-        console.log(`Filtered markets sample:`, allMarkets.slice(0, 3).map(m => ({
+        console.log(`🏷️  After tag filtering: ${allMarkets.length} markets remaining`);
+        console.log(`🏷️  Filtered markets sample:`, allMarkets.slice(0, 3).map(m => ({
           id: m.market_id,
           question: m.question?.substring(0, 50) + '...'
         })));
@@ -513,12 +540,12 @@ serve(async (req) => {
       return Math.abs(b.price_change) - Math.abs(a.price_change);
     });
 
-    // Fetch primary_tags for final result set to include in response
-    let finalMarkets = allMarkets;
+    // 🏷️ CRITICAL: Fetch primary_tags for final result set to include in response
+    let finalMarkets = [];
     
     // Always set finalMarkets to ensure it's not undefined
     if (allMarkets.length > 0) {
-      console.log(`Fetching primary_tags for final ${allMarkets.length} markets to include in response`);
+      console.log(`🏷️  FETCHING TAGS for final ${allMarkets.length} markets to include in response`);
       
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
@@ -544,13 +571,13 @@ serve(async (req) => {
           primary_tags: finalTagLookup.get(market.market_id) || []
         }));
         
-        console.log(`Added primary_tags to ${finalMarkets.length} markets`);
-        console.log(`Sample market with tags:`, {
+        console.log(`✅ TAGS ADDED to ${finalMarkets.length} markets in FINAL RESPONSE`);
+        console.log(`📝 Sample market with tags:`, {
           id: finalMarkets[0]?.market_id,
           tags: finalMarkets[0]?.primary_tags
         });
       } else {
-        console.error('Error fetching final tag data:', finalTagError);
+        console.error('❌ Error fetching final tag data:', finalTagError);
         // Set finalMarkets anyway to avoid undefined variable
         finalMarkets = allMarkets.map(market => ({
           ...market,
@@ -566,7 +593,7 @@ serve(async (req) => {
     const start = (page - 1) * limit;
     const paginatedMarkets = finalMarkets.slice(start, start + limit);
     const hasMore = finalMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets, sorted by ${sortBy === 'volume' ? 'volume change' : 'price change'}, hasMore: ${hasMore}`);
+    console.log(`📤 FINAL RESPONSE: ${paginatedMarkets.length} markets, sorted by ${sortBy === 'volume' ? 'volume change' : 'price change'}, hasMore: ${hasMore}`);
 
     await redis.close();
 
@@ -582,7 +609,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ CRITICAL ERROR:', error);
     if (redis) {
       await redis.close();
     }
