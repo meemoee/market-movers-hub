@@ -258,6 +258,54 @@ serve(async (req) => {
         allMarkets.push(...placeholderMarkets);
       }
 
+      // Add primary_tags to the markets for marketIds requests too
+      console.log(`Fetching primary_tags for ${allMarkets.length} markets in marketIds request`);
+      if (allMarkets.length > 0) {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+        
+        const finalMarketIds = allMarkets.map(market => market.market_id);
+        
+        const { data: finalTagData, error: finalTagError } = await supabase
+          .from('markets')
+          .select('id, primary_tags')
+          .in('id', finalMarketIds);
+        
+        if (!finalTagError && finalTagData) {
+          const finalTagLookup = new Map();
+          finalTagData.forEach(market => {
+            finalTagLookup.set(market.id, market.primary_tags || []);
+          });
+          
+          // Add primary_tags to each market in the final result
+          allMarkets = allMarkets.map(market => ({
+            ...market,
+            primary_tags: finalTagLookup.get(market.market_id) || []
+          }));
+          
+          console.log(`Added primary_tags to ${allMarkets.length} markets in marketIds request`);
+          console.log(`Sample market with tags:`, {
+            id: allMarkets[0]?.market_id,
+            tags: allMarkets[0]?.primary_tags
+          });
+        } else {
+          console.error('Error fetching final tag data for marketIds request:', finalTagError);
+          // Set empty tags for all markets
+          allMarkets = allMarkets.map(market => ({
+            ...market,
+            primary_tags: []
+          }));
+        }
+      } else {
+        // No markets, ensure primary_tags field exists
+        allMarkets = allMarkets.map(market => ({
+          ...market,
+          primary_tags: []
+        }));
+      }
+
       await redis.close();
       
       return new Response(
