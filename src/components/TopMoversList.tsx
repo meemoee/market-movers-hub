@@ -176,6 +176,7 @@ export default function TopMoversList({
   const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
   const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
+
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;
     
