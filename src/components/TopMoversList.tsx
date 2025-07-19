@@ -43,7 +43,6 @@ export interface TopMover {
   price_change: number;
   volume_change: number;
   volume_change_percentage: number;
-  primary_tags?: string[];
 }
 
 interface TopMoversListProps {
@@ -63,7 +62,6 @@ interface TopMoversListProps {
   showVolumeMinThumb: boolean;
   showVolumeMaxThumb: boolean;
   sortBy: 'price_change' | 'volume';
-  selectedTags: string[];
 }
 
 interface OrderBookData {
@@ -91,7 +89,6 @@ export default function TopMoversList({
   showVolumeMinThumb,
   showVolumeMaxThumb,
   sortBy,
-  selectedTags,
 }: TopMoversListProps) {
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -122,8 +119,7 @@ export default function TopMoversList({
     showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
     showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
     showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
-    sortBy,
-    selectedTags
+    sortBy
   );
 
   const marketSearchQuery = useMarketSearch(
@@ -175,7 +171,6 @@ export default function TopMoversList({
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
   const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
   const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
-
 
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;

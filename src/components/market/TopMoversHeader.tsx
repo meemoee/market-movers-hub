@@ -6,7 +6,6 @@ import { Label } from '@/components/ui/label';
 import { MultiRangeSlider } from '@/components/ui/multi-range-slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TagFilter } from './TagFilter';
 
 interface TimeInterval {
   label: string;
@@ -41,8 +40,6 @@ interface TopMoversHeaderProps {
   setShowVolumeMaxThumb: (show: boolean) => void;
   sortBy: 'price_change' | 'volume';
   onSortChange: (value: 'price_change' | 'volume') => void;
-  selectedTags: string[];
-  onTagsChange: (tags: string[]) => void;
 }
 
 export function TopMoversHeader({
@@ -73,8 +70,6 @@ export function TopMoversHeader({
   setShowVolumeMaxThumb,
   sortBy,
   onSortChange,
-  selectedTags,
-  onTagsChange,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
@@ -111,13 +106,7 @@ export function TopMoversHeader({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Tag Filter - Outside of dropdown for better UX */}
-          <TagFilter
-            selectedTags={selectedTags}
-            onTagsChange={onTagsChange}
-          />
-          
+        <div className="flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent/20 transition-colors">
