@@ -468,6 +468,7 @@ serve(async (req) => {
     // Fetch primary_tags for final result set to include in response
     let finalMarkets = allMarkets;
     
+    // Always set finalMarkets to ensure it's not undefined
     if (allMarkets.length > 0) {
       console.log(`Fetching primary_tags for final ${allMarkets.length} markets to include in response`);
       
@@ -500,9 +501,17 @@ serve(async (req) => {
           id: finalMarkets[0]?.market_id,
           tags: finalMarkets[0]?.primary_tags
         });
-      } else if (finalTagError) {
+      } else {
         console.error('Error fetching final tag data:', finalTagError);
+        // Set finalMarkets anyway to avoid undefined variable
+        finalMarkets = allMarkets.map(market => ({
+          ...market,
+          primary_tags: []
+        }));
       }
+    } else {
+      // No markets, set finalMarkets as empty array with proper structure
+      finalMarkets = [];
     }
 
     // Apply pagination to the filtered and sorted results
