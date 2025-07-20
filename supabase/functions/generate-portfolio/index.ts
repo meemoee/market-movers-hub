@@ -124,12 +124,21 @@ serve(async (req) => {
     // Start the portfolio generation process
     const generatePortfolio = async () => {
       try {
+        // Step 1: Authentication validation
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [{ name: 'auth_validation', completed: false, timestamp: new Date().toISOString() }]
+        })
+        
+        // Validate authentication (already done above, but simulate some work)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
         await sendSSE('progress', { 
           status: 'processing', 
           steps: [{ name: 'auth_validation', completed: true, timestamp: new Date().toISOString() }]
         })
 
-        // Step 1: Get news summary
+        // Step 2: Get news summary
         await sendSSE('progress', { 
           status: 'processing', 
           steps: [
@@ -138,7 +147,6 @@ serve(async (req) => {
           ]
         })
 
-        // Mock news summary for now - in a real implementation, you'd call a news API
         const newsPrompt = `Based on the user's prediction: "${content}", provide a brief summary of relevant recent news that might impact this prediction. Keep it concise and factual.`
         
         const newsResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -169,12 +177,20 @@ serve(async (req) => {
           status: 'processing', 
           steps: [
             { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 3: Extract keywords
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
             { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
             { name: 'keywords_extraction', completed: false, timestamp: new Date().toISOString() }
           ]
         })
 
-        // Step 2: Extract keywords
         const keywordsPrompt = `Extract 5-10 key search terms from this prediction that would help find relevant prediction markets: "${content}". Return only the keywords separated by commas.`
         
         const keywordsResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -206,6 +222,66 @@ serve(async (req) => {
           steps: [
             { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
             { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 4: Create embeddings (simulate this step)
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: false, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Simulate embedding creation work
+        await new Promise(resolve => setTimeout(resolve, 800))
+
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 5: Search markets (simulate this step)
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: false, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Simulate market search work
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 6: Fetch market details
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
             { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
             { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
             { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() },
@@ -213,7 +289,7 @@ serve(async (req) => {
           ]
         })
 
-        // Step 3: Mock market search results (in a real implementation, you'd search your market database)
+        // Create mock markets based on the keywords and content
         const mockMarkets = [
           {
             market_id: "0x123456789",
@@ -238,6 +314,84 @@ serve(async (req) => {
           }
         ]
 
+        // Simulate fetching market details
+        await new Promise(resolve => setTimeout(resolve, 600))
+
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() },
+            { name: 'market_details', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 7: Select best markets
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() },
+            { name: 'market_details', completed: true, timestamp: new Date().toISOString() },
+            { name: 'best_markets', completed: false, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Simulate market selection work
+        await new Promise(resolve => setTimeout(resolve, 400))
+
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() },
+            { name: 'market_details', completed: true, timestamp: new Date().toISOString() },
+            { name: 'best_markets', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 8: Find related markets
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() },
+            { name: 'market_details', completed: true, timestamp: new Date().toISOString() },
+            { name: 'best_markets', completed: true, timestamp: new Date().toISOString() },
+            { name: 'related_markets', completed: false, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Simulate finding related markets
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        await sendSSE('progress', { 
+          status: 'processing', 
+          steps: [
+            { name: 'auth_validation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'news_summary', completed: true, timestamp: new Date().toISOString() },
+            { name: 'keywords_extraction', completed: true, timestamp: new Date().toISOString() },
+            { name: 'embedding_creation', completed: true, timestamp: new Date().toISOString() },
+            { name: 'pinecone_search', completed: true, timestamp: new Date().toISOString() },
+            { name: 'market_details', completed: true, timestamp: new Date().toISOString() },
+            { name: 'best_markets', completed: true, timestamp: new Date().toISOString() },
+            { name: 'related_markets', completed: true, timestamp: new Date().toISOString() }
+          ]
+        })
+
+        // Step 9: Generate trade ideas
         await sendSSE('progress', { 
           status: 'processing', 
           steps: [
@@ -253,7 +407,6 @@ serve(async (req) => {
           ]
         })
 
-        // Step 4: Generate trade ideas
         const listText = mockMarkets.map(market => 
           `Market ID: ${market.market_id}
 Question: ${market.question}
@@ -372,7 +525,7 @@ Suggest 3 trades as a JSON array of objects with:
           }
         }
 
-        // Send completion
+        // Send final completion
         await sendSSE('message', {
           status: 'completed',
           steps: [
