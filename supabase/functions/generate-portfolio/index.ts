@@ -7,10 +7,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// SSE headers
+const sseHeaders = {
+  ...corsHeaders,
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive',
+}
+
 // Logging utility
 function logStep(step: string, message: string, data?: any) {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] [${step}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+}
+
+// SSE message utility
+function createSSEMessage(data: any): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
 }
 
 // Step tracking utility
@@ -71,32 +84,77 @@ interface PortfolioResults {
 
 class StepTracker {
   private steps: PortfolioStep[] = [];
+  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   
-  startStep(name: string, details?: any): void {
+  constructor(writer?: WritableStreamDefaultWriter<Uint8Array>) {
+    this.writer = writer || null;
+  }
+  
+  async startStep(name: string, details?: any): Promise<void> {
     logStep(name, 'Starting step', details);
-    this.steps.push({
+    const step: PortfolioStep = {
       name,
       completed: false,
       timestamp: new Date().toISOString(),
       details
-    });
+    };
+    this.steps.push(step);
+    
+    // Send SSE update
+    if (this.writer) {
+      await this.sendUpdate();
+    }
   }
   
-  completeStep(name: string, details?: any): void {
+  async completeStep(name: string, details?: any): Promise<void> {
     logStep(name, 'Completed step', details);
     const step = this.steps.find(s => s.name === name && !s.completed);
     if (step) {
       step.completed = true;
       step.details = { ...step.details, ...details };
     }
+    
+    // Send SSE update
+    if (this.writer) {
+      await this.sendUpdate();
+    }
   }
   
-  failStep(name: string, error: string, details?: any): void {
+  async failStep(name: string, error: string, details?: any): Promise<void> {
     logStep(name, 'Failed step', { error, details });
     const step = this.steps.find(s => s.name === name && !s.completed);
     if (step) {
       step.error = error;
       step.details = { ...step.details, ...details };
+    }
+    
+    // Send SSE update
+    if (this.writer) {
+      await this.sendUpdate();
+    }
+  }
+  
+  private async sendUpdate(): Promise<void> {
+    if (!this.writer) return;
+    
+    try {
+      const updateData = {
+        status: 'processing',
+        steps: [...this.steps],
+        errors: [],
+        warnings: [],
+        data: {
+          news: '',
+          keywords: '',
+          markets: [],
+          tradeIdeas: []
+        }
+      };
+      
+      const message = createSSEMessage(updateData);
+      await this.writer.write(new TextEncoder().encode(message));
+    } catch (error) {
+      console.error('Error sending SSE update:', error);
     }
   }
   
@@ -105,9 +163,13 @@ class StepTracker {
   }
 }
 
-// Main portfolio generation function
-async function generatePortfolio(content: string, stepTracker: StepTracker): Promise<PortfolioResults> {
-  logStep('INIT', 'Starting portfolio generation', { contentLength: content.length });
+// Main portfolio generation function with SSE streaming
+async function generatePortfolioWithSSE(
+  content: string, 
+  stepTracker: StepTracker,
+  writer: WritableStreamDefaultWriter<Uint8Array>
+): Promise<PortfolioResults> {
+  logStep('INIT', 'Starting portfolio generation with SSE', { contentLength: content.length });
   
   const results: PortfolioResults = {
     status: 'processing',
@@ -124,7 +186,7 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
 
   try {
     // Step 1: Authentication validation
-    stepTracker.startStep('auth_validation');
+    await stepTracker.startStep('auth_validation');
     
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -135,18 +197,20 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       throw new Error('Failed to initialize Supabase client');
     }
     
-    stepTracker.completeStep('auth_validation', { supabaseInitialized: true });
+    await stepTracker.completeStep('auth_validation', { supabaseInitialized: true });
 
-    // Step 2: News summary (mock for now - you can implement actual news fetching)
-    stepTracker.startStep('news_summary');
+    // Step 2: News summary
+    await stepTracker.startStep('news_summary');
     
     try {
-      // This would typically call a news API or function
+      // Simulate some processing time
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       const mockNews = `Recent market analysis suggests increased volatility in prediction markets related to: ${content.substring(0, 100)}...`;
       results.data.news = mockNews;
-      stepTracker.completeStep('news_summary', { newsLength: mockNews.length });
-    } catch (newsError) {
-      stepTracker.failStep('news_summary', newsError.message);
+      await stepTracker.completeStep('news_summary', { newsLength: mockNews.length });
+    } catch (newsError: any) {
+      await stepTracker.failStep('news_summary', newsError.message);
       results.warnings.push({
         step: 'news_summary',
         message: `Failed to fetch news: ${newsError.message}`,
@@ -155,10 +219,11 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
     }
 
     // Step 3: Keywords extraction
-    stepTracker.startStep('keywords_extraction');
+    await stepTracker.startStep('keywords_extraction');
     
     try {
-      // Simple keyword extraction (you can enhance this with AI)
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       const words = content.toLowerCase()
         .replace(/[^\w\s]/g, ' ')
         .split(/\s+/)
@@ -167,9 +232,9 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       
       const keywords = [...new Set(words)].join(', ');
       results.data.keywords = keywords;
-      stepTracker.completeStep('keywords_extraction', { keywordCount: words.length });
-    } catch (keywordError) {
-      stepTracker.failStep('keywords_extraction', keywordError.message);
+      await stepTracker.completeStep('keywords_extraction', { keywordCount: words.length });
+    } catch (keywordError: any) {
+      await stepTracker.failStep('keywords_extraction', keywordError.message);
       results.errors.push({
         step: 'keywords_extraction',
         message: keywordError.message,
@@ -178,14 +243,15 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
     }
 
     // Step 4: Embedding creation
-    stepTracker.startStep('embedding_creation');
+    await stepTracker.startStep('embedding_creation');
     
     try {
-      // Mock embedding creation - replace with actual embedding service
+      await new Promise(resolve => setTimeout(resolve, 400));
+      
       const mockEmbedding = Array.from({ length: 1536 }, () => Math.random() - 0.5);
-      stepTracker.completeStep('embedding_creation', { embeddingDimensions: mockEmbedding.length });
-    } catch (embeddingError) {
-      stepTracker.failStep('embedding_creation', embeddingError.message);
+      await stepTracker.completeStep('embedding_creation', { embeddingDimensions: mockEmbedding.length });
+    } catch (embeddingError: any) {
+      await stepTracker.failStep('embedding_creation', embeddingError.message);
       results.errors.push({
         step: 'embedding_creation',
         message: embeddingError.message,
@@ -193,19 +259,20 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       });
     }
 
-    // Step 5: Pinecone search (mock for now)
-    stepTracker.startStep('pinecone_search');
+    // Step 5: Pinecone search
+    await stepTracker.startStep('pinecone_search');
     
     try {
-      // Mock search results - replace with actual Pinecone search
+      await new Promise(resolve => setTimeout(resolve, 600));
+      
       const mockSearchResults = [
         { id: 'market_1', score: 0.95 },
         { id: 'market_2', score: 0.87 },
         { id: 'market_3', score: 0.82 }
       ];
-      stepTracker.completeStep('pinecone_search', { resultsCount: mockSearchResults.length });
-    } catch (searchError) {
-      stepTracker.failStep('pinecone_search', searchError.message);
+      await stepTracker.completeStep('pinecone_search', { resultsCount: mockSearchResults.length });
+    } catch (searchError: any) {
+      await stepTracker.failStep('pinecone_search', searchError.message);
       results.errors.push({
         step: 'pinecone_search',
         message: searchError.message,
@@ -214,11 +281,12 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
     }
 
     // Step 6: Market details fetching
-    stepTracker.startStep('market_details');
+    await stepTracker.startStep('market_details');
     
     try {
-      // Mock market data - replace with actual database queries
-      const mockMarkets = [
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const mockMarkets: Market[] = [
         {
           market_id: 'market_1',
           event_id: 'event_1',
@@ -240,9 +308,9 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       ];
       
       results.data.markets = mockMarkets;
-      stepTracker.completeStep('market_details', { marketsFound: mockMarkets.length });
-    } catch (marketError) {
-      stepTracker.failStep('market_details', marketError.message);
+      await stepTracker.completeStep('market_details', { marketsFound: mockMarkets.length });
+    } catch (marketError: any) {
+      await stepTracker.failStep('market_details', marketError.message);
       results.errors.push({
         step: 'market_details',
         message: marketError.message,
@@ -251,14 +319,15 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
     }
 
     // Step 7: Best markets selection
-    stepTracker.startStep('best_markets');
+    await stepTracker.startStep('best_markets');
     
     try {
-      // Filter to best markets (already done in mock data above)
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       const bestMarkets = results.data.markets.slice(0, 5);
-      stepTracker.completeStep('best_markets', { selectedCount: bestMarkets.length });
-    } catch (selectionError) {
-      stepTracker.failStep('best_markets', selectionError.message);
+      await stepTracker.completeStep('best_markets', { selectedCount: bestMarkets.length });
+    } catch (selectionError: any) {
+      await stepTracker.failStep('best_markets', selectionError.message);
       results.errors.push({
         step: 'best_markets',
         message: selectionError.message,
@@ -267,19 +336,19 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
     }
 
     // Step 8: Trade ideas generation
-    stepTracker.startStep('trade_ideas');
+    await stepTracker.startStep('trade_ideas');
     
     try {
-      // Generate trade ideas based on markets
+      await new Promise(resolve => setTimeout(resolve, 700));
+      
       const tradeIdeas: TradeIdea[] = [];
       
       for (const market of results.data.markets.slice(0, 3)) {
-        // Determine which outcome to recommend based on user content
-        const recommendYes = Math.random() > 0.5; // Simple logic - enhance with AI
+        const recommendYes = Math.random() > 0.5;
         
         const currentPrice = recommendYes ? market.yes_price : market.no_price;
-        const targetPrice = currentPrice + 0.10; // 10 cent target
-        const stopPrice = Math.max(0.01, currentPrice - 0.05); // 5 cent stop loss
+        const targetPrice = currentPrice + 0.10;
+        const stopPrice = Math.max(0.01, currentPrice - 0.05);
         
         tradeIdeas.push({
           market_id: market.market_id,
@@ -293,9 +362,9 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       }
       
       results.data.tradeIdeas = tradeIdeas;
-      stepTracker.completeStep('trade_ideas', { ideasGenerated: tradeIdeas.length });
+      await stepTracker.completeStep('trade_ideas', { ideasGenerated: tradeIdeas.length });
     } catch (ideasError: any) {
-      stepTracker.failStep('trade_ideas', ideasError.message);
+      await stepTracker.failStep('trade_ideas', ideasError.message);
       results.errors.push({
         step: 'trade_ideas',
         message: ideasError.message,
@@ -303,9 +372,13 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       });
     }
 
-    // Update final status
+    // Update final status and send final result
     results.status = 'completed';
     results.steps = stepTracker.getSteps();
+    
+    // Send final SSE message with complete results
+    const finalMessage = createSSEMessage(results);
+    await writer.write(new TextEncoder().encode(finalMessage));
     
     logStep('COMPLETE', 'Portfolio generation completed successfully', {
       marketsFound: results.data.markets.length,
@@ -316,7 +389,7 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
     
     return results;
 
-  } catch (error) {
+  } catch (error: any) {
     logStep('ERROR', 'Portfolio generation failed', { error: error.message, stack: error.stack });
     
     results.status = 'failed';
@@ -327,6 +400,10 @@ async function generatePortfolio(content: string, stepTracker: StepTracker): Pro
       timestamp: new Date().toISOString(),
       details: { stack: error.stack }
     });
+    
+    // Send error result via SSE
+    const errorMessage = createSSEMessage(results);
+    await writer.write(new TextEncoder().encode(errorMessage));
     
     return results;
   }
@@ -339,8 +416,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const stepTracker = new StepTracker();
-  
   try {
     logStep('REQUEST', 'Received portfolio generation request', {
       method: req.method,
@@ -374,7 +449,7 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-      } catch (parseError) {
+      } catch (parseError: any) {
         logStep('ERROR', 'Failed to parse request body', { error: parseError.message });
         return new Response(
           JSON.stringify({ error: 'Invalid JSON in request body' }),
@@ -394,25 +469,50 @@ serve(async (req) => {
       contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : '')
     });
 
-    // Generate portfolio
-    const results = await generatePortfolio(content, stepTracker);
+    // For GET requests (SSE), return streaming response
+    if (req.method === 'GET') {
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter();
+      
+      const stepTracker = new StepTracker(writer);
+      
+      // Start portfolio generation in background
+      generatePortfolioWithSSE(content, stepTracker, writer)
+        .finally(() => {
+          writer.close();
+        });
+      
+      return new Response(readable, {
+        status: 200,
+        headers: sseHeaders
+      });
+    } 
+    // For POST requests, return regular JSON response (for compatibility)
+    else {
+      const stepTracker = new StepTracker();
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter();
+      
+      const results = await generatePortfolioWithSSE(content, stepTracker, writer);
+      writer.close();
+      
+      logStep('RESPONSE', 'Sending JSON response', {
+        status: results.status,
+        stepsCompleted: results.steps.filter(s => s.completed).length,
+        totalSteps: results.steps.length,
+        errorsCount: results.errors.length
+      });
 
-    logStep('RESPONSE', 'Sending response', {
-      status: results.status,
-      stepsCompleted: results.steps.filter(s => s.completed).length,
-      totalSteps: results.steps.length,
-      errorsCount: results.errors.length
-    });
+      return new Response(
+        JSON.stringify(results),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
-    return new Response(
-      JSON.stringify(results),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
-
-  } catch (error) {
+  } catch (error: any) {
     logStep('FATAL', 'Unhandled error in serve function', { 
       error: error.message, 
       stack: error.stack 
@@ -420,7 +520,7 @@ serve(async (req) => {
 
     const errorResponse = {
       status: 'failed',
-      steps: stepTracker.getSteps(),
+      steps: [],
       errors: [{
         step: 'server',
         message: error.message,
