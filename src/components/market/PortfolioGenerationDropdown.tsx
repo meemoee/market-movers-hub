@@ -112,9 +112,92 @@ export function PortfolioGenerationDropdown({
     }
   };
 
+  const processPortfolioResponse = (data: any) => {
+    console.log('🔄 Processing portfolio response:', data);
+    
+    // Check if it's a streaming response or direct response
+    if (data.status === 'completed') {
+      console.log('✅ Portfolio generation completed successfully');
+      setResults(data);
+      setProgress(100);
+      setCurrentStep('Portfolio generation complete!');
+      setIsGenerating(false);
+      setError(null);
+      
+      toast({
+        title: "Portfolio Generated",
+        description: "Your portfolio has been successfully generated!",
+      });
+    } else if (data.steps) {
+      // Process steps for progress updates
+      const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
+        const existingStepIndex = acc.findIndex(s => s.name === step.name);
+        if (existingStepIndex >= 0) {
+          acc[existingStepIndex] = step;
+        } else {
+          acc.push(step);
+        }
+        return acc;
+      }, []);
+      
+      const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
+      const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
+      setProgress(progressPercent);
+      
+      const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
+      if (currentStepData) {
+        setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
+      } else if (completedSteps === totalSteps) {
+        setCurrentStep('Completing portfolio generation...');
+      }
+      
+      // If processing but not complete, set final results
+      if (data.status === 'completed') {
+        setResults(data);
+        setProgress(100);
+        setCurrentStep('Portfolio generation complete!');
+        setIsGenerating(false);
+        setError(null);
+        
+        toast({
+          title: "Portfolio Generated",
+          description: "Your portfolio has been successfully generated!",
+        });
+      }
+    } else if (data.error) {
+      console.error('❌ Server error:', data.error);
+      throw new Error(data.error);
+    } else {
+      // Fallback: treat as completed if we have data
+      console.log('📋 Treating response as completed portfolio');
+      setResults(data);
+      setProgress(100);
+      setCurrentStep('Portfolio generation complete!');
+      setIsGenerating(false);
+      setError(null);
+      
+      toast({
+        title: "Portfolio Generated",
+        description: "Your portfolio has been successfully generated!",
+      });
+    }
+  };
+
   const generatePortfolio = async (isRetry = false) => {
+    // EXTENSIVE DEBUGGING - RAW INFO
+    console.log('=== PORTFOLIO GENERATION DEBUG START ===');
+    console.log('Session state:', {
+      hasSession: !!session,
+      hasAccessToken: !!session?.access_token,
+      hasUser: !!session?.user,
+      sessionKeys: session ? Object.keys(session) : [],
+      userEmail: session?.user?.email,
+      tokenLength: session?.access_token?.length
+    });
+    
     if (!session?.access_token) {
-      console.error('No authentication token available');
+      console.error('❌ No authentication token available');
+      console.log('Raw session object:', session);
       setError('Authentication required. Please sign in and try again.');
       return;
     }
@@ -132,94 +215,109 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      console.log('Starting portfolio generation with Supabase streaming...');
+      console.log('✅ Starting portfolio generation...');
+      console.log('Content to send:', {
+        content: content,
+        contentLength: content.length,
+        contentPreview: content.substring(0, 100) + '...'
+      });
+      
       setCurrentStep('Connecting to portfolio service...');
       
-      // Use Supabase functions with streaming support
+      // Get the project URL for direct calls
+      const projectUrl = 'https://lfmkoismabbhujycnqpn.supabase.co';
+      console.log('Project URL:', projectUrl);
+      
+      // Method 1: Try standard supabase.functions.invoke (simplified)
+      console.log('🔄 Attempting Method 1: Standard supabase.functions.invoke...');
+      
+      const invokeStartTime = Date.now();
       const { data, error } = await supabase.functions.invoke('generate-portfolio', {
-        body: { content },
-        headers: {
-          'Accept': 'text/event-stream',
-          'Cache-Control': 'no-cache'
-        }
+        body: { content }
+      });
+      const invokeEndTime = Date.now();
+      
+      console.log('📊 supabase.functions.invoke result:', {
+        success: !error,
+        error: error,
+        data: data,
+        responseTime: invokeEndTime - invokeStartTime,
+        dataType: typeof data,
+        dataKeys: data && typeof data === 'object' ? Object.keys(data) : null
       });
 
       if (error) {
-        console.error('Supabase function error:', error);
-        throw new Error(`Portfolio generation failed: ${error.message}`);
+        console.error('❌ Supabase function error:', error);
+        console.log('Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+          context: error.context
+        });
+        
+        // Try alternative method with direct fetch
+        console.log('🔄 Trying Method 2: Direct fetch...');
+        
+        const fetchUrl = `${projectUrl}/functions/v1/generate-portfolio`;
+        console.log('Fetch URL:', fetchUrl);
+        
+        const fetchOptions = {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
+          },
+          body: JSON.stringify({ content })
+        };
+        
+        console.log('Fetch options:', {
+          method: fetchOptions.method,
+          headers: fetchOptions.headers,
+          bodyLength: fetchOptions.body.length
+        });
+        
+        const fetchStartTime = Date.now();
+        const response = await fetch(fetchUrl, fetchOptions);
+        const fetchEndTime = Date.now();
+        
+        console.log('📊 Direct fetch result:', {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+          headers: Object.fromEntries(response.headers.entries()),
+          responseTime: fetchEndTime - fetchStartTime
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Fetch failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorText: errorText
+          });
+          throw new Error(`Direct fetch failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        
+        const fetchData = await response.json();
+        console.log('✅ Direct fetch data:', fetchData);
+        
+        // Use the fetch data instead
+        if (fetchData) {
+          console.log('Using fetch data as response');
+          processPortfolioResponse(fetchData);
+          return;
+        } else {
+          throw new Error(`Portfolio generation failed: ${error.message}`);
+        }
       }
 
-      // Handle the response
+      // Handle the successful response from supabase.functions.invoke
       if (data) {
-        console.log('Received portfolio data:', data);
-        
-        // Check if it's a streaming response or direct response
-        if (data.status === 'completed') {
-          console.log('Portfolio generation completed successfully');
-          setResults(data);
-          setProgress(100);
-          setCurrentStep('Portfolio generation complete!');
-          setIsGenerating(false);
-          setError(null);
-          
-          toast({
-            title: "Portfolio Generated",
-            description: "Your portfolio has been successfully generated!",
-          });
-        } else if (data.steps) {
-          // Process steps for progress updates
-          const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
-            const existingStepIndex = acc.findIndex(s => s.name === step.name);
-            if (existingStepIndex >= 0) {
-              acc[existingStepIndex] = step;
-            } else {
-              acc.push(step);
-            }
-            return acc;
-          }, []);
-          
-          const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
-          const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
-          setProgress(progressPercent);
-          
-          const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
-          if (currentStepData) {
-            setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
-          } else if (completedSteps === totalSteps) {
-            setCurrentStep('Completing portfolio generation...');
-          }
-          
-          // If processing but not complete, set final results
-          if (data.status === 'completed') {
-            setResults(data);
-            setProgress(100);
-            setCurrentStep('Portfolio generation complete!');
-            setIsGenerating(false);
-            setError(null);
-            
-            toast({
-              title: "Portfolio Generated",
-              description: "Your portfolio has been successfully generated!",
-            });
-          }
-        } else if (data.error) {
-          console.error('Server error:', data.error);
-          throw new Error(data.error);
-        } else {
-          // Fallback: treat as completed if we have data
-          console.log('Treating response as completed portfolio');
-          setResults(data);
-          setProgress(100);
-          setCurrentStep('Portfolio generation complete!');
-          setIsGenerating(false);
-          setError(null);
-          
-          toast({
-            title: "Portfolio Generated",
-            description: "Your portfolio has been successfully generated!",
-          });
-        }
+        console.log('✅ Received portfolio data from supabase.functions.invoke:', data);
+        processPortfolioResponse(data);
       } else {
+        console.log('⚠️ No data received from supabase.functions.invoke, but no error either');
         throw new Error('No data received from portfolio service');
       }
 
