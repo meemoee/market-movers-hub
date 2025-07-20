@@ -132,24 +132,11 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      // First make the POST request to initiate
-      console.log('Initiating portfolio generation...');
-      const { error: postError } = await supabase.functions.invoke('generate-portfolio', {
-        body: { content }
-      });
-
-      if (postError) {
-        console.error('Error initiating portfolio generation:', postError);
-        throw new Error(`Failed to start generation: ${postError.message}`);
-      }
-
-      // Wait a moment for the server to process the request
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Then start SSE connection for real-time updates
+      // Start SSE connection directly for real-time updates
       const authToken = session.access_token;
       const encodedContent = encodeURIComponent(content);
-      const eventSourceUrl = `https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio?content=${encodedContent}&authToken=${authToken}`;
+      const encodedAuthToken = encodeURIComponent(authToken);
+      const eventSourceUrl = `https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio?content=${encodedContent}&authToken=${encodedAuthToken}`;
       
       console.log('Starting SSE connection to:', eventSourceUrl);
       

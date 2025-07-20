@@ -429,12 +429,47 @@ serve(async (req) => {
     if (req.method === 'GET') {
       const url = new URL(req.url);
       content = url.searchParams.get('content') || '';
+      const authToken = url.searchParams.get('authToken');
       
       if (!content) {
         logStep('ERROR', 'No content provided in GET request');
         return new Response(
           JSON.stringify({ error: 'Content parameter is required' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!authToken) {
+        logStep('ERROR', 'No auth token provided in GET request');
+        return new Response(
+          JSON.stringify({ error: 'Authentication token is required' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Validate the auth token by creating a Supabase client with it
+      try {
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+        );
+        
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authToken);
+        
+        if (authError || !user) {
+          logStep('ERROR', 'Invalid auth token', { authError });
+          return new Response(
+            JSON.stringify({ error: 'Invalid authentication token' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        logStep('AUTH', 'User authenticated successfully', { userId: user.id });
+      } catch (authValidationError: any) {
+        logStep('ERROR', 'Auth validation failed', { error: authValidationError.message });
+        return new Response(
+          JSON.stringify({ error: 'Authentication validation failed' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     } else if (req.method === 'POST') {
