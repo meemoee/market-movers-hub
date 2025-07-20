@@ -531,15 +531,31 @@ serve(async (req) => {
       const results = await generatePortfolioWithSSE(content, stepTracker, writer);
       writer.close();
       
-      logStep('RESPONSE', 'Sending JSON response', {
+      // Ensure we have proper data structure for frontend
+      const responseData = {
         status: results.status,
-        stepsCompleted: results.steps.filter(s => s.completed).length,
-        totalSteps: results.steps.length,
-        errorsCount: results.errors.length
+        steps: results.steps,
+        errors: results.errors,
+        warnings: results.warnings,
+        data: {
+          news: results.data.news || '',
+          keywords: results.data.keywords || '',
+          markets: results.data.markets || [],
+          tradeIdeas: results.data.tradeIdeas || []
+        }
+      };
+      
+      logStep('RESPONSE', 'Sending JSON response', {
+        status: responseData.status,
+        stepsCompleted: responseData.steps.filter(s => s.completed).length,
+        totalSteps: responseData.steps.length,
+        errorsCount: responseData.errors.length,
+        marketsCount: responseData.data.markets.length,
+        tradeIdeasCount: responseData.data.tradeIdeas.length
       });
 
       return new Response(
-        JSON.stringify(results),
+        JSON.stringify(responseData),
         { 
           status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

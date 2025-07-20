@@ -132,100 +132,96 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      // Start SSE connection directly for real-time updates
-      const authToken = session.access_token;
-      const encodedContent = encodeURIComponent(content);
-      const encodedAuthToken = encodeURIComponent(authToken);
-      const eventSourceUrl = `https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio?content=${encodedContent}&authToken=${encodedAuthToken}`;
+      console.log('Starting portfolio generation with Supabase streaming...');
+      setCurrentStep('Connecting to portfolio service...');
       
-      console.log('Starting SSE connection to:', eventSourceUrl);
-      
-      const eventSource = new EventSource(eventSourceUrl);
-      eventSourceRef.current = eventSource;
+      // Use Supabase functions with streaming support
+      const { data, error } = await supabase.functions.invoke('generate-portfolio', {
+        body: { content },
+        headers: {
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache'
+        }
+      });
 
-      // Set a timeout for the entire operation
-      const connectionTimeout = setTimeout(() => {
-        console.log('SSE connection timeout');
-        eventSource.close();
-        handleRetry('Connection timeout');
-      }, 60000); // 60 second timeout
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw new Error(`Portfolio generation failed: ${error.message}`);
+      }
 
-      eventSource.onopen = () => {
-        console.log('SSE connection opened successfully');
-        setCurrentStep('Connected - generating portfolio...');
-        clearTimeout(connectionTimeout);
-      };
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Received SSE data:', data);
+      // Handle the response
+      if (data) {
+        console.log('Received portfolio data:', data);
+        
+        // Check if it's a streaming response or direct response
+        if (data.status === 'completed') {
+          console.log('Portfolio generation completed successfully');
+          setResults(data);
+          setProgress(100);
+          setCurrentStep('Portfolio generation complete!');
+          setIsGenerating(false);
+          setError(null);
           
+          toast({
+            title: "Portfolio Generated",
+            description: "Your portfolio has been successfully generated!",
+          });
+        } else if (data.steps) {
+          // Process steps for progress updates
+          const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
+            const existingStepIndex = acc.findIndex(s => s.name === step.name);
+            if (existingStepIndex >= 0) {
+              acc[existingStepIndex] = step;
+            } else {
+              acc.push(step);
+            }
+            return acc;
+          }, []);
+          
+          const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
+          const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
+          setProgress(progressPercent);
+          
+          const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
+          if (currentStepData) {
+            setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
+          } else if (completedSteps === totalSteps) {
+            setCurrentStep('Completing portfolio generation...');
+          }
+          
+          // If processing but not complete, set final results
           if (data.status === 'completed') {
-            console.log('Portfolio generation completed successfully');
             setResults(data);
             setProgress(100);
             setCurrentStep('Portfolio generation complete!');
             setIsGenerating(false);
             setError(null);
-            eventSource.close();
-            clearTimeout(connectionTimeout);
             
             toast({
               title: "Portfolio Generated",
               description: "Your portfolio has been successfully generated!",
             });
-          } else if (data.steps) {
-            // Get unique completed steps by removing duplicates based on step name
-            const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
-              const existingStepIndex = acc.findIndex(s => s.name === step.name);
-              if (existingStepIndex >= 0) {
-                // Update existing step with latest data
-                acc[existingStepIndex] = step;
-              } else {
-                // Add new step
-                acc.push(step);
-              }
-              return acc;
-            }, []);
-            
-            // Update progress based on unique completed steps
-            const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
-            const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
-            setProgress(progressPercent);
-            
-            // Find the current step (first incomplete step)
-            const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
-            if (currentStepData) {
-              setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
-            } else if (completedSteps === totalSteps) {
-              setCurrentStep('Completing portfolio generation...');
-            }
-          } else if (data.error) {
-            console.error('Server error:', data.error);
-            eventSource.close();
-            clearTimeout(connectionTimeout);
-            handleRetry(data.error);
           }
-        } catch (parseError) {
-          console.error('Error parsing SSE data:', parseError);
-          // Don't retry on parse errors, they're usually not recoverable
+        } else if (data.error) {
+          console.error('Server error:', data.error);
+          throw new Error(data.error);
+        } else {
+          // Fallback: treat as completed if we have data
+          console.log('Treating response as completed portfolio');
+          setResults(data);
+          setProgress(100);
+          setCurrentStep('Portfolio generation complete!');
+          setIsGenerating(false);
+          setError(null);
+          
+          toast({
+            title: "Portfolio Generated",
+            description: "Your portfolio has been successfully generated!",
+          });
         }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error('SSE error occurred:', error);
-        eventSource.close();
-        clearTimeout(connectionTimeout);
-        
-        // Check if the connection was just closed normally
-        if (eventSource.readyState === EventSource.CLOSED) {
-          console.log('SSE connection closed');
-          return;
-        }
-        
-        handleRetry('Connection error');
-      };
+      } else {
+        throw new Error('No data received from portfolio service');
+      }
 
     } catch (error) {
       console.error('Error in generatePortfolio:', error);
