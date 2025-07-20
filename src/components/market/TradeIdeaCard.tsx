@@ -13,12 +13,6 @@ interface TradeIdeaCardProps {
     rationale: string;
     image?: string;
   };
-  onTradeClick?: (market: {
-    id: string;
-    action: 'buy' | 'sell';
-    clobTokenId: string;
-    selectedOutcome: string;
-  }) => void;
 }
 
 // CRITICAL FIX: Validate and correct trade idea pricing (same as PortfolioResults)
@@ -51,7 +45,7 @@ const validateAndFixTradeIdea = (trade: TradeIdeaCardProps['trade']) => {
   return correctedTrade;
 };
 
-export function TradeIdeaCard({ trade: rawTrade, onTradeClick }: TradeIdeaCardProps) {
+export function TradeIdeaCard({ trade: rawTrade }: TradeIdeaCardProps) {
   const isMobile = useIsMobile();
   
   // CRITICAL: Validate trade before using it
@@ -95,33 +89,6 @@ export function TradeIdeaCard({ trade: rawTrade, onTradeClick }: TradeIdeaCardPr
   const priceChange = actualTargetPrice - actualCurrentPrice;
   const isPositive = priceChange >= 0;
 
-  // Handler functions for button clicks
-  const handleYesClick = () => {
-    console.log('[TradeIdeaCard] YES button clicked for:', trade.market_title);
-    if (onTradeClick) {
-      const clobTokenId = `token_${trade.market_id}_yes`;
-      onTradeClick({
-        id: trade.market_id,
-        action: 'buy',
-        clobTokenId,
-        selectedOutcome: 'Yes'
-      });
-    }
-  };
-
-  const handleNoClick = () => {
-    console.log('[TradeIdeaCard] NO button clicked for:', trade.market_title);
-    if (onTradeClick) {
-      const clobTokenId = `token_${trade.market_id}_no`;
-      onTradeClick({
-        id: trade.market_id,
-        action: 'buy',
-        clobTokenId,
-        selectedOutcome: 'No'
-      });
-    }
-  };
-
   return (
     <div className={`w-full ${isMobile ? 'px-2 py-2' : 'p-3'} space-y-3 overflow-hidden border border-border rounded-lg`}>
       {/* Market Header */}
@@ -144,11 +111,10 @@ export function TradeIdeaCard({ trade: rawTrade, onTradeClick }: TradeIdeaCardPr
           </div>
         </div>
         
-        {/* Buy/Sell Buttons with onClick handlers */}
+        {/* Buy/Sell Buttons */}
         <div className={`flex ${isMobile ? 'w-full' : 'w-auto'} gap-2 ${isMobile ? 'h-9' : 'h-12'} flex-shrink-0`}>
           <HoverButton
             variant="buy"
-            onClick={handleYesClick}
             className={`flex-1 flex flex-col items-center justify-center ${isMobile ? 'max-w-[48%]' : 'w-[90px]'} ${isYesOutcome ? 'ring-2 ring-green-400/50' : ''}`}
           >
             <span className="text-xs truncate max-w-full px-1">{truncateOutcome(outcomes[0])}</span>
@@ -158,7 +124,6 @@ export function TradeIdeaCard({ trade: rawTrade, onTradeClick }: TradeIdeaCardPr
           </HoverButton>
           <HoverButton
             variant="sell"
-            onClick={handleNoClick}
             className={`flex-1 flex flex-col items-center justify-center ${isMobile ? 'max-w-[48%]' : 'w-[90px]'} ${!isYesOutcome ? 'ring-2 ring-green-400/50' : ''}`}
           >
             <span className="text-xs truncate max-w-full px-1">{truncateOutcome(outcomes[1])}</span>
