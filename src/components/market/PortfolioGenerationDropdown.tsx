@@ -300,29 +300,13 @@ export function PortfolioGenerationDropdown({
         clearTimeout(connectionTimeout);
       };
 
-      eventSource.onmessage = (event) => {
+      // Handle progress events
+      eventSource.addEventListener('progress', (event) => {
         try {
-          const data = JSON.parse(event.data);
-          console.log('Received SSE data:', data);
+          const data = JSON.parse((event as MessageEvent).data);
+          console.log('Received SSE progress data:', data);
           
-          if (data.status === 'completed') {
-            console.log('Portfolio generation completed successfully');
-            console.log('Markets data structure:', data.data?.markets);
-            console.log('Trade ideas data structure:', data.data?.tradeIdeas);
-            
-            setResults(data);
-            setProgress(100);
-            setCurrentStep('Portfolio generation complete!');
-            setIsGenerating(false);
-            setError(null);
-            eventSource.close();
-            clearTimeout(connectionTimeout);
-            
-            toast({
-              title: "Portfolio Generated",
-              description: "Your portfolio has been successfully generated!",
-            });
-          } else if (data.steps) {
+          if (data.steps) {
             // Get unique completed steps by removing duplicates based on step name
             const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
               const existingStepIndex = acc.findIndex(s => s.name === step.name);
@@ -348,20 +332,57 @@ export function PortfolioGenerationDropdown({
             } else if (completedSteps === totalSteps) {
               setCurrentStep('Completing portfolio generation...');
             }
-          } else if (data.error) {
-            console.error('Server error:', data.error);
-            eventSource.close();
-            clearTimeout(connectionTimeout);
-            handleRetry(data.error);
           }
         } catch (parseError) {
-          console.error('Error parsing SSE data:', parseError);
-          // Don't retry on parse errors, they're usually not recoverable
+          console.error('Error parsing SSE progress data:', parseError);
         }
-      };
+      });
+
+      // Handle completion events
+      eventSource.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          console.log('Received SSE message data:', data);
+          
+          if (data.status === 'completed') {
+            console.log('Portfolio generation completed successfully');
+            console.log('Markets data structure:', data.data?.markets);
+            console.log('Trade ideas data structure:', data.data?.tradeIdeas);
+            
+            setResults(data);
+            setProgress(100);
+            setCurrentStep('Portfolio generation complete!');
+            setIsGenerating(false);
+            setError(null);
+            eventSource.close();
+            clearTimeout(connectionTimeout);
+            
+            toast({
+              title: "Portfolio Generated",
+              description: "Your portfolio has been successfully generated!",
+            });
+          }
+        } catch (parseError) {
+          console.error('Error parsing SSE message data:', parseError);
+        }
+      });
+
+      // Handle error events
+      eventSource.addEventListener('error', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          console.error('Server error:', data.error);
+          eventSource.close();
+          clearTimeout(connectionTimeout);
+          handleRetry(data.error);
+        } catch (parseError) {
+          console.error('Error parsing SSE error data:', parseError);
+          handleRetry('Server error occurred');
+        }
+      });
 
       eventSource.onerror = (error) => {
-        console.error('SSE error occurred:', error);
+        console.error('SSE connection error occurred:', error);
         eventSource.close();
         clearTimeout(connectionTimeout);
         
