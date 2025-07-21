@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -186,13 +187,32 @@ export function PortfolioGenerationDropdown({
   const generatePortfolio = async (isRetry = false) => {
     // EXTENSIVE DEBUGGING - RAW INFO
     console.log('=== PORTFOLIO GENERATION DEBUG START ===');
-    console.log('Session state:', {
+    console.log('🔍 Session Analysis:', {
       hasSession: !!session,
       hasAccessToken: !!session?.access_token,
       hasUser: !!session?.user,
       sessionKeys: session ? Object.keys(session) : [],
       userEmail: session?.user?.email,
-      tokenLength: session?.access_token?.length
+      userId: session?.user?.id,
+      tokenLength: session?.access_token?.length,
+      tokenStart: session?.access_token?.substring(0, 20) + '...',
+      sessionType: typeof session,
+      fullSessionStructure: session
+    });
+    
+    console.log('🌐 Environment Info:', {
+      currentURL: window.location.href,
+      origin: window.location.origin,
+      userAgent: navigator.userAgent,
+      onlineStatus: navigator.onLine
+    });
+
+    console.log('📝 Request Content:', {
+      content: content,
+      contentType: typeof content,
+      contentLength: content.length,
+      contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+      isEmpty: !content || content.trim().length === 0
     });
     
     if (!session?.access_token) {
@@ -209,129 +229,98 @@ export function PortfolioGenerationDropdown({
 
     setIsGenerating(true);
     setProgress(0);
-    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Starting portfolio generation...');
+    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Connecting to portfolio service...');
     
     // Clean up any existing connections
     cleanupConnections();
 
     try {
-      console.log('✅ Starting portfolio generation...');
-      console.log('Content to send:', {
-        content: content,
-        contentLength: content.length,
-        contentPreview: content.substring(0, 100) + '...'
+      console.log('🚀 Starting portfolio generation request...');
+      
+      const requestStartTime = Date.now();
+      
+      // Method 1: Try the standard Supabase function invoke with proper session
+      console.log('📡 Attempting Supabase functions invoke...');
+      
+      const invokePayload = { content };
+      console.log('📦 Invoke payload:', invokePayload);
+      
+      // Add debugging for the actual supabase client state
+      console.log('🔧 Supabase client debug:', {
+        supabaseUrl: supabase.supabaseUrl,
+        supabaseKey: supabase.supabaseKey?.substring(0, 20) + '...',
+        authHeaders: await supabase.auth.getSession()
+      });
+
+      const invokeResult = await supabase.functions.invoke('generate-portfolio', {
+        body: invokePayload
       });
       
-      setCurrentStep('Connecting to portfolio service...');
-      
-      // Get the project URL for direct calls
-      const projectUrl = 'https://lfmkoismabbhujycnqpn.supabase.co';
-      console.log('Project URL:', projectUrl);
-      
-      // Method 1: Try standard supabase.functions.invoke (simplified)
-      console.log('🔄 Attempting Method 1: Standard supabase.functions.invoke...');
-      
-      const invokeStartTime = Date.now();
-      const { data, error } = await supabase.functions.invoke('generate-portfolio', {
-        body: { content }
-      });
       const invokeEndTime = Date.now();
       
-      console.log('📊 supabase.functions.invoke result:', {
-        success: !error,
-        error: error,
-        data: data,
-        responseTime: invokeEndTime - invokeStartTime,
-        dataType: typeof data,
-        dataKeys: data && typeof data === 'object' ? Object.keys(data) : null
+      console.log('📊 Supabase invoke result:', {
+        success: !invokeResult.error,
+        error: invokeResult.error,
+        data: invokeResult.data,
+        responseTime: invokeEndTime - requestStartTime,
+        dataType: typeof invokeResult.data,
+        dataKeys: invokeResult.data && typeof invokeResult.data === 'object' ? Object.keys(invokeResult.data) : null,
+        fullResult: invokeResult
       });
 
-      if (error) {
-        console.error('❌ Supabase function error:', error);
-        console.log('Error details:', {
-          message: error.message,
-          name: error.name,
-          stack: error.stack,
-          context: error.context
+      if (invokeResult.error) {
+        console.error('❌ Supabase invoke error details:', {
+          message: invokeResult.error.message,
+          name: invokeResult.error.name,
+          stack: invokeResult.error.stack,
+          context: invokeResult.error.context,
+          fullError: invokeResult.error
         });
         
-        // Try alternative method with direct fetch
-        console.log('🔄 Trying Method 2: Direct fetch...');
-        
-        const fetchUrl = `${projectUrl}/functions/v1/generate-portfolio`;
-        console.log('Fetch URL:', fetchUrl);
-        
-        const fetchOptions = {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
-          },
-          body: JSON.stringify({ content })
-        };
-        
-        console.log('Fetch options:', {
-          method: fetchOptions.method,
-          headers: fetchOptions.headers,
-          bodyLength: fetchOptions.body.length
-        });
-        
-        const fetchStartTime = Date.now();
-        const response = await fetch(fetchUrl, fetchOptions);
-        const fetchEndTime = Date.now();
-        
-        console.log('📊 Direct fetch result:', {
-          status: response.status,
-          statusText: response.statusText,
-          ok: response.ok,
-          headers: Object.fromEntries(response.headers.entries()),
-          responseTime: fetchEndTime - fetchStartTime
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('❌ Fetch failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorText: errorText
-          });
-          throw new Error(`Direct fetch failed: ${response.status} ${response.statusText} - ${errorText}`);
+        // Try network diagnostics
+        console.log('🔍 Network Diagnostics:');
+        try {
+          const testResponse = await fetch(window.location.origin);
+          console.log('✅ Basic network connectivity OK:', testResponse.status);
+        } catch (netError) {
+          console.error('❌ Basic network test failed:', netError);
         }
         
-        const fetchData = await response.json();
-        console.log('✅ Direct fetch data:', fetchData);
-        
-        // Use the fetch data instead
-        if (fetchData) {
-          console.log('Using fetch data as response');
-          processPortfolioResponse(fetchData);
-          return;
-        } else {
-          throw new Error(`Portfolio generation failed: ${error.message}`);
-        }
+        throw new Error(`Supabase invoke failed: ${invokeResult.error.message}`);
       }
 
-      // Handle the successful response from supabase.functions.invoke
-      if (data) {
-        console.log('✅ Received portfolio data from supabase.functions.invoke:', data);
-        processPortfolioResponse(data);
+      // Handle the successful response
+      if (invokeResult.data) {
+        console.log('✅ Received portfolio data from invoke:', invokeResult.data);
+        processPortfolioResponse(invokeResult.data);
       } else {
-        console.log('⚠️ No data received from supabase.functions.invoke, but no error either');
+        console.log('⚠️ No data received from invoke, but no error either');
         throw new Error('No data received from portfolio service');
       }
 
     } catch (error) {
-      console.error('Error in generatePortfolio:', error);
-      handleRetry(error instanceof Error ? error.message : 'Unknown error');
+      console.error('💥 Error in generatePortfolio:', {
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorType: typeof error,
+        errorStack: error instanceof Error ? error.stack : 'No stack trace',
+        fullError: error
+      });
+      
+      // Additional network debugging on error
+      console.log('🔍 Error Analysis:');
+      console.log('- Browser online status:', navigator.onLine);
+      console.log('- Current timestamp:', new Date().toISOString());
+      console.log('- Session still valid:', !!session?.access_token);
+      
+      handleRetry(error instanceof Error ? error.message : 'Unknown error occurred');
     }
   };
 
   const handleRetry = (errorMessage: string) => {
-    console.log(`Portfolio generation failed: ${errorMessage}`);
+    console.log(`🔄 Portfolio generation failed: ${errorMessage}`);
     
     if (retryCount < maxRetries) {
-      console.log(`Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+      console.log(`⏰ Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
       setRetryCount(prev => prev + 1);
       setCurrentStep(`Retrying in ${retryDelay / 1000} seconds...`);
       
@@ -339,7 +328,7 @@ export function PortfolioGenerationDropdown({
         generatePortfolio(true);
       }, retryDelay);
     } else {
-      console.log('Max retries reached, giving up');
+      console.log('❌ Max retries reached, giving up');
       setIsGenerating(false);
       setError(`Failed after ${maxRetries} attempts: ${errorMessage}`);
       setCurrentStep('Generation failed');
@@ -468,7 +457,7 @@ export function PortfolioGenerationDropdown({
                     <div className="p-3 border border-border rounded-lg">
                       <p className="text-sm text-muted-foreground">{results.data.news}</p>
                     </div>
-                  </CollapsibleContent>
+                  </CollibsibleContent>
                 </Collapsible>
               )}
 
