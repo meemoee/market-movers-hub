@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -107,9 +108,15 @@ export function PortfolioGenerationDropdown({
   };
 
   const processPortfolioResponse = (data: any) => {
-    console.log('🔄 Processing portfolio response:', JSON.stringify(data, null, 2));
+    console.log('📈 === PROCESSING PORTFOLIO RESPONSE ===');
+    console.log('📈 Response data type:', typeof data);
+    console.log('📈 Response data keys:', data ? Object.keys(data) : 'null');
+    console.log('📈 Response status:', data?.status);
+    console.log('📈 Response steps count:', data?.steps?.length);
+    console.log('📈 Response errors count:', data?.errors?.length);
+    console.log('📈 Response trade ideas count:', data?.data?.tradeIdeas?.length);
     
-    if (data.status === 'completed') {
+    if (data?.status === 'completed' || data?.data?.tradeIdeas) {
       console.log('✅ Portfolio generation completed successfully');
       setResults(data);
       setProgress(100);
@@ -121,7 +128,8 @@ export function PortfolioGenerationDropdown({
         title: "Portfolio Generated",
         description: "Your portfolio has been successfully generated!",
       });
-    } else if (data.steps) {
+    } else if (data?.steps) {
+      console.log('📊 Processing intermediate steps...');
       const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
         const existingStepIndex = acc.findIndex(s => s.name === step.name);
         if (existingStepIndex >= 0) {
@@ -134,32 +142,20 @@ export function PortfolioGenerationDropdown({
       
       const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
       const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
+      console.log('📊 Progress update:', progressPercent, '% (', completedSteps, '/', totalSteps, ')');
       setProgress(progressPercent);
       
       const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
       if (currentStepData) {
-        setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
-      } else if (completedSteps === totalSteps) {
-        setCurrentStep('Completing portfolio generation...');
+        const stepDisplayName = stepNames[currentStepData.name] || currentStepData.name;
+        console.log('📊 Current step:', stepDisplayName);
+        setCurrentStep(stepDisplayName);
       }
-      
-      if (data.status === 'completed') {
-        setResults(data);
-        setProgress(100);
-        setCurrentStep('Portfolio generation complete!');
-        setIsGenerating(false);
-        setError(null);
-        
-        toast({
-          title: "Portfolio Generated",
-          description: "Your portfolio has been successfully generated!",
-        });
-      }
-    } else if (data.error) {
-      console.error('❌ Server error:', data.error);
+    } else if (data?.error) {
+      console.error('❌ Server returned error:', data.error);
       throw new Error(data.error);
     } else {
-      console.log('📋 Treating response as completed portfolio');
+      console.log('🔄 Treating unknown response as completed portfolio');
       setResults(data);
       setProgress(100);
       setCurrentStep('Portfolio generation complete!');
@@ -173,183 +169,25 @@ export function PortfolioGenerationDropdown({
     }
   };
 
-  // STEP 1: Test Supabase Client Configuration
-  const testSupabaseClient = async () => {
-    console.log('🔧 === STEP 1: TESTING SUPABASE CLIENT ===');
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    
-    try {
-      console.log('📊 Supabase client exists:', !!supabase);
-      console.log('📊 Supabase client type:', typeof supabase);
-      console.log('📊 Supabase client constructor:', supabase?.constructor?.name);
-      console.log('📊 Supabase client keys:', Object.keys(supabase || {}));
-      
-      // Test basic Supabase functionality
-      const { data: { session: testSession } } = await supabase.auth.getSession();
-      console.log('📊 Test session retrieval successful:', !!testSession);
-      console.log('📊 Test session user ID:', testSession?.user?.id);
-      
-      return true;
-    } catch (error) {
-      console.error('❌ STEP 1 FAILED - Supabase client test error:', error);
-      return false;
-    }
-  };
-
-  // STEP 2: Validate Authentication Deep Dive
-  const validateAuthenticationDeep = async () => {
-    console.log('🔐 === STEP 2: DEEP AUTHENTICATION VALIDATION ===');
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    
-    try {
-      // Get fresh session
-      const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
-      
-      console.log('📊 Fresh session retrieval error:', sessionError);
-      console.log('📊 Fresh session exists:', !!freshSession);
-      console.log('📊 Fresh session keys:', freshSession ? Object.keys(freshSession) : 'N/A');
-      console.log('📊 Fresh session user:', freshSession?.user ? 'EXISTS' : 'MISSING');
-      console.log('📊 Fresh session access_token exists:', !!freshSession?.access_token);
-      console.log('📊 Fresh session access_token length:', freshSession?.access_token?.length);
-      console.log('📊 Fresh session expires_at:', freshSession?.expires_at);
-      console.log('📊 Fresh session token_type:', freshSession?.token_type);
-      
-      if (!freshSession?.access_token) {
-        throw new Error('No access token available in fresh session');
-      }
-      
-      // Test token validity
-      const tokenPreview = freshSession.access_token.substring(0, 20) + '...';
-      console.log('📊 Token preview:', tokenPreview);
-      
-      return freshSession;
-    } catch (error) {
-      console.error('❌ STEP 2 FAILED - Authentication validation error:', error);
-      throw error;
-    }
-  };
-
-  // STEP 3: Test Direct Fetch to Edge Function
-  const testDirectFetch = async (authToken: string) => {
-    console.log('🌐 === STEP 3: DIRECT FETCH TEST ===');
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    
-    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-    
-    try {
-      console.log('📡 Function URL:', functionUrl);
-      console.log('📡 Auth token length:', authToken.length);
-      console.log('📡 Content length:', content.length);
-      console.log('📡 Content preview:', content.substring(0, 50));
-      
-      // Test OPTIONS request first
-      console.log('🔍 Testing OPTIONS request...');
-      const optionsResponse = await fetch(functionUrl, {
-        method: 'OPTIONS',
-        headers: {
-          'Origin': window.location.origin,
-          'Access-Control-Request-Method': 'POST',
-          'Access-Control-Request-Headers': 'authorization, x-client-info, apikey, content-type'
-        }
-      });
-      
-      console.log('📊 OPTIONS response status:', optionsResponse.status);
-      console.log('📊 OPTIONS response headers:', Object.fromEntries(optionsResponse.headers.entries()));
-      
-      if (!optionsResponse.ok) {
-        console.error('❌ OPTIONS request failed');
-        throw new Error(`OPTIONS request failed: ${optionsResponse.status}`);
-      }
-      
-      // Test POST request
-      console.log('🔍 Testing POST request...');
-      const requestBody = {
-        content: content.trim(),
-        authToken: authToken
-      };
-      
-      console.log('📦 Request body keys:', Object.keys(requestBody));
-      console.log('📦 Request body content length:', requestBody.content.length);
-      console.log('📦 Request body auth token length:', requestBody.authToken.length);
-      
-      const postResponse = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
-        },
-        body: JSON.stringify(requestBody)
-      });
-      
-      console.log('📊 POST response status:', postResponse.status);
-      console.log('📊 POST response ok:', postResponse.ok);
-      console.log('📊 POST response headers:', Object.fromEntries(postResponse.headers.entries()));
-      
-      if (!postResponse.ok) {
-        const errorText = await postResponse.text();
-        console.error('❌ POST request failed');
-        console.error('❌ Error response:', errorText);
-        throw new Error(`POST request failed: ${postResponse.status} - ${errorText}`);
-      }
-      
-      const responseData = await postResponse.json();
-      console.log('✅ POST request successful');
-      console.log('📊 Response data keys:', Object.keys(responseData));
-      console.log('📊 Response data status:', responseData.status);
-      
-      return responseData;
-    } catch (error) {
-      console.error('❌ STEP 3 FAILED - Direct fetch error:', error);
-      throw error;
-    }
-  };
-
-  // STEP 4: Test Supabase Functions Invoke
-  const testSupabaseFunctionsInvoke = async (authToken: string) => {
-    console.log('⚡ === STEP 4: SUPABASE FUNCTIONS INVOKE TEST ===');
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    
-    try {
-      console.log('📡 Testing supabase.functions.invoke...');
-      console.log('📡 Auth token length:', authToken.length);
-      
-      const requestBody = {
-        content: content.trim(),
-        authToken: authToken
-      };
-      
-      console.log('📦 Invoke request body:', requestBody);
-      
-      const { data, error } = await supabase.functions.invoke('generate-portfolio', {
-        body: requestBody
-      });
-      
-      console.log('📊 Invoke response data:', data);
-      console.log('📊 Invoke response error:', error);
-      
-      if (error) {
-        console.error('❌ Supabase functions invoke failed:', error);
-        throw error;
-      }
-      
-      console.log('✅ Supabase functions invoke successful');
-      return data;
-    } catch (error) {
-      console.error('❌ STEP 4 FAILED - Supabase functions invoke error:', error);
-      throw error;
-    }
-  };
-
   const generatePortfolio = async (isRetry = false) => {
-    console.log('🚀 === PORTFOLIO GENERATION START WITH GRANULAR DEBUGGING ===');
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    console.log('🔄 Is Retry:', isRetry);
-    console.log('🎯 Retry Count:', retryCount);
+    console.log('🚀 === STARTING PORTFOLIO GENERATION ===');
+    console.log('🚀 Timestamp:', new Date().toISOString());
+    console.log('🚀 Is Retry:', isRetry);
+    console.log('🚀 Retry Count:', retryCount);
+    console.log('🚀 Content length:', content?.length);
+    console.log('🚀 Content preview:', content?.substring(0, 50) + '...');
+    console.log('🚀 Session exists:', !!session);
+    console.log('🚀 User ID:', session?.user?.id);
 
     if (!content || content.trim().length === 0) {
-      console.error('❌ No content provided or content is empty');
+      console.error('❌ No content provided');
       setError('Content is required for portfolio generation.');
+      return;
+    }
+
+    if (!session?.access_token) {
+      console.error('❌ No session or access token');
+      setError('Authentication required. Please log in.');
       return;
     }
 
@@ -365,70 +203,122 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      // STEP 1: Test Supabase Client
-      setCurrentStep('Step 1: Testing Supabase client...');
-      const clientOk = await testSupabaseClient();
-      if (!clientOk) {
-        throw new Error('Supabase client test failed');
-      }
+      console.log('🌐 === PREPARING DIRECT FETCH REQUEST ===');
+      
+      const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+      const authToken = session.access_token;
+      
+      console.log('🌐 Function URL:', functionUrl);
+      console.log('🌐 Auth token exists:', !!authToken);
+      console.log('🌐 Auth token length:', authToken?.length);
+      console.log('🌐 Auth token preview:', authToken?.substring(0, 20) + '...');
+      
+      const requestBody = {
+        content: content.trim(),
+        authToken: authToken
+      };
+      
+      console.log('🌐 Request body prepared:');
+      console.log('🌐 - content length:', requestBody.content.length);
+      console.log('🌐 - authToken length:', requestBody.authToken.length);
+      console.log('🌐 - content preview:', requestBody.content.substring(0, 100));
+
+      const requestHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
+        'x-client-info': 'lovable-project'
+      };
+
+      console.log('🌐 Request headers prepared:', Object.keys(requestHeaders));
+
+      setCurrentStep('Sending request to portfolio generator...');
       setProgress(10);
 
-      // STEP 2: Validate Authentication 
-      setCurrentStep('Step 2: Validating authentication...');
-      const validSession = await validateAuthenticationDeep();
-      if (!validSession?.access_token) {
-        throw new Error('Authentication validation failed');
-      }
-      setProgress(20);
-
-      // STEP 3: Test Direct Fetch
-      setCurrentStep('Step 3: Testing direct fetch...');
-      try {
-        const directFetchResult = await testDirectFetch(validSession.access_token);
-        console.log('✅ Direct fetch worked! Processing result...');
-        processPortfolioResponse(directFetchResult);
-        return;
-      } catch (directFetchError) {
-        console.warn('⚠️ Direct fetch failed, trying Supabase functions invoke:', directFetchError);
-        setProgress(30);
-      }
-
-      // STEP 4: Test Supabase Functions Invoke (fallback)
-      setCurrentStep('Step 4: Testing Supabase functions invoke...');
-      const invokeResult = await testSupabaseFunctionsInvoke(validSession.access_token);
-      console.log('✅ Supabase functions invoke worked! Processing result...');
-      processPortfolioResponse(invokeResult);
-
-    } catch (error) {
-      console.error('💥 === COMPREHENSIVE ERROR ANALYSIS ===');
-      console.error('🔥 Error caught in try-catch block');
-      console.error('🔥 Error type:', typeof error);
-      console.error('🔥 Error instanceof Error:', error instanceof Error);
-      console.error('🔥 Error constructor:', error?.constructor?.name);
-      console.error('🔥 Error name:', error instanceof Error ? error.name : 'Unknown');
-      console.error('🔥 Error message:', error instanceof Error ? error.message : String(error));
-      console.error('🔥 Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-      console.error('🔥 Full error object:', error);
-      console.error('🔥 Error JSON:', JSON.stringify(error, null, 2));
-      console.error('🔥 Session at error time:', !!session?.access_token);
-      console.error('🔥 Content at error time:', content?.length);
-      console.error('🔥 Timestamp:', new Date().toISOString());
+      console.log('🌐 === MAKING DIRECT FETCH REQUEST ===');
+      console.log('🌐 Making POST request to:', functionUrl);
       
-      handleRetry(error instanceof Error ? error.message : 'Unknown error occurred');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('⏰ Request timeout after 30 seconds');
+        controller.abort();
+      }, 30000);
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      console.log('📡 === FETCH RESPONSE RECEIVED ===');
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response ok:', response.ok);
+      console.log('📡 Response status text:', response.statusText);
+      console.log('📡 Response headers:');
+      for (const [key, value] of response.headers.entries()) {
+        console.log('📡   -', key + ':', value);
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response not ok:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+      }
+
+      console.log('📡 Parsing response as JSON...');
+      const responseData = await response.json();
+      
+      console.log('📡 === RESPONSE DATA RECEIVED ===');
+      console.log('📡 Response data type:', typeof responseData);
+      console.log('📡 Response data keys:', responseData ? Object.keys(responseData) : 'null');
+      
+      if (responseData) {
+        console.log('📡 Response status:', responseData.status);
+        console.log('📡 Response steps:', responseData.steps?.length || 0);
+        console.log('📡 Response errors:', responseData.errors?.length || 0);
+        console.log('📡 Response warnings:', responseData.warnings?.length || 0);
+        console.log('📡 Response trade ideas:', responseData.data?.tradeIdeas?.length || 0);
+      }
+
+      console.log('✅ === PROCESSING SUCCESSFUL RESPONSE ===');
+      processPortfolioResponse(responseData);
+
+    } catch (error: any) {
+      console.error('💥 === PORTFOLIO GENERATION FAILED ===');
+      console.error('💥 Error type:', typeof error);
+      console.error('💥 Error name:', error?.name);
+      console.error('💥 Error message:', error?.message);
+      console.error('💥 Error stack:', error?.stack);
+      console.error('💥 Full error:', error);
+      console.error('💥 Timestamp:', new Date().toISOString());
+      
+      if (error.name === 'AbortError') {
+        console.error('💥 Request was aborted (timeout)');
+        handleRetry('Request timeout after 30 seconds');
+      } else {
+        handleRetry(error?.message || 'Unknown error occurred');
+      }
     }
 
     console.log('🏁 === PORTFOLIO GENERATION END ===');
   };
 
   const handleRetry = (errorMessage: string) => {
-    console.log(`🔄 Portfolio generation failed: ${errorMessage}`);
+    console.log('🔄 === HANDLING RETRY ===');
+    console.log('🔄 Error message:', errorMessage);
+    console.log('🔄 Current retry count:', retryCount);
+    console.log('🔄 Max retries:', maxRetries);
     
     if (retryCount < maxRetries) {
-      console.log(`⏰ Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+      console.log(`⏰ Scheduling retry in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
       setRetryCount(prev => prev + 1);
       setCurrentStep(`Retrying in ${retryDelay / 1000} seconds...`);
       
       retryTimeoutRef.current = setTimeout(() => {
+        console.log('🔄 Executing retry...');
         generatePortfolio(true);
       }, retryDelay);
     } else {
@@ -446,6 +336,7 @@ export function PortfolioGenerationDropdown({
   };
 
   const handleManualRetry = () => {
+    console.log('🔄 Manual retry initiated');
     setRetryCount(0);
     setError(null);
     setResults(null);
