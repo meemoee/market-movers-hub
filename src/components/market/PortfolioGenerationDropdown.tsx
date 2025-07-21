@@ -245,11 +245,12 @@ export function PortfolioGenerationDropdown({
       const invokePayload = { content };
       console.log('📦 Invoke payload:', invokePayload);
       
-      // Add debugging for the actual supabase client state
-      console.log('🔧 Supabase client debug:', {
-        supabaseUrl: supabase.supabaseUrl,
-        supabaseKey: supabase.supabaseKey?.substring(0, 20) + '...',
-        authHeaders: await supabase.auth.getSession()
+      // Add debugging for the current session
+      const currentSession = await supabase.auth.getSession();
+      console.log('🔧 Supabase auth debug:', {
+        hasSession: !!currentSession.data.session,
+        sessionError: currentSession.error,
+        tokenLength: currentSession.data.session?.access_token?.length
       });
 
       const invokeResult = await supabase.functions.invoke('generate-portfolio', {
@@ -457,7 +458,7 @@ export function PortfolioGenerationDropdown({
                     <div className="p-3 border border-border rounded-lg">
                       <p className="text-sm text-muted-foreground">{results.data.news}</p>
                     </div>
-                  </CollibsibleContent>
+                  </CollapsibleContent>
                 </Collapsible>
               )}
 
