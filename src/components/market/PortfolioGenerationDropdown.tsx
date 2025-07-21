@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -64,13 +65,12 @@ export function PortfolioGenerationDropdown({
   const [error, setError] = useState<string | null>(null);
   const { session } = useAuth();
   const { toast } = useToast();
-  const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const totalSteps = 8; // Based on the edge function steps
+  const totalSteps = 8;
   const maxRetries = 3;
-  const retryDelay = 2000; // 2 seconds
+  const retryDelay = 2000;
 
   const stepNames = {
     'auth_validation': 'Validating authentication',
@@ -101,11 +101,6 @@ export function PortfolioGenerationDropdown({
   }, [isOpen, onClose]);
 
   const cleanupConnections = () => {
-    if (eventSourceRef.current) {
-      console.log('Closing existing SSE connection');
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
@@ -113,9 +108,8 @@ export function PortfolioGenerationDropdown({
   };
 
   const processPortfolioResponse = (data: any) => {
-    console.log('🔄 Processing portfolio response:', data);
+    console.log('🔄 Processing portfolio response:', JSON.stringify(data, null, 2));
     
-    // Check if it's a streaming response or direct response
     if (data.status === 'completed') {
       console.log('✅ Portfolio generation completed successfully');
       setResults(data);
@@ -129,7 +123,6 @@ export function PortfolioGenerationDropdown({
         description: "Your portfolio has been successfully generated!",
       });
     } else if (data.steps) {
-      // Process steps for progress updates
       const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
         const existingStepIndex = acc.findIndex(s => s.name === step.name);
         if (existingStepIndex >= 0) {
@@ -151,7 +144,6 @@ export function PortfolioGenerationDropdown({
         setCurrentStep('Completing portfolio generation...');
       }
       
-      // If processing but not complete, set final results
       if (data.status === 'completed') {
         setResults(data);
         setProgress(100);
@@ -168,7 +160,6 @@ export function PortfolioGenerationDropdown({
       console.error('❌ Server error:', data.error);
       throw new Error(data.error);
     } else {
-      // Fallback: treat as completed if we have data
       console.log('📋 Treating response as completed portfolio');
       setResults(data);
       setProgress(100);
@@ -184,89 +175,40 @@ export function PortfolioGenerationDropdown({
   };
 
   const generatePortfolio = async (isRetry = false) => {
-    // COMPREHENSIVE DEBUGGING - START
-    console.log('🚀 === PORTFOLIO GENERATION DIAGNOSTICS START ===');
+    console.log('🚀 === PORTFOLIO GENERATION START ===');
     console.log('⏰ Timestamp:', new Date().toISOString());
     console.log('🔄 Is Retry:', isRetry);
     console.log('🎯 Retry Count:', retryCount);
-    
+
     // SESSION DEBUGGING
     console.log('🔐 === SESSION ANALYSIS ===');
-    console.log('📊 Session State:', {
-      hasSession: !!session,
-      sessionType: typeof session,
-      sessionKeys: session ? Object.keys(session) : [],
-      hasAccessToken: !!session?.access_token,
-      hasUser: !!session?.user,
-      userId: session?.user?.id,
-      userEmail: session?.user?.email,
-      tokenExists: !!session?.access_token,
-      tokenType: typeof session?.access_token,
-      tokenLength: session?.access_token?.length,
-      tokenPrefix: session?.access_token?.substring(0, 30) + '...',
-      sessionExpiresAt: session?.expires_at,
-      sessionExpired: session?.expires_at ? Date.now() / 1000 > session.expires_at : 'unknown',
-      refreshToken: !!session?.refresh_token,
-      fullSessionStructure: JSON.stringify(session, null, 2)
-    });
-
-    // ENVIRONMENT DEBUGGING
-    console.log('🌍 === ENVIRONMENT ANALYSIS ===');
-    console.log('🌐 Browser Environment:', {
-      userAgent: navigator.userAgent,
-      onlineStatus: navigator.onLine,
-      currentURL: window.location.href,
-      origin: window.location.origin,
-      hostname: window.location.hostname,
-      protocol: window.location.protocol,
-      port: window.location.port,
-      pathname: window.location.pathname,
-      search: window.location.search,
-      hash: window.location.hash,
-      referrer: document.referrer,
-      cookieEnabled: navigator.cookieEnabled,
-      language: navigator.language,
-      languages: navigator.languages,
-      platform: navigator.platform,
-      hardwareConcurrency: navigator.hardwareConcurrency,
-      connection: (navigator as any).connection ? {
-        effectiveType: (navigator as any).connection.effectiveType,
-        downlink: (navigator as any).connection.downlink,
-        rtt: (navigator as any).connection.rtt
-      } : 'not available'
-    });
+    console.log('📊 Session exists:', !!session);
+    console.log('📊 Session data:', JSON.stringify(session, null, 2));
+    console.log('📊 Has access token:', !!session?.access_token);
+    console.log('📊 Token length:', session?.access_token?.length);
+    console.log('📊 User ID:', session?.user?.id);
+    console.log('📊 User email:', session?.user?.email);
 
     // CONTENT DEBUGGING
     console.log('📝 === CONTENT ANALYSIS ===');
-    console.log('📄 Request Content:', {
-      content: content,
-      contentType: typeof content,
-      contentLength: content?.length || 0,
-      contentPreview: content?.substring(0, 200) + (content?.length > 200 ? '...' : ''),
-      isEmpty: !content || content.trim().length === 0,
-      isString: typeof content === 'string',
-      hasSpecialChars: /[^\w\s]/.test(content || ''),
-      wordCount: content?.split(/\s+/).length || 0,
-      lineCount: content?.split('\n').length || 0,
-      encoding: new TextEncoder().encode(content || '').length,
-      rawContent: JSON.stringify(content)
-    });
+    console.log('📄 Content:', content);
+    console.log('📄 Content type:', typeof content);
+    console.log('📄 Content length:', content?.length);
+    console.log('📄 Content is string:', typeof content === 'string');
+    console.log('📄 Content is empty:', !content || content.trim().length === 0);
 
     // AUTHENTICATION VALIDATION
     if (!session?.access_token) {
       console.error('❌ === AUTHENTICATION FAILURE ===');
       console.error('🔐 No access token available');
-      console.error('📊 Session dump:', session);
-      console.error('🧪 Session test:', {
-        sessionExists: !!session,
-        sessionIsObject: typeof session === 'object',
-        sessionIsNull: session === null,
-        sessionIsUndefined: session === undefined,
-        hasAccessToken: session && 'access_token' in session,
-        accessTokenValue: session?.access_token,
-        accessTokenType: typeof session?.access_token
-      });
       setError('Authentication required. Please sign in and try again.');
+      return;
+    }
+
+    if (!content || content.trim().length === 0) {
+      console.error('❌ === CONTENT VALIDATION FAILURE ===');
+      console.error('📄 No content provided');
+      setError('Content is required for portfolio generation.');
       return;
     }
 
@@ -277,197 +219,92 @@ export function PortfolioGenerationDropdown({
 
     setIsGenerating(true);
     setProgress(0);
-    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Connecting to portfolio service...');
+    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Starting portfolio generation...');
     
-    // Clean up any existing connections
     cleanupConnections();
 
     try {
-      console.log('🚀 === DIRECT FETCH IMPLEMENTATION ===');
+      console.log('🚀 === SUPABASE FUNCTION INVOCATION ===');
       
-      const requestStartTime = Date.now();
+      const functionStartTime = Date.now();
       
-      // Construct the full URL for the edge function
-      const functionUrl = `https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio`;
+      // Prepare the request body
+      const requestBody = { content: content.trim() };
       
-      console.log('🌐 Request Configuration:', {
-        method: 'POST',
-        url: functionUrl,
-        timestamp: new Date().toISOString(),
-        requestId: Math.random().toString(36).substring(7)
-      });
-
-      // Prepare headers
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-        'x-client-info': 'lovable-project'
-      };
-
-      console.log('📋 Request Headers:', {
-        'Content-Type': headers['Content-Type'],
-        'Authorization': `Bearer ${session.access_token.substring(0, 20)}...`,
-        'apikey': `${headers.apikey.substring(0, 20)}...`,
-        'x-client-info': headers['x-client-info'],
-        authTokenLength: session.access_token.length,
-        authTokenStart: session.access_token.substring(0, 50),
-        fullHeaders: headers
-      });
-
-      // Prepare request body
-      const requestBody = { content };
-      const bodyString = JSON.stringify(requestBody);
-      
-      console.log('📦 Request Body:', {
+      console.log('📦 Function Request:', {
+        functionName: 'generate-portfolio',
         body: requestBody,
-        bodyString: bodyString,
-        bodyLength: bodyString.length,
-        bodySize: new Blob([bodyString]).size,
-        serialized: JSON.stringify(requestBody, null, 2)
+        bodyString: JSON.stringify(requestBody),
+        sessionValid: !!session,
+        timestamp: new Date().toISOString()
       });
 
-      // Network diagnostics before request
-      console.log('🔍 === PRE-REQUEST NETWORK DIAGNOSTICS ===');
-      try {
-        const testResponse = await fetch(window.location.origin, { method: 'HEAD' });
-        console.log('✅ Basic connectivity test:', {
-          status: testResponse.status,
-          ok: testResponse.ok,
-          headers: Object.fromEntries(testResponse.headers.entries())
-        });
-      } catch (netError) {
-        console.error('❌ Basic connectivity test failed:', netError);
-      }
-
-      // Test CORS preflight
-      try {
-        const corsResponse = await fetch(functionUrl, { 
-          method: 'OPTIONS',
-          headers: {
-            'Access-Control-Request-Method': 'POST',
-            'Access-Control-Request-Headers': 'content-type,authorization,apikey'
-          }
-        });
-        console.log('🔄 CORS preflight test:', {
-          status: corsResponse.status,
-          ok: corsResponse.ok,
-          headers: Object.fromEntries(corsResponse.headers.entries())
-        });
-      } catch (corsError) {
-        console.error('❌ CORS preflight failed:', corsError);
-      }
-
-      // Make the actual request
-      console.log('📡 === MAKING ACTUAL REQUEST ===');
-      console.log('⏰ Request start time:', new Date().toISOString());
+      // Use Supabase's built-in function invocation
+      console.log('📡 Calling supabase.functions.invoke...');
       
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: headers,
-        body: bodyString
+      const { data, error } = await supabase.functions.invoke('generate-portfolio', {
+        body: requestBody
       });
       
-      const requestEndTime = Date.now();
-      const requestDuration = requestEndTime - requestStartTime;
+      const functionEndTime = Date.now();
+      const functionDuration = functionEndTime - functionStartTime;
       
-      console.log('📈 === RESPONSE ANALYSIS ===');
-      console.log('📊 Response Metrics:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        type: response.type,
-        url: response.url,
-        redirected: response.redirected,
-        requestDuration: requestDuration,
-        responseTime: `${requestDuration}ms`,
-        headers: Object.fromEntries(response.headers.entries()),
-        bodyUsed: response.bodyUsed,
-        size: response.headers.get('content-length')
-      });
+      console.log('📈 === FUNCTION RESPONSE ANALYSIS ===');
+      console.log('📊 Function call duration:', functionDuration, 'ms');
+      console.log('📊 Response error:', error);
+      console.log('📊 Response data exists:', !!data);
+      console.log('📊 Response data type:', typeof data);
+      console.log('📊 Response data:', JSON.stringify(data, null, 2));
 
-      // Check response status
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ === HTTP ERROR RESPONSE ===');
-        console.error('🔥 Response Error Details:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorText: errorText,
-          headers: Object.fromEntries(response.headers.entries()),
-          url: response.url,
-          requestDuration: requestDuration
-        });
-        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+      // Check for function invocation errors
+      if (error) {
+        console.error('❌ === FUNCTION INVOCATION ERROR ===');
+        console.error('🔥 Function Error:', error);
+        console.error('🔥 Error message:', error.message);
+        console.error('🔥 Error details:', JSON.stringify(error, null, 2));
+        throw new Error(`Function invocation failed: ${error.message}`);
       }
 
-      // Parse response
-      console.log('🔄 === PARSING RESPONSE ===');
-      const responseText = await response.text();
-      console.log('📄 Raw Response:', {
-        responseLength: responseText.length,
-        responsePreview: responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''),
-        fullResponse: responseText
-      });
-
-      let responseData;
-      try {
-        responseData = JSON.parse(responseText);
-        console.log('✅ JSON Parsing Success:', {
-          dataType: typeof responseData,
-          dataKeys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : [],
-          hasStatus: 'status' in (responseData || {}),
-          hasData: 'data' in (responseData || {}),
-          hasSteps: 'steps' in (responseData || {}),
-          hasErrors: 'errors' in (responseData || {}),
-          parsedData: responseData
-        });
-      } catch (parseError) {
-        console.error('❌ JSON Parsing Failed:', {
-          error: parseError,
-          responseText: responseText,
-          parseErrorMessage: parseError instanceof Error ? parseError.message : 'Unknown parsing error'
-        });
-        throw new Error(`Failed to parse JSON response: ${parseError}`);
+      // Check for data
+      if (!data) {
+        console.error('❌ === NO RESPONSE DATA ===');
+        console.error('🔥 Function returned no data');
+        throw new Error('Function returned no data');
       }
 
       // Process the successful response
       console.log('✅ === PROCESSING SUCCESS RESPONSE ===');
-      console.log('🎯 Final Response Data:', responseData);
+      console.log('🎯 Response Data Structure:', {
+        hasStatus: 'status' in data,
+        hasSteps: 'steps' in data,
+        hasData: 'data' in data,
+        hasErrors: 'errors' in data,
+        status: data.status,
+        stepsCount: data.steps?.length,
+        dataKeys: data.data ? Object.keys(data.data) : [],
+        errorsCount: data.errors?.length
+      });
       
-      processPortfolioResponse(responseData);
+      processPortfolioResponse(data);
 
     } catch (error) {
       console.error('💥 === COMPREHENSIVE ERROR ANALYSIS ===');
-      console.error('🔥 Error Details:', {
-        errorType: typeof error,
-        errorName: error instanceof Error ? error.name : 'Unknown',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorStack: error instanceof Error ? error.stack : 'No stack trace',
-        fullError: error,
-        isNetworkError: error instanceof TypeError,
-        isFetchError: error instanceof Error && error.message.includes('fetch'),
-        isTimeoutError: error instanceof Error && error.message.includes('timeout'),
-        isAbortError: error instanceof Error && error.message.includes('abort'),
-        isCorsError: error instanceof Error && error.message.includes('cors'),
-        timestamp: new Date().toISOString(),
-        retryAttempt: retryCount
-      });
-      
-      // Additional network debugging on error
-      console.log('🔍 === POST-ERROR DIAGNOSTICS ===');
-      console.log('🌐 Network State:', {
-        onlineStatus: navigator.onLine,
-        connectionType: (navigator as any).connection?.effectiveType || 'unknown',
-        sessionStillValid: !!session?.access_token,
-        tokenExpired: session?.expires_at ? Date.now() / 1000 > session.expires_at : 'unknown',
-        currentTimestamp: new Date().toISOString()
-      });
+      console.error('🔥 Error type:', typeof error);
+      console.error('🔥 Error instanceof Error:', error instanceof Error);
+      console.error('🔥 Error name:', error instanceof Error ? error.name : 'Unknown');
+      console.error('🔥 Error message:', error instanceof Error ? error.message : String(error));
+      console.error('🔥 Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      console.error('🔥 Full error object:', error);
+      console.error('🔥 Is network error:', error instanceof TypeError);
+      console.error('🔥 Is fetch error:', error instanceof Error && error.message.includes('fetch'));
+      console.error('🔥 Is timeout error:', error instanceof Error && error.message.includes('timeout'));
+      console.error('🔥 Session at error time:', !!session?.access_token);
+      console.error('🔥 Timestamp:', new Date().toISOString());
       
       handleRetry(error instanceof Error ? error.message : 'Unknown error occurred');
     }
 
-    console.log('🏁 === PORTFOLIO GENERATION DIAGNOSTICS END ===');
+    console.log('🏁 === PORTFOLIO GENERATION END ===');
   };
 
   const handleRetry = (errorMessage: string) => {
@@ -507,22 +344,6 @@ export function PortfolioGenerationDropdown({
       cleanupConnections();
     };
   }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen, onClose]);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
