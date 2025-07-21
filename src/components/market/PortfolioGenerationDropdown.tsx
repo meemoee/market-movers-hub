@@ -175,39 +175,48 @@ export function PortfolioGenerationDropdown({
   };
 
   const generatePortfolio = async (isRetry = false) => {
-    console.log('🚀 === PORTFOLIO GENERATION START ===');
+    console.log('🚀 === PORTFOLIO GENERATION START WITH EXTENSIVE DEBUG ===');
     console.log('⏰ Timestamp:', new Date().toISOString());
     console.log('🔄 Is Retry:', isRetry);
     console.log('🎯 Retry Count:', retryCount);
 
     // SESSION DEBUGGING
-    console.log('🔐 === SESSION ANALYSIS ===');
+    console.log('🔐 === COMPREHENSIVE SESSION ANALYSIS ===');
     console.log('📊 Session exists:', !!session);
-    console.log('📊 Session data:', JSON.stringify(session, null, 2));
+    console.log('📊 Session object keys:', session ? Object.keys(session) : 'N/A');
+    console.log('📊 Session data (full):', JSON.stringify(session, null, 2));
     console.log('📊 Has access token:', !!session?.access_token);
+    console.log('📊 Token type:', typeof session?.access_token);
     console.log('📊 Token length:', session?.access_token?.length);
+    console.log('📊 Token preview:', session?.access_token ? session.access_token.substring(0, 20) + '...' : 'N/A');
     console.log('📊 User ID:', session?.user?.id);
     console.log('📊 User email:', session?.user?.email);
+    console.log('📊 Token expires at:', session?.expires_at);
+    console.log('📊 Token expiry date:', session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A');
+    console.log('📊 Is token expired:', session?.expires_at ? Date.now() / 1000 > session.expires_at : 'Unknown');
 
     // CONTENT DEBUGGING
-    console.log('📝 === CONTENT ANALYSIS ===');
+    console.log('📝 === COMPREHENSIVE CONTENT ANALYSIS ===');
     console.log('📄 Content:', content);
     console.log('📄 Content type:', typeof content);
     console.log('📄 Content length:', content?.length);
     console.log('📄 Content is string:', typeof content === 'string');
     console.log('📄 Content is empty:', !content || content.trim().length === 0);
+    console.log('📄 Content trimmed:', content?.trim());
+    console.log('📄 Content first 50 chars:', content?.substring(0, 50));
 
     // AUTHENTICATION VALIDATION
     if (!session?.access_token) {
       console.error('❌ === AUTHENTICATION FAILURE ===');
-      console.error('🔐 No access token available');
+      console.error('🔐 No access token available in session');
+      console.error('🔐 Session state:', session);
       setError('Authentication required. Please sign in and try again.');
       return;
     }
 
     if (!content || content.trim().length === 0) {
       console.error('❌ === CONTENT VALIDATION FAILURE ===');
-      console.error('📄 No content provided');
+      console.error('📄 No content provided or content is empty');
       setError('Content is required for portfolio generation.');
       return;
     }
@@ -224,23 +233,34 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      console.log('🚀 === SUPABASE FUNCTION INVOCATION ===');
+      console.log('🚀 === SUPABASE FUNCTION INVOCATION WITH EXPLICIT AUTH ===');
       
       const functionStartTime = Date.now();
       
-      // Prepare the request body
-      const requestBody = { content: content.trim() };
+      // Prepare the request body with explicit auth token
+      const requestBody = { 
+        content: content.trim(),
+        authToken: session.access_token
+      };
       
-      console.log('📦 Function Request:', {
+      console.log('📦 === COMPREHENSIVE REQUEST ANALYSIS ===');
+      console.log('📦 Function Request Details:', {
         functionName: 'generate-portfolio',
         body: requestBody,
-        bodyString: JSON.stringify(requestBody),
+        bodyKeys: Object.keys(requestBody),
+        contentLength: requestBody.content.length,
+        hasAuthToken: !!requestBody.authToken,
+        authTokenType: typeof requestBody.authToken,
+        authTokenLength: requestBody.authToken?.length,
+        authTokenPreview: requestBody.authToken ? requestBody.authToken.substring(0, 20) + '...' : 'N/A',
         sessionValid: !!session,
         timestamp: new Date().toISOString()
       });
 
-      // Use Supabase's built-in function invocation
-      console.log('📡 Calling supabase.functions.invoke...');
+      console.log('📡 === CALLING SUPABASE FUNCTION ===');
+      console.log('📡 Supabase client exists:', !!supabase);
+      console.log('📡 Supabase client functions exists:', !!supabase.functions);
+      console.log('📡 About to invoke generate-portfolio function...');
       
       const { data, error } = await supabase.functions.invoke('generate-portfolio', {
         body: requestBody
@@ -249,56 +269,80 @@ export function PortfolioGenerationDropdown({
       const functionEndTime = Date.now();
       const functionDuration = functionEndTime - functionStartTime;
       
-      console.log('📈 === FUNCTION RESPONSE ANALYSIS ===');
+      console.log('📈 === COMPREHENSIVE FUNCTION RESPONSE ANALYSIS ===');
       console.log('📊 Function call duration:', functionDuration, 'ms');
+      console.log('📊 Response has error:', !!error);
+      console.log('📊 Response error type:', typeof error);
       console.log('📊 Response error:', error);
+      console.log('📊 Response error message:', error?.message);
+      console.log('📊 Response error details:', JSON.stringify(error, null, 2));
       console.log('📊 Response data exists:', !!data);
       console.log('📊 Response data type:', typeof data);
-      console.log('📊 Response data:', JSON.stringify(data, null, 2));
+      console.log('📊 Response data keys:', data ? Object.keys(data) : 'N/A');
+      console.log('📊 Response data (full):', JSON.stringify(data, null, 2));
 
       // Check for function invocation errors
       if (error) {
-        console.error('❌ === FUNCTION INVOCATION ERROR ===');
-        console.error('🔥 Function Error:', error);
+        console.error('❌ === COMPREHENSIVE FUNCTION INVOCATION ERROR ===');
+        console.error('🔥 Function Error Object:', error);
         console.error('🔥 Error message:', error.message);
-        console.error('🔥 Error details:', JSON.stringify(error, null, 2));
+        console.error('🔥 Error name:', error.name);
+        console.error('🔥 Error stack:', error.stack);
+        console.error('🔥 Error details (full):', JSON.stringify(error, null, 2));
+        console.error('🔥 Error type:', typeof error);
+        console.error('🔥 Error constructor:', error.constructor?.name);
         throw new Error(`Function invocation failed: ${error.message}`);
       }
 
       // Check for data
       if (!data) {
         console.error('❌ === NO RESPONSE DATA ===');
-        console.error('🔥 Function returned no data');
+        console.error('🔥 Function returned null/undefined data');
+        console.error('🔥 Data value:', data);
+        console.error('🔥 Data type:', typeof data);
         throw new Error('Function returned no data');
       }
 
       // Process the successful response
       console.log('✅ === PROCESSING SUCCESS RESPONSE ===');
-      console.log('🎯 Response Data Structure:', {
+      console.log('🎯 Response Data Structure Analysis:', {
         hasStatus: 'status' in data,
         hasSteps: 'steps' in data,
         hasData: 'data' in data,
         hasErrors: 'errors' in data,
         status: data.status,
         stepsCount: data.steps?.length,
+        stepsArray: data.steps,
         dataKeys: data.data ? Object.keys(data.data) : [],
-        errorsCount: data.errors?.length
+        dataObject: data.data,
+        errorsCount: data.errors?.length,
+        errorsArray: data.errors,
+        warningsCount: data.warnings?.length,
+        fullDataStructure: data
       });
       
+      console.log('🔄 About to process portfolio response...');
       processPortfolioResponse(data);
+      console.log('✅ Portfolio response processed successfully');
 
     } catch (error) {
       console.error('💥 === COMPREHENSIVE ERROR ANALYSIS ===');
+      console.error('🔥 Error caught in try-catch block');
       console.error('🔥 Error type:', typeof error);
       console.error('🔥 Error instanceof Error:', error instanceof Error);
+      console.error('🔥 Error constructor:', error?.constructor?.name);
       console.error('🔥 Error name:', error instanceof Error ? error.name : 'Unknown');
       console.error('🔥 Error message:', error instanceof Error ? error.message : String(error));
       console.error('🔥 Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       console.error('🔥 Full error object:', error);
+      console.error('🔥 Error JSON:', JSON.stringify(error, null, 2));
+      console.error('🔥 Error toString():', error?.toString());
       console.error('🔥 Is network error:', error instanceof TypeError);
       console.error('🔥 Is fetch error:', error instanceof Error && error.message.includes('fetch'));
       console.error('🔥 Is timeout error:', error instanceof Error && error.message.includes('timeout'));
+      console.error('🔥 Is CORS error:', error instanceof Error && error.message.includes('cors'));
       console.error('🔥 Session at error time:', !!session?.access_token);
+      console.error('🔥 Content at error time:', content?.length);
       console.error('🔥 Timestamp:', new Date().toISOString());
       
       handleRetry(error instanceof Error ? error.message : 'Unknown error occurred');
