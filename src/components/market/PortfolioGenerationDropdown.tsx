@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -174,49 +173,182 @@ export function PortfolioGenerationDropdown({
     }
   };
 
+  // STEP 1: Test Supabase Client Configuration
+  const testSupabaseClient = async () => {
+    console.log('🔧 === STEP 1: TESTING SUPABASE CLIENT ===');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
+    try {
+      console.log('📊 Supabase client exists:', !!supabase);
+      console.log('📊 Supabase client type:', typeof supabase);
+      console.log('📊 Supabase client constructor:', supabase?.constructor?.name);
+      console.log('📊 Supabase client keys:', Object.keys(supabase || {}));
+      
+      // Test basic Supabase functionality
+      const { data: { session: testSession } } = await supabase.auth.getSession();
+      console.log('📊 Test session retrieval successful:', !!testSession);
+      console.log('📊 Test session user ID:', testSession?.user?.id);
+      
+      return true;
+    } catch (error) {
+      console.error('❌ STEP 1 FAILED - Supabase client test error:', error);
+      return false;
+    }
+  };
+
+  // STEP 2: Validate Authentication Deep Dive
+  const validateAuthenticationDeep = async () => {
+    console.log('🔐 === STEP 2: DEEP AUTHENTICATION VALIDATION ===');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
+    try {
+      // Get fresh session
+      const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      console.log('📊 Fresh session retrieval error:', sessionError);
+      console.log('📊 Fresh session exists:', !!freshSession);
+      console.log('📊 Fresh session keys:', freshSession ? Object.keys(freshSession) : 'N/A');
+      console.log('📊 Fresh session user:', freshSession?.user ? 'EXISTS' : 'MISSING');
+      console.log('📊 Fresh session access_token exists:', !!freshSession?.access_token);
+      console.log('📊 Fresh session access_token length:', freshSession?.access_token?.length);
+      console.log('📊 Fresh session expires_at:', freshSession?.expires_at);
+      console.log('📊 Fresh session token_type:', freshSession?.token_type);
+      
+      if (!freshSession?.access_token) {
+        throw new Error('No access token available in fresh session');
+      }
+      
+      // Test token validity
+      const tokenPreview = freshSession.access_token.substring(0, 20) + '...';
+      console.log('📊 Token preview:', tokenPreview);
+      
+      return freshSession;
+    } catch (error) {
+      console.error('❌ STEP 2 FAILED - Authentication validation error:', error);
+      throw error;
+    }
+  };
+
+  // STEP 3: Test Direct Fetch to Edge Function
+  const testDirectFetch = async (authToken: string) => {
+    console.log('🌐 === STEP 3: DIRECT FETCH TEST ===');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
+    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+    
+    try {
+      console.log('📡 Function URL:', functionUrl);
+      console.log('📡 Auth token length:', authToken.length);
+      console.log('📡 Content length:', content.length);
+      console.log('📡 Content preview:', content.substring(0, 50));
+      
+      // Test OPTIONS request first
+      console.log('🔍 Testing OPTIONS request...');
+      const optionsResponse = await fetch(functionUrl, {
+        method: 'OPTIONS',
+        headers: {
+          'Origin': window.location.origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'authorization, x-client-info, apikey, content-type'
+        }
+      });
+      
+      console.log('📊 OPTIONS response status:', optionsResponse.status);
+      console.log('📊 OPTIONS response headers:', Object.fromEntries(optionsResponse.headers.entries()));
+      
+      if (!optionsResponse.ok) {
+        console.error('❌ OPTIONS request failed');
+        throw new Error(`OPTIONS request failed: ${optionsResponse.status}`);
+      }
+      
+      // Test POST request
+      console.log('🔍 Testing POST request...');
+      const requestBody = {
+        content: content.trim(),
+        authToken: authToken
+      };
+      
+      console.log('📦 Request body keys:', Object.keys(requestBody));
+      console.log('📦 Request body content length:', requestBody.content.length);
+      console.log('📦 Request body auth token length:', requestBody.authToken.length);
+      
+      const postResponse = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      console.log('📊 POST response status:', postResponse.status);
+      console.log('📊 POST response ok:', postResponse.ok);
+      console.log('📊 POST response headers:', Object.fromEntries(postResponse.headers.entries()));
+      
+      if (!postResponse.ok) {
+        const errorText = await postResponse.text();
+        console.error('❌ POST request failed');
+        console.error('❌ Error response:', errorText);
+        throw new Error(`POST request failed: ${postResponse.status} - ${errorText}`);
+      }
+      
+      const responseData = await postResponse.json();
+      console.log('✅ POST request successful');
+      console.log('📊 Response data keys:', Object.keys(responseData));
+      console.log('📊 Response data status:', responseData.status);
+      
+      return responseData;
+    } catch (error) {
+      console.error('❌ STEP 3 FAILED - Direct fetch error:', error);
+      throw error;
+    }
+  };
+
+  // STEP 4: Test Supabase Functions Invoke
+  const testSupabaseFunctionsInvoke = async (authToken: string) => {
+    console.log('⚡ === STEP 4: SUPABASE FUNCTIONS INVOKE TEST ===');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
+    try {
+      console.log('📡 Testing supabase.functions.invoke...');
+      console.log('📡 Auth token length:', authToken.length);
+      
+      const requestBody = {
+        content: content.trim(),
+        authToken: authToken
+      };
+      
+      console.log('📦 Invoke request body:', requestBody);
+      
+      const { data, error } = await supabase.functions.invoke('generate-portfolio', {
+        body: requestBody
+      });
+      
+      console.log('📊 Invoke response data:', data);
+      console.log('📊 Invoke response error:', error);
+      
+      if (error) {
+        console.error('❌ Supabase functions invoke failed:', error);
+        throw error;
+      }
+      
+      console.log('✅ Supabase functions invoke successful');
+      return data;
+    } catch (error) {
+      console.error('❌ STEP 4 FAILED - Supabase functions invoke error:', error);
+      throw error;
+    }
+  };
+
   const generatePortfolio = async (isRetry = false) => {
-    console.log('🚀 === PORTFOLIO GENERATION START WITH EXTENSIVE DEBUG ===');
+    console.log('🚀 === PORTFOLIO GENERATION START WITH GRANULAR DEBUGGING ===');
     console.log('⏰ Timestamp:', new Date().toISOString());
     console.log('🔄 Is Retry:', isRetry);
     console.log('🎯 Retry Count:', retryCount);
 
-    // SESSION DEBUGGING
-    console.log('🔐 === COMPREHENSIVE SESSION ANALYSIS ===');
-    console.log('📊 Session exists:', !!session);
-    console.log('📊 Session object keys:', session ? Object.keys(session) : 'N/A');
-    console.log('📊 Session data (full):', JSON.stringify(session, null, 2));
-    console.log('📊 Has access token:', !!session?.access_token);
-    console.log('📊 Token type:', typeof session?.access_token);
-    console.log('📊 Token length:', session?.access_token?.length);
-    console.log('📊 Token preview:', session?.access_token ? session.access_token.substring(0, 20) + '...' : 'N/A');
-    console.log('📊 User ID:', session?.user?.id);
-    console.log('📊 User email:', session?.user?.email);
-    console.log('📊 Token expires at:', session?.expires_at);
-    console.log('📊 Token expiry date:', session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A');
-    console.log('📊 Is token expired:', session?.expires_at ? Date.now() / 1000 > session.expires_at : 'Unknown');
-
-    // CONTENT DEBUGGING
-    console.log('📝 === COMPREHENSIVE CONTENT ANALYSIS ===');
-    console.log('📄 Content:', content);
-    console.log('📄 Content type:', typeof content);
-    console.log('📄 Content length:', content?.length);
-    console.log('📄 Content is string:', typeof content === 'string');
-    console.log('📄 Content is empty:', !content || content.trim().length === 0);
-    console.log('📄 Content trimmed:', content?.trim());
-    console.log('📄 Content first 50 chars:', content?.substring(0, 50));
-
-    // AUTHENTICATION VALIDATION
-    if (!session?.access_token) {
-      console.error('❌ === AUTHENTICATION FAILURE ===');
-      console.error('🔐 No access token available in session');
-      console.error('🔐 Session state:', session);
-      setError('Authentication required. Please sign in and try again.');
-      return;
-    }
-
     if (!content || content.trim().length === 0) {
-      console.error('❌ === CONTENT VALIDATION FAILURE ===');
-      console.error('📄 No content provided or content is empty');
+      console.error('❌ No content provided or content is empty');
       setError('Content is required for portfolio generation.');
       return;
     }
@@ -233,97 +365,39 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      console.log('🚀 === SUPABASE FUNCTION INVOCATION WITH EXPLICIT AUTH ===');
-      
-      const functionStartTime = Date.now();
-      
-      // Prepare the request body with explicit auth token
-      const requestBody = { 
-        content: content.trim(),
-        authToken: session.access_token
-      };
-      
-      console.log('📦 === COMPREHENSIVE REQUEST ANALYSIS ===');
-      console.log('📦 Function Request Details:', {
-        functionName: 'generate-portfolio',
-        body: requestBody,
-        bodyKeys: Object.keys(requestBody),
-        contentLength: requestBody.content.length,
-        hasAuthToken: !!requestBody.authToken,
-        authTokenType: typeof requestBody.authToken,
-        authTokenLength: requestBody.authToken?.length,
-        authTokenPreview: requestBody.authToken ? requestBody.authToken.substring(0, 20) + '...' : 'N/A',
-        sessionValid: !!session,
-        timestamp: new Date().toISOString()
-      });
+      // STEP 1: Test Supabase Client
+      setCurrentStep('Step 1: Testing Supabase client...');
+      const clientOk = await testSupabaseClient();
+      if (!clientOk) {
+        throw new Error('Supabase client test failed');
+      }
+      setProgress(10);
 
-      console.log('📡 === CALLING SUPABASE FUNCTION ===');
-      console.log('📡 Supabase client exists:', !!supabase);
-      console.log('📡 Supabase client functions exists:', !!supabase.functions);
-      console.log('📡 About to invoke generate-portfolio function...');
-      
-      const { data, error } = await supabase.functions.invoke('generate-portfolio', {
-        body: requestBody
-      });
-      
-      const functionEndTime = Date.now();
-      const functionDuration = functionEndTime - functionStartTime;
-      
-      console.log('📈 === COMPREHENSIVE FUNCTION RESPONSE ANALYSIS ===');
-      console.log('📊 Function call duration:', functionDuration, 'ms');
-      console.log('📊 Response has error:', !!error);
-      console.log('📊 Response error type:', typeof error);
-      console.log('📊 Response error:', error);
-      console.log('📊 Response error message:', error?.message);
-      console.log('📊 Response error details:', JSON.stringify(error, null, 2));
-      console.log('📊 Response data exists:', !!data);
-      console.log('📊 Response data type:', typeof data);
-      console.log('📊 Response data keys:', data ? Object.keys(data) : 'N/A');
-      console.log('📊 Response data (full):', JSON.stringify(data, null, 2));
+      // STEP 2: Validate Authentication 
+      setCurrentStep('Step 2: Validating authentication...');
+      const validSession = await validateAuthenticationDeep();
+      if (!validSession?.access_token) {
+        throw new Error('Authentication validation failed');
+      }
+      setProgress(20);
 
-      // Check for function invocation errors
-      if (error) {
-        console.error('❌ === COMPREHENSIVE FUNCTION INVOCATION ERROR ===');
-        console.error('🔥 Function Error Object:', error);
-        console.error('🔥 Error message:', error.message);
-        console.error('🔥 Error name:', error.name);
-        console.error('🔥 Error stack:', error.stack);
-        console.error('🔥 Error details (full):', JSON.stringify(error, null, 2));
-        console.error('🔥 Error type:', typeof error);
-        console.error('🔥 Error constructor:', error.constructor?.name);
-        throw new Error(`Function invocation failed: ${error.message}`);
+      // STEP 3: Test Direct Fetch
+      setCurrentStep('Step 3: Testing direct fetch...');
+      try {
+        const directFetchResult = await testDirectFetch(validSession.access_token);
+        console.log('✅ Direct fetch worked! Processing result...');
+        processPortfolioResponse(directFetchResult);
+        return;
+      } catch (directFetchError) {
+        console.warn('⚠️ Direct fetch failed, trying Supabase functions invoke:', directFetchError);
+        setProgress(30);
       }
 
-      // Check for data
-      if (!data) {
-        console.error('❌ === NO RESPONSE DATA ===');
-        console.error('🔥 Function returned null/undefined data');
-        console.error('🔥 Data value:', data);
-        console.error('🔥 Data type:', typeof data);
-        throw new Error('Function returned no data');
-      }
-
-      // Process the successful response
-      console.log('✅ === PROCESSING SUCCESS RESPONSE ===');
-      console.log('🎯 Response Data Structure Analysis:', {
-        hasStatus: 'status' in data,
-        hasSteps: 'steps' in data,
-        hasData: 'data' in data,
-        hasErrors: 'errors' in data,
-        status: data.status,
-        stepsCount: data.steps?.length,
-        stepsArray: data.steps,
-        dataKeys: data.data ? Object.keys(data.data) : [],
-        dataObject: data.data,
-        errorsCount: data.errors?.length,
-        errorsArray: data.errors,
-        warningsCount: data.warnings?.length,
-        fullDataStructure: data
-      });
-      
-      console.log('🔄 About to process portfolio response...');
-      processPortfolioResponse(data);
-      console.log('✅ Portfolio response processed successfully');
+      // STEP 4: Test Supabase Functions Invoke (fallback)
+      setCurrentStep('Step 4: Testing Supabase functions invoke...');
+      const invokeResult = await testSupabaseFunctionsInvoke(validSession.access_token);
+      console.log('✅ Supabase functions invoke worked! Processing result...');
+      processPortfolioResponse(invokeResult);
 
     } catch (error) {
       console.error('💥 === COMPREHENSIVE ERROR ANALYSIS ===');
@@ -336,11 +410,6 @@ export function PortfolioGenerationDropdown({
       console.error('🔥 Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       console.error('🔥 Full error object:', error);
       console.error('🔥 Error JSON:', JSON.stringify(error, null, 2));
-      console.error('🔥 Error toString():', error?.toString());
-      console.error('🔥 Is network error:', error instanceof TypeError);
-      console.error('🔥 Is fetch error:', error instanceof Error && error.message.includes('fetch'));
-      console.error('🔥 Is timeout error:', error instanceof Error && error.message.includes('timeout'));
-      console.error('🔥 Is CORS error:', error instanceof Error && error.message.includes('cors'));
       console.error('🔥 Session at error time:', !!session?.access_token);
       console.error('🔥 Content at error time:', content?.length);
       console.error('🔥 Timestamp:', new Date().toISOString());
