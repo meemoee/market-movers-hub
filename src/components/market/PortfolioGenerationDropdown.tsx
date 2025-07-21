@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -48,14 +49,6 @@ interface PortfolioGenerationDropdownProps {
   buttonRef?: React.RefObject<HTMLButtonElement>;
 }
 
-interface NetworkTestResult {
-  test: string;
-  passed: boolean;
-  error?: string;
-  details?: any;
-  duration?: number;
-}
-
 export function PortfolioGenerationDropdown({ 
   content, 
   isOpen, 
@@ -70,7 +63,6 @@ export function PortfolioGenerationDropdown({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
   const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [networkTests, setNetworkTests] = useState<NetworkTestResult[]>([]);
   const { session } = useAuth();
   const { toast } = useToast();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -115,381 +107,14 @@ export function PortfolioGenerationDropdown({
     }
   };
 
-  const addNetworkTest = (result: NetworkTestResult) => {
-    console.log(`🔍 NETWORK TEST: ${result.test} - ${result.passed ? 'PASSED' : 'FAILED'}`, result);
-    setNetworkTests(prev => [...prev, result]);
-  };
-
   const updateProgress = (percent: number, step: string) => {
     setProgress(percent);
     setCurrentStep(step);
     console.log(`📊 PROGRESS: ${percent}% - ${step}`);
   };
 
-  // Phase 1: Basic connectivity and CORS testing
-  const runConnectivityTests = async (authToken: string): Promise<boolean> => {
-    console.log('🔍 === PHASE 1: CONNECTIVITY TESTS ===');
-    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-    
-    // Test 1: Basic URL reachability
-    updateProgress(5, 'Testing basic connectivity...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(5000)
-      });
-      const duration = Date.now() - startTime;
-      
-      addNetworkTest({
-        test: 'Basic Connectivity (HEAD)',
-        passed: true,
-        duration,
-        details: { status: response.status, headers: Object.fromEntries(response.headers.entries()) }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'Basic Connectivity (HEAD)',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name, stack: error.stack }
-      });
-      return false;
-    }
-
-    // Test 2: OPTIONS request (CORS preflight)
-    updateProgress(10, 'Testing CORS preflight...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'OPTIONS',
-        headers: {
-          'Origin': window.location.origin,
-          'Access-Control-Request-Method': 'POST',
-          'Access-Control-Request-Headers': 'authorization, content-type, apikey'
-        },
-        signal: AbortSignal.timeout(5000)
-      });
-      const duration = Date.now() - startTime;
-      
-      addNetworkTest({
-        test: 'CORS Preflight (OPTIONS)',
-        passed: response.ok,
-        duration,
-        details: { 
-          status: response.status, 
-          corsHeaders: {
-            allowOrigin: response.headers.get('Access-Control-Allow-Origin'),
-            allowMethods: response.headers.get('Access-Control-Allow-Methods'),
-            allowHeaders: response.headers.get('Access-Control-Allow-Headers')
-          }
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'CORS Preflight (OPTIONS)',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name }
-      });
-    }
-
-    // Test 3: Simple GET request
-    updateProgress(15, 'Testing GET request...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(`${functionUrl}?test=connectivity`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000)
-      });
-      const duration = Date.now() - startTime;
-      const responseText = await response.text();
-      
-      addNetworkTest({
-        test: 'Simple GET Request',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status, 
-          responseLength: responseText.length,
-          responsePreview: responseText.substring(0, 200)
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'Simple GET Request',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name }
-      });
-    }
-
-    return true;
-  };
-
-  // Phase 2: Authentication and header testing
-  const runAuthenticationTests = async (authToken: string): Promise<boolean> => {
-    console.log('🔍 === PHASE 2: AUTHENTICATION TESTS ===');
-    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-    
-    // Test 4: POST without auth
-    updateProgress(20, 'Testing POST without auth...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ test: 'no-auth' }),
-        signal: AbortSignal.timeout(5000)
-      });
-      const duration = Date.now() - startTime;
-      const responseText = await response.text();
-      
-      addNetworkTest({
-        test: 'POST Without Auth',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status, 
-          responseLength: responseText.length,
-          responsePreview: responseText.substring(0, 200)
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'POST Without Auth',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name }
-      });
-      return false;
-    }
-
-    // Test 5: POST with Bearer auth only
-    updateProgress(25, 'Testing POST with Bearer auth...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ test: 'bearer-auth' }),
-        signal: AbortSignal.timeout(5000)
-      });
-      const duration = Date.now() - startTime;
-      const responseText = await response.text();
-      
-      addNetworkTest({
-        test: 'POST With Bearer Auth',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status, 
-          responseLength: responseText.length,
-          responsePreview: responseText.substring(0, 200)
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'POST With Bearer Auth',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name }
-      });
-      return false;
-    }
-
-    // Test 6: POST with all headers
-    updateProgress(30, 'Testing POST with full headers...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-          'x-client-info': 'lovable-project'
-        },
-        body: JSON.stringify({ test: 'full-headers' }),
-        signal: AbortSignal.timeout(5000)
-      });
-      const duration = Date.now() - startTime;
-      const responseText = await response.text();
-      
-      addNetworkTest({
-        test: 'POST With Full Headers',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status, 
-          responseLength: responseText.length,
-          responsePreview: responseText.substring(0, 200)
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'POST With Full Headers',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name }
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  // Phase 3: Request body testing
-  const runRequestBodyTests = async (authToken: string): Promise<boolean> => {
-    console.log('🔍 === PHASE 3: REQUEST BODY TESTS ===');
-    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-    
-    // Test 7: Small request body
-    updateProgress(35, 'Testing small request body...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
-        },
-        body: JSON.stringify({ content: 'test' }),
-        signal: AbortSignal.timeout(10000)
-      });
-      const duration = Date.now() - startTime;
-      const responseText = await response.text();
-      
-      addNetworkTest({
-        test: 'Small Request Body',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status, 
-          responseLength: responseText.length,
-          responsePreview: responseText.substring(0, 200)
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'Small Request Body',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name }
-      });
-      return false;
-    }
-
-    // Test 8: Actual content (truncated for safety)
-    updateProgress(40, 'Testing with actual content...');
-    try {
-      const startTime = Date.now();
-      const truncatedContent = content.substring(0, 100); // Limit size for testing
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
-        },
-        body: JSON.stringify({ content: truncatedContent }),
-        signal: AbortSignal.timeout(15000)
-      });
-      const duration = Date.now() - startTime;
-      const responseText = await response.text();
-      
-      addNetworkTest({
-        test: 'Actual Content Request',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status, 
-          responseLength: responseText.length,
-          responsePreview: responseText.substring(0, 200),
-          contentLength: truncatedContent.length
-        }
-      });
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'Actual Content Request',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name, contentLength: content.length }
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  // Phase 4: Full request testing
-  const runFullRequestTest = async (authToken: string): Promise<PortfolioResults | null> => {
-    console.log('🔍 === PHASE 4: FULL REQUEST TEST ===');
-    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-    
-    updateProgress(50, 'Testing full portfolio request...');
-    try {
-      const startTime = Date.now();
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-          'x-client-info': 'lovable-project'
-        },
-        body: JSON.stringify({ content: content.trim() }),
-        signal: AbortSignal.timeout(30000)
-      });
-      const duration = Date.now() - startTime;
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        addNetworkTest({
-          test: 'Full Portfolio Request',
-          passed: false,
-          duration,
-          error: `HTTP ${response.status}: ${errorText}`,
-          details: { status: response.status, errorText }
-        });
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const responseData = await response.json();
-      
-      addNetworkTest({
-        test: 'Full Portfolio Request',
-        passed: true,
-        duration,
-        details: { 
-          status: response.status,
-          dataKeys: Object.keys(responseData),
-          responseSize: JSON.stringify(responseData).length
-        }
-      });
-
-      updateProgress(100, 'Portfolio generation complete!');
-      return responseData;
-      
-    } catch (error: any) {
-      addNetworkTest({
-        test: 'Full Portfolio Request',
-        passed: false,
-        error: error.message,
-        details: { errorType: error.name, stack: error.stack }
-      });
-      throw error;
-    }
-  };
-
   const generatePortfolio = async (isRetry = false) => {
-    console.log('🚀 === STARTING COMPREHENSIVE NETWORK DEBUG ===');
+    console.log('🚀 === STARTING PORTFOLIO GENERATION ===');
     console.log('🚀 Timestamp:', new Date().toISOString());
     console.log('🚀 Is Retry:', isRetry);
     console.log('🚀 Content length:', content?.length);
@@ -509,12 +134,11 @@ export function PortfolioGenerationDropdown({
     if (!isRetry) {
       setRetryCount(0);
       setError(null);
-      setNetworkTests([]);
     }
 
     setIsGenerating(true);
     setProgress(0);
-    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Starting network diagnostics...');
+    setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Starting portfolio generation...');
     
     cleanupConnections();
 
@@ -522,38 +146,57 @@ export function PortfolioGenerationDropdown({
       const authToken = session.access_token;
       console.log('🔑 Auth token length:', authToken.length);
 
-      // Run comprehensive network tests
-      const phase1Success = await runConnectivityTests(authToken);
-      if (!phase1Success) {
-        throw new Error('Basic connectivity tests failed');
-      }
-
-      const phase2Success = await runAuthenticationTests(authToken);
-      if (!phase2Success) {
-        throw new Error('Authentication tests failed');
-      }
-
-      const phase3Success = await runRequestBodyTests(authToken);
-      if (!phase3Success) {
-        throw new Error('Request body tests failed');
-      }
-
-      // If all tests pass, try the full request
-      const portfolioResults = await runFullRequestTest(authToken);
+      updateProgress(10, 'Connecting to portfolio service...');
       
-      if (portfolioResults) {
-        setResults(portfolioResults);
-        setError(null);
-        
-        toast({
-          title: "Portfolio Generated Successfully",
-          description: "All network tests passed and portfolio was generated!",
-        });
+      const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+      
+      console.log('📡 Making portfolio request with auth token in body...');
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
+          'x-client-info': 'lovable-project'
+        },
+        body: JSON.stringify({ 
+          content: content.trim(),
+          authToken: authToken  // THIS IS THE CRITICAL FIX
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+
+      updateProgress(20, 'Processing portfolio request...');
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Portfolio request failed:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
+
+      const portfolioResults = await response.json();
+      console.log('✅ Portfolio results received:', portfolioResults);
+
+      // Process the results based on the steps
+      if (portfolioResults.steps) {
+        const completedSteps = portfolioResults.steps.filter((step: any) => step.completed).length;
+        const progressPercentage = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
+        updateProgress(progressPercentage, 'Portfolio generation complete!');
+      } else {
+        updateProgress(100, 'Portfolio generation complete!');
+      }
+
+      setResults(portfolioResults);
+      setError(null);
+      
+      toast({
+        title: "Portfolio Generated Successfully",
+        description: `Generated ${portfolioResults.data?.tradeIdeas?.length || 0} trade ideas`,
+      });
 
     } catch (error: any) {
-      console.error('💥 === NETWORK DEBUG FAILED ===');
-      console.error('💥 Error:', error.message);
+      console.error('💥 Portfolio generation failed:', error.message);
       
       if (retryCount < maxRetries) {
         console.log(`⏰ Scheduling retry in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
@@ -565,12 +208,12 @@ export function PortfolioGenerationDropdown({
         }, retryDelay);
       } else {
         setIsGenerating(false);
-        setError(`All network tests completed. Last error: ${error.message}`);
-        setCurrentStep('Network diagnostics complete');
+        setError(`Portfolio generation failed: ${error.message}`);
+        setCurrentStep('Generation failed');
         
         toast({
-          title: "Network Diagnostics Complete",
-          description: "Check the test results below for detailed information.",
+          title: "Portfolio Generation Failed",
+          description: error.message,
           variant: "destructive"
         });
       }
@@ -585,7 +228,6 @@ export function PortfolioGenerationDropdown({
     setRetryCount(0);
     setError(null);
     setResults(null);
-    setNetworkTests([]);
     generatePortfolio(false);
   };
 
@@ -618,15 +260,15 @@ export function PortfolioGenerationDropdown({
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Sparkle className="h-5 w-5 text-primary" />
-            Portfolio Generation - Network Diagnostics
+            Portfolio Generation
           </CardTitle>
         </CardHeader>
         
         <CardContent className="space-y-4">
-          {!results && !isGenerating && !error && networkTests.length === 0 && (
+          {!results && !isGenerating && !error && (
             <div className="text-center py-4">
               <Button onClick={() => generatePortfolio(false)} className="w-full">
-                Start Network Diagnostics & Generate Portfolio
+                Generate Portfolio
               </Button>
             </div>
           )}
@@ -638,7 +280,7 @@ export function PortfolioGenerationDropdown({
               </div>
               <Button onClick={handleManualRetry} className="w-full" variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Run Diagnostics Again
+                Try Again
               </Button>
             </div>
           )}
@@ -658,54 +300,6 @@ export function PortfolioGenerationDropdown({
             </div>
           )}
 
-          {/* Network Test Results */}
-          {networkTests.length > 0 && (
-            <Collapsible 
-              open={expandedSections.has('network-tests')} 
-              onOpenChange={() => toggleSection('network-tests')}
-            >
-              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Network Test Results ({networkTests.length})</span>
-                  <div className="flex gap-1">
-                    <span className="text-xs text-green-400">
-                      ✓ {networkTests.filter(t => t.passed).length}
-                    </span>
-                    <span className="text-xs text-red-400">
-                      ✗ {networkTests.filter(t => !t.passed).length}
-                    </span>
-                  </div>
-                </div>
-                {expandedSections.has('network-tests') ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              </CollapsibleTrigger>
-              
-              <CollapsibleContent className="mt-2 space-y-2">
-                {networkTests.map((test, index) => (
-                  <div key={index} className={`p-3 border rounded-lg ${test.passed ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-sm">{test.test}</span>
-                      <div className="flex items-center gap-2">
-                        {test.duration && <span className="text-xs text-muted-foreground">{test.duration}ms</span>}
-                        <span className={`text-xs ${test.passed ? 'text-green-400' : 'text-red-400'}`}>
-                          {test.passed ? '✓ PASSED' : '✗ FAILED'}
-                        </span>
-                      </div>
-                    </div>
-                    {test.error && (
-                      <div className="text-xs text-red-400 mb-2">{test.error}</div>
-                    )}
-                    {test.details && (
-                      <div className="text-xs text-muted-foreground font-mono bg-black/20 p-2 rounded overflow-auto max-h-32">
-                        {JSON.stringify(test.details, null, 2)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-
-          {/* Results section - keep existing trade ideas display */}
           {results && (
             <div className="space-y-4">
               <Collapsible 
