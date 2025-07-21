@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -63,6 +62,7 @@ export function PortfolioGenerationDropdown({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
   const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const { session } = useAuth();
   const { toast } = useToast();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -82,6 +82,13 @@ export function PortfolioGenerationDropdown({
     'best_markets': 'Selecting best markets',
     'related_markets': 'Finding related markets',
     'trade_ideas': 'Generating trade ideas'
+  };
+
+  const addDebugLog = (message: string, data?: any) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}${data ? ` | DATA: ${JSON.stringify(data, null, 2)}` : ''}`;
+    console.log(logEntry);
+    setDebugLogs(prev => [...prev, logEntry]);
   };
 
   useEffect(() => {
@@ -110,23 +117,200 @@ export function PortfolioGenerationDropdown({
   const updateProgress = (percent: number, step: string) => {
     setProgress(percent);
     setCurrentStep(step);
-    console.log(`📊 PROGRESS: ${percent}% - ${step}`);
+    addDebugLog(`Progress: ${percent}% - ${step}`);
+  };
+
+  const debugAuthenticationDetails = async () => {
+    addDebugLog("=== AUTHENTICATION DEBUG START ===");
+    
+    // Session details
+    addDebugLog("Session from useAuth hook", {
+      exists: !!session,
+      userId: session?.user?.id,
+      email: session?.user?.email,
+      accessTokenLength: session?.access_token?.length,
+      refreshTokenLength: session?.refresh_token?.length,
+      expiresAt: session?.expires_at,
+      expiresIn: session?.expires_in,
+      tokenType: session?.token_type
+    });
+
+    // Get fresh session
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      addDebugLog("Fresh session from supabase.auth.getSession()", {
+        exists: !!sessionData.session,
+        error: sessionError,
+        userId: sessionData.session?.user?.id,
+        email: sessionData.session?.user?.email,
+        accessTokenLength: sessionData.session?.access_token?.length,
+        tokenType: sessionData.session?.token_type,
+        expiresAt: sessionData.session?.expires_at
+      });
+
+      // Compare tokens
+      if (session && sessionData.session) {
+        addDebugLog("Token comparison", {
+          hookTokenMatchesFresh: session.access_token === sessionData.session.access_token,
+          hookTokenPreview: session.access_token?.substring(0, 50) + '...',
+          freshTokenPreview: sessionData.session.access_token?.substring(0, 50) + '...'
+        });
+      }
+    } catch (error) {
+      addDebugLog("Error getting fresh session", error);
+    }
+
+    // Test user validation
+    try {
+      const testToken = session?.access_token;
+      if (testToken) {
+        const { data: userData, error: userError } = await supabase.auth.getUser(testToken);
+        addDebugLog("User validation with current token", {
+          success: !!userData.user,
+          error: userError,
+          userId: userData.user?.id,
+          email: userData.user?.email
+        });
+      }
+    } catch (error) {
+      addDebugLog("Error validating user", error);
+    }
+
+    addDebugLog("=== AUTHENTICATION DEBUG END ===");
+  };
+
+  const testMultipleAuthMethods = async (content: string) => {
+    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+    const methods = [];
+
+    // Method 1: Current session token in body
+    if (session?.access_token) {
+      methods.push({
+        name: "Session token in body",
+        payload: { 
+          content: content.trim(),
+          authToken: session.access_token
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
+          'x-client-info': 'lovable-project'
+        }
+      });
+    }
+
+    // Method 2: Fresh session token
+    try {
+      const { data: freshSession } = await supabase.auth.getSession();
+      if (freshSession.session?.access_token && freshSession.session.access_token !== session?.access_token) {
+        methods.push({
+          name: "Fresh session token in body",
+          payload: { 
+            content: content.trim(),
+            authToken: freshSession.session.access_token
+          },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${freshSession.session.access_token}`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+            'x-client-info': 'lovable-project'
+          }
+        });
+      }
+    } catch (error) {
+      addDebugLog("Failed to get fresh session for method 2", error);
+    }
+
+    // Method 3: Refreshed token
+    try {
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshedSession.session?.access_token) {
+        methods.push({
+          name: "Refreshed token in body",
+          payload: { 
+            content: content.trim(),
+            authToken: refreshedSession.session.access_token
+          },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${refreshedSession.session.access_token}`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+            'x-client-info': 'lovable-project'
+          }
+        });
+      }
+    } catch (error) {
+      addDebugLog("Failed to refresh session for method 3", error);
+    }
+
+    // Test each method
+    for (const method of methods) {
+      try {
+        addDebugLog(`Testing method: ${method.name}`, {
+          payloadKeys: Object.keys(method.payload),
+          headerKeys: Object.keys(method.headers),
+          authTokenLength: method.payload.authToken?.length,
+          authTokenPreview: method.payload.authToken?.substring(0, 50) + '...'
+        });
+
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: method.headers,
+          body: JSON.stringify(method.payload),
+          signal: AbortSignal.timeout(10000)
+        });
+
+        const responseText = await response.text();
+        
+        addDebugLog(`Response for ${method.name}`, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          responsePreview: responseText.substring(0, 500),
+          responseLength: responseText.length
+        });
+
+        if (response.ok) {
+          addDebugLog(`SUCCESS: ${method.name} worked!`);
+          try {
+            const results = JSON.parse(responseText);
+            return { success: true, results, method: method.name };
+          } catch (parseError) {
+            addDebugLog(`Parse error for successful response from ${method.name}`, parseError);
+          }
+        } else {
+          addDebugLog(`FAILED: ${method.name} returned ${response.status}`);
+        }
+
+      } catch (error) {
+        addDebugLog(`ERROR testing ${method.name}`, error);
+      }
+    }
+
+    return { success: false };
   };
 
   const generatePortfolio = async (isRetry = false) => {
-    console.log('🚀 === STARTING PORTFOLIO GENERATION ===');
-    console.log('🚀 Timestamp:', new Date().toISOString());
-    console.log('🚀 Is Retry:', isRetry);
-    console.log('🚀 Content length:', content?.length);
+    addDebugLog("=== PORTFOLIO GENERATION START ===", {
+      isRetry,
+      retryCount,
+      contentLength: content?.length,
+      hasSession: !!session,
+      timestamp: new Date().toISOString()
+    });
 
     if (!content || content.trim().length === 0) {
-      console.error('❌ No content provided');
+      addDebugLog("ERROR: No content provided");
       setError('Content is required for portfolio generation.');
       return;
     }
 
     if (!session?.access_token) {
-      console.error('❌ No session or access token');
+      addDebugLog("ERROR: No session or access token", {
+        hasSession: !!session,
+        hasAccessToken: !!session?.access_token
+      });
       setError('Authentication required. Please log in.');
       return;
     }
@@ -134,6 +318,7 @@ export function PortfolioGenerationDropdown({
     if (!isRetry) {
       setRetryCount(0);
       setError(null);
+      setDebugLogs([]);
     }
 
     setIsGenerating(true);
@@ -143,63 +328,38 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      const authToken = session.access_token;
-      console.log('🔑 Auth token length:', authToken.length);
+      // Debug authentication details
+      await debugAuthenticationDetails();
 
       updateProgress(10, 'Connecting to portfolio service...');
       
-      const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+      // Test multiple authentication methods
+      addDebugLog("Testing multiple authentication methods...");
+      const authTestResult = await testMultipleAuthMethods(content);
       
-      console.log('📡 Making portfolio request with auth token in body...');
-      
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-          'x-client-info': 'lovable-project'
-        },
-        body: JSON.stringify({ 
-          content: content.trim(),
-          authToken: authToken  // THIS IS THE CRITICAL FIX
-        }),
-        signal: AbortSignal.timeout(30000)
-      });
-
-      updateProgress(20, 'Processing portfolio request...');
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Portfolio request failed:', errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const portfolioResults = await response.json();
-      console.log('✅ Portfolio results received:', portfolioResults);
-
-      // Process the results based on the steps
-      if (portfolioResults.steps) {
-        const completedSteps = portfolioResults.steps.filter((step: any) => step.completed).length;
-        const progressPercentage = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
-        updateProgress(progressPercentage, 'Portfolio generation complete!');
-      } else {
+      if (authTestResult.success) {
+        addDebugLog(`Authentication successful with method: ${authTestResult.method}`);
         updateProgress(100, 'Portfolio generation complete!');
+        setResults(authTestResult.results);
+        setError(null);
+        
+        toast({
+          title: "Portfolio Generated Successfully",
+          description: `Generated ${authTestResult.results?.data?.tradeIdeas?.length || 0} trade ideas using ${authTestResult.method}`,
+        });
+      } else {
+        throw new Error("All authentication methods failed. See debug logs for details.");
       }
-
-      setResults(portfolioResults);
-      setError(null);
-      
-      toast({
-        title: "Portfolio Generated Successfully",
-        description: `Generated ${portfolioResults.data?.tradeIdeas?.length || 0} trade ideas`,
-      });
 
     } catch (error: any) {
-      console.error('💥 Portfolio generation failed:', error.message);
+      addDebugLog("Portfolio generation failed with error", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       
       if (retryCount < maxRetries) {
-        console.log(`⏰ Scheduling retry in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+        addDebugLog(`Scheduling retry ${retryCount + 1}/${maxRetries} in ${retryDelay}ms`);
         setRetryCount(prev => prev + 1);
         setCurrentStep(`Retrying in ${retryDelay / 1000} seconds...`);
         
@@ -210,6 +370,8 @@ export function PortfolioGenerationDropdown({
         setIsGenerating(false);
         setError(`Portfolio generation failed: ${error.message}`);
         setCurrentStep('Generation failed');
+        
+        addDebugLog("Max retries reached, giving up");
         
         toast({
           title: "Portfolio Generation Failed",
@@ -228,6 +390,7 @@ export function PortfolioGenerationDropdown({
     setRetryCount(0);
     setError(null);
     setResults(null);
+    setDebugLogs([]);
     generatePortfolio(false);
   };
 
@@ -298,6 +461,25 @@ export function PortfolioGenerationDropdown({
                 </div>
               )}
             </div>
+          )}
+
+          {debugLogs.length > 0 && (
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
+                <span className="font-medium text-sm">Debug Logs ({debugLogs.length})</span>
+                <ChevronDown className="h-4 w-4" />
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent className="mt-2">
+                <div className="max-h-60 overflow-y-auto p-3 bg-black/20 rounded-lg font-mono text-xs">
+                  {debugLogs.map((log, index) => (
+                    <div key={index} className="whitespace-pre-wrap mb-1 text-green-400">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           )}
 
           {results && (
