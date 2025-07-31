@@ -328,27 +328,125 @@ export function PortfolioGenerationDropdown({
     cleanupConnections();
 
     try {
-      // Debug authentication details
-      await debugAuthenticationDetails();
+      // Get fresh session to ensure we have valid token
+      const { data: { session: freshSession } } = await supabase.auth.getSession();
+      const authToken = freshSession?.access_token || session.access_token;
+      
+      addDebugLog("Using auth token", {
+        tokenLength: authToken?.length,
+        tokenPreview: authToken?.substring(0, 50) + '...',
+        isFreshToken: authToken === freshSession?.access_token
+      });
 
       updateProgress(10, 'Connecting to portfolio service...');
       
-      // Test multiple authentication methods
-      addDebugLog("Testing multiple authentication methods...");
-      const authTestResult = await testMultipleAuthMethods(content);
+      // Use SSE for streaming progress updates
+      const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
+      const url = new URL(functionUrl);
+      url.searchParams.set('content', content.trim());
+      url.searchParams.set('authToken', authToken);
       
-      if (authTestResult.success) {
-        addDebugLog(`Authentication successful with method: ${authTestResult.method}`);
-        updateProgress(100, 'Portfolio generation complete!');
-        setResults(authTestResult.results);
-        setError(null);
-        
-        toast({
-          title: "Portfolio Generated Successfully",
-          description: `Generated ${authTestResult.results?.data?.tradeIdeas?.length || 0} trade ideas using ${authTestResult.method}`,
+      addDebugLog("Starting SSE connection", {
+        url: url.toString(),
+        hasAuthToken: !!authToken
+      });
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/event-stream',
+          'Authorization': `Bearer ${authToken}`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
+          'x-client-info': 'lovable-project'
+        },
+        signal: AbortSignal.timeout(120000) // 2 minute timeout
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addDebugLog("SSE connection failed", {
+          status: response.status,
+          statusText: response.statusText,
+          errorText
         });
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body received');
+      }
+
+      // Process SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResults = null;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            addDebugLog("SSE stream completed");
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              
+              try {
+                const parsed = JSON.parse(data);
+                addDebugLog("Received SSE update", { 
+                  status: parsed.status,
+                  stepsCompleted: parsed.steps?.filter((s: any) => s.completed)?.length || 0,
+                  totalSteps: parsed.steps?.length || 0
+                });
+
+                // Update progress based on completed steps
+                const completedSteps = parsed.steps?.filter((s: any) => s.completed)?.length || 0;
+                const currentTotalSteps = parsed.steps?.length || totalSteps;
+                const progressPercent = Math.min(95, (completedSteps / currentTotalSteps) * 100);
+
+                // Update current step based on last incomplete step
+                const currentStepData = parsed.steps?.find((s: any) => !s.completed);
+                const currentStepName = currentStepData ? stepNames[currentStepData.name] || currentStepData.name : 'Processing...';
+
+                updateProgress(progressPercent, currentStepName);
+
+                // Store final results when status is completed
+                if (parsed.status === 'completed' || parsed.status === 'failed') {
+                  finalResults = parsed;
+                  updateProgress(100, parsed.status === 'completed' ? 'Portfolio generation complete!' : 'Generation failed');
+                }
+              } catch (parseError) {
+                addDebugLog("Failed to parse SSE data", { data, error: parseError });
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      if (finalResults) {
+        if (finalResults.status === 'completed') {
+          setResults(finalResults);
+          setError(null);
+          
+          toast({
+            title: "Portfolio Generated Successfully",
+            description: `Generated ${finalResults.data?.tradeIdeas?.length || 0} trade ideas`,
+          });
+        } else {
+          throw new Error(finalResults.errors?.[0]?.message || 'Portfolio generation failed');
+        }
       } else {
-        throw new Error("All authentication methods failed. See debug logs for details.");
+        throw new Error('No final results received from stream');
       }
 
     } catch (error: any) {
