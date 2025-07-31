@@ -15,41 +15,8 @@ interface TradeIdeaCardProps {
   };
 }
 
-// CRITICAL FIX: Validate and correct trade idea pricing (same as PortfolioResults)
-const validateAndFixTradeIdea = (trade: TradeIdeaCardProps['trade']) => {
-  console.log(`Validating trade idea: ${trade.market_title}`);
-  console.log(`Original - Current: ${trade.current_price}, Target: ${trade.target_price}, Stop: ${trade.stop_price}`);
-  
-  let correctedTrade = { ...trade };
-  
-  // Rule 1: Target MUST be higher than current (for profit)
-  if (correctedTrade.target_price <= correctedTrade.current_price) {
-    console.log(`FIXING: Target price ${correctedTrade.target_price} is not higher than current ${correctedTrade.current_price}`);
-    correctedTrade.target_price = correctedTrade.current_price + 0.05; // Add 5 cents for reasonable target
-  }
-  
-  // Rule 2: Stop MUST be lower than current (to limit losses)
-  if (correctedTrade.stop_price && correctedTrade.stop_price >= correctedTrade.current_price) {
-    console.log(`FIXING: Stop price ${correctedTrade.stop_price} is not lower than current ${correctedTrade.current_price}`);
-    correctedTrade.stop_price = Math.max(0.01, correctedTrade.current_price - 0.05); // Subtract 5 cents, but never go below 1 cent
-  }
-  
-  // Rule 3: Ensure stop is not higher than target (basic sanity check)
-  if (correctedTrade.stop_price && correctedTrade.stop_price >= correctedTrade.target_price) {
-    console.log(`FIXING: Stop price ${correctedTrade.stop_price} is not lower than target ${correctedTrade.target_price}`);
-    correctedTrade.stop_price = Math.max(0.01, correctedTrade.target_price - 0.10); // 10 cents below target
-  }
-  
-  console.log(`Corrected - Current: ${correctedTrade.current_price}, Target: ${correctedTrade.target_price}, Stop: ${correctedTrade.stop_price}`);
-  
-  return correctedTrade;
-};
-
-export function TradeIdeaCard({ trade: rawTrade }: TradeIdeaCardProps) {
+export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
   const isMobile = useIsMobile();
-  
-  // CRITICAL: Validate trade before using it
-  const trade = validateAndFixTradeIdea(rawTrade);
   
   const formatPrice = (price: number): string => {
     return `${(price * 100).toFixed(1)}¢`;
@@ -135,59 +102,63 @@ export function TradeIdeaCard({ trade: rawTrade }: TradeIdeaCardProps) {
       </div>
 
       {/* Market Stats */}
-      <div className="w-full flex flex-col space-y-4 pb-2">
+      <div className="w-full flex flex-col space-y-2 pb-2">
         <div className="flex justify-between items-start pt-0.5">
           <div className="flex flex-col">
             <span className="text-3xl font-bold tracking-tight">
               {formatPrice(actualCurrentPrice)}
             </span>
+            <span className={`text-sm font-medium flex items-center gap-1
+              ${isPositive ? 'text-green-500' : 'text-red-500'}`}
+            >
+              {isPositive ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : (
+                <TrendingDown className="w-4 h-4" />
+              )}
+              {formatPrice(actualTargetPrice)} Target
+            </span>
           </div>
         </div>
         
         {/* Price visualization with target and stop indicators */}
-        <div className="relative w-full" style={{ height: '60px' }}>
-          {/* Labels positioned much higher above their respective indicators */}
+        <div className="relative h-[20px] w-full">
+          {/* Labels positioned above their respective indicators */}
           
-          {/* Current price label with text and value */}
+          {/* Current price label */}
           <div 
-            className="absolute text-[10px] text-white font-medium transform -translate-x-1/2 text-center leading-tight"
+            className="absolute text-[10px] text-white font-medium top-[-12px] transform -translate-x-1/2"
             style={{ 
-              left: `${calculatePosition(actualCurrentPrice)}%`,
-              top: '0px'
+              left: `${calculatePosition(actualCurrentPrice)}%`
             }}
           >
-            <div>Current</div>
-            <div className="mt-1">{formatPrice(actualCurrentPrice)}</div>
+            Current
           </div>
           
-          {/* Target price label with text and value */}
+          {/* Target price label */}
           <div 
-            className="absolute text-[10px] text-green-400 font-medium transform -translate-x-1/2 text-center leading-tight"
+            className="absolute text-[10px] text-green-400 font-medium top-[-12px] transform -translate-x-1/2"
             style={{ 
-              left: `${Math.min(Math.max(calculatePosition(actualTargetPrice), 0), 100)}%`,
-              top: '0px'
+              left: `${Math.min(Math.max(calculatePosition(actualTargetPrice), 0), 100)}%`
             }}
           >
-            <div>Target</div>
-            <div className="mt-1">{formatPrice(actualTargetPrice)}</div>
+            Target
           </div>
           
-          {/* Stop price label with text and value */}
+          {/* Stop price label */}
           {actualStopPrice && (
             <div 
-              className="absolute text-[10px] text-red-400 font-medium transform -translate-x-1/2 text-center leading-tight"
+              className="absolute text-[10px] text-red-400 font-medium top-[-12px] transform -translate-x-1/2"
               style={{ 
-                left: `${Math.min(Math.max(calculatePosition(actualStopPrice), 0), 100)}%`,
-                top: '0px'
+                left: `${Math.min(Math.max(calculatePosition(actualStopPrice), 0), 100)}%`
               }}
             >
-              <div>Stop</div>
-              <div className="mt-1">{formatPrice(actualStopPrice)}</div>
+              Stop
             </div>
           )}
           
-          {/* Price visualization bar - positioned at the bottom with proper spacing */}
-          <div className="absolute w-full h-[3px]" style={{ top: '45px' }}>
+          {/* Price visualization bar - positioned lower to make room for labels */}
+          <div className="absolute top-[4px] w-full h-[3px]">
             {/* Base line showing current price position */}
             <div 
               className="absolute bg-white/50 h-2 top-[-4px]" 

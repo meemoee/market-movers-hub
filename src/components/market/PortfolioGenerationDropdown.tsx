@@ -62,15 +62,15 @@ export function PortfolioGenerationDropdown({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['trades']));
   const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const { session } = useAuth();
   const { toast } = useToast();
+  const eventSourceRef = useRef<EventSource | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const totalSteps = 8;
+  const totalSteps = 8; // Based on the edge function steps
   const maxRetries = 3;
-  const retryDelay = 2000;
+  const retryDelay = 2000; // 2 seconds
 
   const stepNames = {
     'auth_validation': 'Validating authentication',
@@ -82,13 +82,6 @@ export function PortfolioGenerationDropdown({
     'best_markets': 'Selecting best markets',
     'related_markets': 'Finding related markets',
     'trade_ideas': 'Generating trade ideas'
-  };
-
-  const addDebugLog = (message: string, data?: any) => {
-    const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${message}${data ? ` | DATA: ${JSON.stringify(data, null, 2)}` : ''}`;
-    console.log(logEntry);
-    setDebugLogs(prev => [...prev, logEntry]);
   };
 
   useEffect(() => {
@@ -108,379 +101,173 @@ export function PortfolioGenerationDropdown({
   }, [isOpen, onClose]);
 
   const cleanupConnections = () => {
+    if (eventSourceRef.current) {
+      console.log('Closing existing SSE connection');
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
   };
 
-  const updateProgress = (percent: number, step: string) => {
-    setProgress(percent);
-    setCurrentStep(step);
-    addDebugLog(`Progress: ${percent}% - ${step}`);
-  };
-
-  const debugAuthenticationDetails = async () => {
-    addDebugLog("=== AUTHENTICATION DEBUG START ===");
-    
-    // Session details
-    addDebugLog("Session from useAuth hook", {
-      exists: !!session,
-      userId: session?.user?.id,
-      email: session?.user?.email,
-      accessTokenLength: session?.access_token?.length,
-      refreshTokenLength: session?.refresh_token?.length,
-      expiresAt: session?.expires_at,
-      expiresIn: session?.expires_in,
-      tokenType: session?.token_type
-    });
-
-    // Get fresh session
-    try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      addDebugLog("Fresh session from supabase.auth.getSession()", {
-        exists: !!sessionData.session,
-        error: sessionError,
-        userId: sessionData.session?.user?.id,
-        email: sessionData.session?.user?.email,
-        accessTokenLength: sessionData.session?.access_token?.length,
-        tokenType: sessionData.session?.token_type,
-        expiresAt: sessionData.session?.expires_at
-      });
-
-      // Compare tokens
-      if (session && sessionData.session) {
-        addDebugLog("Token comparison", {
-          hookTokenMatchesFresh: session.access_token === sessionData.session.access_token,
-          hookTokenPreview: session.access_token?.substring(0, 50) + '...',
-          freshTokenPreview: sessionData.session.access_token?.substring(0, 50) + '...'
-        });
-      }
-    } catch (error) {
-      addDebugLog("Error getting fresh session", error);
-    }
-
-    // Test user validation
-    try {
-      const testToken = session?.access_token;
-      if (testToken) {
-        const { data: userData, error: userError } = await supabase.auth.getUser(testToken);
-        addDebugLog("User validation with current token", {
-          success: !!userData.user,
-          error: userError,
-          userId: userData.user?.id,
-          email: userData.user?.email
-        });
-      }
-    } catch (error) {
-      addDebugLog("Error validating user", error);
-    }
-
-    addDebugLog("=== AUTHENTICATION DEBUG END ===");
-  };
-
-  const testMultipleAuthMethods = async (content: string) => {
-    const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-    const methods = [];
-
-    // Method 1: Current session token in body
-    if (session?.access_token) {
-      methods.push({
-        name: "Session token in body",
-        payload: { 
-          content: content.trim(),
-          authToken: session.access_token
-        },
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-          'x-client-info': 'lovable-project'
-        }
-      });
-    }
-
-    // Method 2: Fresh session token
-    try {
-      const { data: freshSession } = await supabase.auth.getSession();
-      if (freshSession.session?.access_token && freshSession.session.access_token !== session?.access_token) {
-        methods.push({
-          name: "Fresh session token in body",
-          payload: { 
-            content: content.trim(),
-            authToken: freshSession.session.access_token
-          },
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${freshSession.session.access_token}`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-            'x-client-info': 'lovable-project'
-          }
-        });
-      }
-    } catch (error) {
-      addDebugLog("Failed to get fresh session for method 2", error);
-    }
-
-    // Method 3: Refreshed token
-    try {
-      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
-      if (!refreshError && refreshedSession.session?.access_token) {
-        methods.push({
-          name: "Refreshed token in body",
-          payload: { 
-            content: content.trim(),
-            authToken: refreshedSession.session.access_token
-          },
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${refreshedSession.session.access_token}`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-            'x-client-info': 'lovable-project'
-          }
-        });
-      }
-    } catch (error) {
-      addDebugLog("Failed to refresh session for method 3", error);
-    }
-
-    // Test each method
-    for (const method of methods) {
-      try {
-        addDebugLog(`Testing method: ${method.name}`, {
-          payloadKeys: Object.keys(method.payload),
-          headerKeys: Object.keys(method.headers),
-          authTokenLength: method.payload.authToken?.length,
-          authTokenPreview: method.payload.authToken?.substring(0, 50) + '...'
-        });
-
-        const response = await fetch(functionUrl, {
-          method: 'POST',
-          headers: method.headers,
-          body: JSON.stringify(method.payload),
-          signal: AbortSignal.timeout(10000)
-        });
-
-        const responseText = await response.text();
-        
-        addDebugLog(`Response for ${method.name}`, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: Object.fromEntries(response.headers.entries()),
-          responsePreview: responseText.substring(0, 500),
-          responseLength: responseText.length
-        });
-
-        if (response.ok) {
-          addDebugLog(`SUCCESS: ${method.name} worked!`);
-          try {
-            const results = JSON.parse(responseText);
-            return { success: true, results, method: method.name };
-          } catch (parseError) {
-            addDebugLog(`Parse error for successful response from ${method.name}`, parseError);
-          }
-        } else {
-          addDebugLog(`FAILED: ${method.name} returned ${response.status}`);
-        }
-
-      } catch (error) {
-        addDebugLog(`ERROR testing ${method.name}`, error);
-      }
-    }
-
-    return { success: false };
-  };
-
   const generatePortfolio = async (isRetry = false) => {
-    addDebugLog("=== PORTFOLIO GENERATION START ===", {
-      isRetry,
-      retryCount,
-      contentLength: content?.length,
-      hasSession: !!session,
-      timestamp: new Date().toISOString()
-    });
-
-    if (!content || content.trim().length === 0) {
-      addDebugLog("ERROR: No content provided");
-      setError('Content is required for portfolio generation.');
-      return;
-    }
-
     if (!session?.access_token) {
-      addDebugLog("ERROR: No session or access token", {
-        hasSession: !!session,
-        hasAccessToken: !!session?.access_token
-      });
-      setError('Authentication required. Please log in.');
+      console.error('No authentication token available');
+      setError('Authentication required. Please sign in and try again.');
       return;
     }
 
     if (!isRetry) {
       setRetryCount(0);
       setError(null);
-      setDebugLogs([]);
     }
 
     setIsGenerating(true);
     setProgress(0);
     setCurrentStep(isRetry ? `Retrying... (${retryCount + 1}/${maxRetries})` : 'Starting portfolio generation...');
     
+    // Clean up any existing connections
     cleanupConnections();
 
     try {
-      // Get fresh session to ensure we have valid token
-      const { data: { session: freshSession } } = await supabase.auth.getSession();
-      const authToken = freshSession?.access_token || session.access_token;
-      
-      addDebugLog("Using auth token", {
-        tokenLength: authToken?.length,
-        tokenPreview: authToken?.substring(0, 50) + '...',
-        isFreshToken: authToken === freshSession?.access_token
+      // First make the POST request to initiate
+      console.log('Initiating portfolio generation...');
+      const { error: postError } = await supabase.functions.invoke('generate-portfolio', {
+        body: { content }
       });
 
-      updateProgress(10, 'Connecting to portfolio service...');
-      
-      // Use SSE for streaming progress updates
-      const functionUrl = 'https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio';
-      const url = new URL(functionUrl);
-      url.searchParams.set('content', content.trim());
-      url.searchParams.set('authToken', authToken);
-      
-      addDebugLog("Starting SSE connection", {
-        url: url.toString(),
-        hasAuthToken: !!authToken
-      });
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/event-stream',
-          'Authorization': `Bearer ${authToken}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-          'x-client-info': 'lovable-project'
-        },
-        signal: AbortSignal.timeout(120000) // 2 minute timeout
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        addDebugLog("SSE connection failed", {
-          status: response.status,
-          statusText: response.statusText,
-          errorText
-        });
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      if (postError) {
+        console.error('Error initiating portfolio generation:', postError);
+        throw new Error(`Failed to start generation: ${postError.message}`);
       }
 
-      if (!response.body) {
-        throw new Error('No response body received');
-      }
+      // Wait a moment for the server to process the request
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Process SSE stream
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finalResults = null;
+      // Then start SSE connection for real-time updates
+      const authToken = session.access_token;
+      const encodedContent = encodeURIComponent(content);
+      const eventSourceUrl = `https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/generate-portfolio?content=${encodedContent}&authToken=${authToken}`;
+      
+      console.log('Starting SSE connection to:', eventSourceUrl);
+      
+      const eventSource = new EventSource(eventSourceUrl);
+      eventSourceRef.current = eventSource;
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
+      // Set a timeout for the entire operation
+      const connectionTimeout = setTimeout(() => {
+        console.log('SSE connection timeout');
+        eventSource.close();
+        handleRetry('Connection timeout');
+      }, 60000); // 60 second timeout
+
+      eventSource.onopen = () => {
+        console.log('SSE connection opened successfully');
+        setCurrentStep('Connected - generating portfolio...');
+        clearTimeout(connectionTimeout);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Received SSE data:', data);
           
-          if (done) {
-            addDebugLog("SSE stream completed");
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              
-              try {
-                const parsed = JSON.parse(data);
-                addDebugLog("Received SSE update", { 
-                  status: parsed.status,
-                  stepsCompleted: parsed.steps?.filter((s: any) => s.completed)?.length || 0,
-                  totalSteps: parsed.steps?.length || 0
-                });
-
-                // Update progress based on completed steps
-                const completedSteps = parsed.steps?.filter((s: any) => s.completed)?.length || 0;
-                const currentTotalSteps = parsed.steps?.length || totalSteps;
-                const progressPercent = Math.min(95, (completedSteps / currentTotalSteps) * 100);
-
-                // Update current step based on last incomplete step
-                const currentStepData = parsed.steps?.find((s: any) => !s.completed);
-                const currentStepName = currentStepData ? stepNames[currentStepData.name] || currentStepData.name : 'Processing...';
-
-                updateProgress(progressPercent, currentStepName);
-
-                // Store final results when status is completed
-                if (parsed.status === 'completed' || parsed.status === 'failed') {
-                  finalResults = parsed;
-                  updateProgress(100, parsed.status === 'completed' ? 'Portfolio generation complete!' : 'Generation failed');
-                }
-              } catch (parseError) {
-                addDebugLog("Failed to parse SSE data", { data, error: parseError });
+          if (data.status === 'completed') {
+            console.log('Portfolio generation completed successfully');
+            setResults(data);
+            setProgress(100);
+            setCurrentStep('Portfolio generation complete!');
+            setIsGenerating(false);
+            setError(null);
+            eventSource.close();
+            clearTimeout(connectionTimeout);
+            
+            toast({
+              title: "Portfolio Generated",
+              description: "Your portfolio has been successfully generated!",
+            });
+          } else if (data.steps) {
+            // Get unique completed steps by removing duplicates based on step name
+            const uniqueSteps = data.steps.reduce((acc: PortfolioStep[], step: PortfolioStep) => {
+              const existingStepIndex = acc.findIndex(s => s.name === step.name);
+              if (existingStepIndex >= 0) {
+                // Update existing step with latest data
+                acc[existingStepIndex] = step;
+              } else {
+                // Add new step
+                acc.push(step);
               }
+              return acc;
+            }, []);
+            
+            // Update progress based on unique completed steps
+            const completedSteps = uniqueSteps.filter((step: PortfolioStep) => step.completed).length;
+            const progressPercent = Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
+            setProgress(progressPercent);
+            
+            // Find the current step (first incomplete step)
+            const currentStepData = uniqueSteps.find((step: PortfolioStep) => !step.completed);
+            if (currentStepData) {
+              setCurrentStep(stepNames[currentStepData.name] || currentStepData.name);
+            } else if (completedSteps === totalSteps) {
+              setCurrentStep('Completing portfolio generation...');
             }
+          } else if (data.error) {
+            console.error('Server error:', data.error);
+            eventSource.close();
+            clearTimeout(connectionTimeout);
+            handleRetry(data.error);
           }
+        } catch (parseError) {
+          console.error('Error parsing SSE data:', parseError);
+          // Don't retry on parse errors, they're usually not recoverable
         }
-      } finally {
-        reader.releaseLock();
-      }
+      };
 
-      if (finalResults) {
-        if (finalResults.status === 'completed') {
-          setResults(finalResults);
-          setError(null);
-          
-          toast({
-            title: "Portfolio Generated Successfully",
-            description: `Generated ${finalResults.data?.tradeIdeas?.length || 0} trade ideas`,
-          });
-        } else {
-          throw new Error(finalResults.errors?.[0]?.message || 'Portfolio generation failed');
+      eventSource.onerror = (error) => {
+        console.error('SSE error occurred:', error);
+        eventSource.close();
+        clearTimeout(connectionTimeout);
+        
+        // Check if the connection was just closed normally
+        if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('SSE connection closed');
+          return;
         }
-      } else {
-        throw new Error('No final results received from stream');
-      }
+        
+        handleRetry('Connection error');
+      };
 
-    } catch (error: any) {
-      addDebugLog("Portfolio generation failed with error", {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
+    } catch (error) {
+      console.error('Error in generatePortfolio:', error);
+      handleRetry(error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  const handleRetry = (errorMessage: string) => {
+    console.log(`Portfolio generation failed: ${errorMessage}`);
+    
+    if (retryCount < maxRetries) {
+      console.log(`Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+      setRetryCount(prev => prev + 1);
+      setCurrentStep(`Retrying in ${retryDelay / 1000} seconds...`);
       
-      if (retryCount < maxRetries) {
-        addDebugLog(`Scheduling retry ${retryCount + 1}/${maxRetries} in ${retryDelay}ms`);
-        setRetryCount(prev => prev + 1);
-        setCurrentStep(`Retrying in ${retryDelay / 1000} seconds...`);
-        
-        retryTimeoutRef.current = setTimeout(() => {
-          generatePortfolio(true);
-        }, retryDelay);
-      } else {
-        setIsGenerating(false);
-        setError(`Portfolio generation failed: ${error.message}`);
-        setCurrentStep('Generation failed');
-        
-        addDebugLog("Max retries reached, giving up");
-        
-        toast({
-          title: "Portfolio Generation Failed",
-          description: error.message,
-          variant: "destructive"
-        });
-      }
-    } finally {
-      if (retryCount >= maxRetries || results) {
-        setIsGenerating(false);
-      }
+      retryTimeoutRef.current = setTimeout(() => {
+        generatePortfolio(true);
+      }, retryDelay);
+    } else {
+      console.log('Max retries reached, giving up');
+      setIsGenerating(false);
+      setError(`Failed after ${maxRetries} attempts: ${errorMessage}`);
+      setCurrentStep('Generation failed');
+      
+      toast({
+        title: "Portfolio Generation Failed",
+        description: `Failed after ${maxRetries} attempts. Please try again.`,
+        variant: "destructive"
+      });
     }
   };
 
@@ -488,7 +275,6 @@ export function PortfolioGenerationDropdown({
     setRetryCount(0);
     setError(null);
     setResults(null);
-    setDebugLogs([]);
     generatePortfolio(false);
   };
 
@@ -561,27 +347,9 @@ export function PortfolioGenerationDropdown({
             </div>
           )}
 
-          {debugLogs.length > 0 && (
-            <Collapsible>
-              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-transparent border border-white/10 rounded-lg hover:bg-white/5">
-                <span className="font-medium text-sm">Debug Logs ({debugLogs.length})</span>
-                <ChevronDown className="h-4 w-4" />
-              </CollapsibleTrigger>
-              
-              <CollapsibleContent className="mt-2">
-                <div className="max-h-60 overflow-y-auto p-3 bg-black/20 rounded-lg font-mono text-xs">
-                  {debugLogs.map((log, index) => (
-                    <div key={index} className="whitespace-pre-wrap mb-1 text-green-400">
-                      {log}
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-
           {results && (
             <div className="space-y-4">
+              {/* Trade Ideas Section */}
               <Collapsible 
                 open={expandedSections.has('trades')} 
                 onOpenChange={() => toggleSection('trades')}
@@ -604,6 +372,7 @@ export function PortfolioGenerationDropdown({
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* News Summary Section */}
               {results.data.news && (
                 <Collapsible 
                   open={expandedSections.has('news')} 
@@ -622,6 +391,7 @@ export function PortfolioGenerationDropdown({
                 </Collapsible>
               )}
 
+              {/* Keywords Section */}
               {results.data.keywords && (
                 <Collapsible 
                   open={expandedSections.has('keywords')} 
@@ -640,6 +410,7 @@ export function PortfolioGenerationDropdown({
                 </Collapsible>
               )}
 
+              {/* Markets Section */}
               {results.data.markets && results.data.markets.length > 0 && (
                 <Collapsible 
                   open={expandedSections.has('markets')} 
