@@ -37,6 +37,13 @@ export async function getMarketsWithLatestPrices(
 ): Promise<Market[]> {
   try {
     console.log(`[DB] Getting market details for ${marketIds.length} markets`);
+    console.log(`[DB] Market IDs sample: ${marketIds.slice(0, 3).join(', ')}${marketIds.length > 3 ? '...' : ''}`);
+    
+    const startTime = Date.now();
+    
+    // Limit market IDs to prevent timeouts
+    const limitedMarketIds = marketIds.slice(0, 30);
+    console.log(`[DB] Processing ${limitedMarketIds.length} markets (limited from ${marketIds.length})`);
     
     // Get markets with join to events and latest price data
     const { data, error } = await supabaseClient
@@ -51,13 +58,18 @@ export async function getMarketsWithLatestPrices(
           title
         )
       `)
-      .in('id', marketIds)
+      .in('id', limitedMarketIds)
       .eq('active', true)
       .eq('closed', false)
-      .eq('archived', false);
+      .eq('archived', false)
+      .limit(30); // Add explicit limit
       
+    const marketQueryTime = Date.now() - startTime;
+    console.log(`[DB] Markets query took ${marketQueryTime}ms`);
+    
     if (error) {
       console.error('[DB] Error fetching markets:', error);
+      console.error(`[DB] Query failed after ${marketQueryTime}ms`);
       throw error;
     }
     
@@ -69,6 +81,7 @@ export async function getMarketsWithLatestPrices(
     console.log(`[DB] Found ${data.length} markets, fetching price data`);
     
     // Get latest price data for these markets
+    const priceStartTime = Date.now();
     const { data: priceData, error: priceError } = await supabaseClient
       .from('market_prices')
       .select(`
@@ -81,11 +94,16 @@ export async function getMarketsWithLatestPrices(
         volume,
         liquidity
       `)
-      .in('market_id', marketIds)
-      .order('timestamp', { ascending: false });
+      .in('market_id', limitedMarketIds)
+      .order('timestamp', { ascending: false })
+      .limit(1000); // Limit price records to prevent timeout
       
+    const priceQueryTime = Date.now() - priceStartTime;
+    console.log(`[DB] Price query took ${priceQueryTime}ms`);
+    
     if (priceError) {
       console.error('[DB] Error fetching price data:', priceError);
+      console.error(`[DB] Price query failed after ${priceQueryTime}ms`);
       throw priceError;
     }
     

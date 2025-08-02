@@ -519,34 +519,39 @@ serve(async (req) => {
               const marketIds = matches.map(m => m.id);
               
               if (marketIds.length > 0) {
+                console.log(`[DEBUG] Fallback query - fetching ${marketIds.length} markets`);
+                
                 const { data, error } = await supabaseAdmin
                   .from('markets')
                   .select(`
-                    id as market_id,
+                    id,
                     event_id,
                     question,
                     description,
                     image,
                     events!inner(title)
                   `)
-                  .in('id', marketIds)
+                  .in('id', marketIds.slice(0, 50)) // Limit to prevent timeout
                   .eq('active', true)
                   .eq('closed', false)
-                  .eq('archived', false);
+                  .eq('archived', false)
+                  .limit(50); // Add explicit limit
                   
                 if (error) throw error;
                 
-                // Transform the data - using correct alias mapping
+                // Transform the data - fix the mapping since we removed the alias
                 details = data.map(d => ({
-                  market_id: d.market_id,  // This already has the correct alias from the query
+                  market_id: d.id,  // Now using the actual id field
                   event_id: d.event_id,
                   event_title: d.events.title,
                   question: d.question,
                   description: d.description,
-                  image: d.image, // Include image URL
+                  image: d.image,
                   yes_price: 0.5,
                   no_price: 0.5
                 }));
+                
+                console.log(`[DEBUG] Fallback query successful - transformed ${details.length} markets`);
                 
                 await addCompletedStep("market_details_fallback", { count: details.length });
                 console.log(`[${new Date().toISOString()}] Fetched basic details for ${details.length} markets (fallback)`);
