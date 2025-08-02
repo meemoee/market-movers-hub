@@ -201,6 +201,9 @@ serve(async (req) => {
           let news = '';
           try {
             const step = logStepStart("News summary generation");
+            console.log(`[DEBUG] Starting news summary with content: ${content}`);
+            console.log(`[DEBUG] OpenRouter API Key available: ${!!OPENROUTER_API_KEY}`);
+            
             results.steps.push({
               name: "news_summary",
               completed: false,
@@ -208,6 +211,7 @@ serve(async (req) => {
             });
             await sendSSE('message', JSON.stringify(results));
             
+            console.log(`[DEBUG] Making request to OpenRouter API...`);
             const newsResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
               method: "POST",
               headers: {
@@ -225,9 +229,16 @@ serve(async (req) => {
               })
             }, 15000);
 
+            console.log(`[DEBUG] News response status: ${newsResponse.status}`);
+            if (!newsResponse.ok) {
+              throw new Error(`News API failed with status ${newsResponse.status}`);
+            }
+            
             const newsData = await newsResponse.json();
+            console.log(`[DEBUG] News response received, data:`, JSON.stringify(newsData, null, 2));
             news = newsData.choices?.[0]?.message?.content?.trim() || "";
             results.data.news = news;
+            console.log(`[DEBUG] Extracted news summary: ${news.substring(0, 100)}...`);
             
             logStepEnd(step);
             
@@ -239,6 +250,7 @@ serve(async (req) => {
             await addCompletedStep("news_summary");
           } catch (error) {
             console.error(`[${new Date().toISOString()}] Error generating news summary:`, error);
+            console.error(`[DEBUG] Full error details:`, error);
             await addError("news_summary", error.message || "Error generating news summary");
           }
 
@@ -246,6 +258,8 @@ serve(async (req) => {
           let keywords = '';
           try {
             const step = logStepStart("Keywords extraction");
+            console.log(`[DEBUG] Starting keyword extraction for content: ${content}`);
+            
             results.steps.push({
               name: "keywords_extraction",
               completed: false,
@@ -254,6 +268,7 @@ serve(async (req) => {
             await sendSSE('message', JSON.stringify(results));
             
             const keywordPrompt = `Prediction: ${content} Return ONLY the 15-30 most relevant/specific nouns, names, or phrases deeply tied to the sentiment or prediction (comma-separated, no extra words). They must be specifically related to what circumstances might logically occur if the user is CORRECT in their sentiment or opinion, HIGHLY PRIORITIZING latest up-to-date happenings and news.`;
+            console.log(`[DEBUG] Keyword prompt: ${keywordPrompt}`);
             
             const keywordResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
               method: "POST",
@@ -272,9 +287,16 @@ serve(async (req) => {
               })
             }, 15000);
 
+            console.log(`[DEBUG] Keyword response status: ${keywordResponse.status}`);
+            if (!keywordResponse.ok) {
+              throw new Error(`Keyword API failed with status ${keywordResponse.status}`);
+            }
+            
             const keywordData = await keywordResponse.json();
+            console.log(`[DEBUG] Keyword response:`, JSON.stringify(keywordData, null, 2));
             keywords = keywordData.choices?.[0]?.message?.content?.trim() || "";
             results.data.keywords = keywords;
+            console.log(`[DEBUG] Extracted keywords: ${keywords}`);
             
             logStepEnd(step);
             
@@ -286,6 +308,7 @@ serve(async (req) => {
             await addCompletedStep("keywords_extraction", { keywordCount: keywords.split(',').length });
           } catch (error) {
             console.error(`[${new Date().toISOString()}] Error extracting keywords:`, error);
+            console.error(`[DEBUG] Full keyword error:`, error);
             await addError("keywords_extraction", error.message || "Error extracting keywords");
           }
 
@@ -293,6 +316,10 @@ serve(async (req) => {
           let vecArr: number[] = [];
           try {
             const step = logStepStart("Embedding creation");
+            console.log(`[DEBUG] Starting embedding creation`);
+            console.log(`[DEBUG] OpenAI API Key available: ${!!OPENAI_API_KEY}`);
+            console.log(`[DEBUG] Keywords length: ${keywords?.length || 0}`);
+            
             results.steps.push({
               name: "embedding_creation",
               completed: false,
@@ -303,9 +330,11 @@ serve(async (req) => {
             console.log(`[${new Date().toISOString()}] Getting embedding for keywords: ${keywords.substring(0, 50)}...`);
             
             if (!keywords || keywords.length === 0) {
+              console.log(`[DEBUG] No keywords available, keywords: "${keywords}"`);
               throw new Error("No keywords available for embedding generation");
             }
             
+            console.log(`[DEBUG] Making embedding request to OpenAI...`);
             const embedResponse = await fetchWithTimeout("https://api.openai.com/v1/embeddings", {
               method: "POST",
               headers: {
@@ -319,15 +348,19 @@ serve(async (req) => {
               })
             }, 10000);
 
+            console.log(`[DEBUG] Embedding response status: ${embedResponse.status}`);
             if (!embedResponse.ok) {
               const errorText = await embedResponse.text();
+              console.log(`[DEBUG] Embedding error response: ${errorText}`);
               throw new Error(`OpenAI API error: ${embedResponse.status} - ${errorText}`);
             }
 
             const embedData = await embedResponse.json();
+            console.log(`[DEBUG] Embedding response data keys: ${Object.keys(embedData)}`);
             vecArr = embedData.data?.[0]?.embedding || [];
             
             if (vecArr.length === 0) {
+              console.log(`[DEBUG] Empty embedding vector received`);
               throw new Error("Failed to generate embedding");
             }
             
@@ -343,6 +376,7 @@ serve(async (req) => {
             await addCompletedStep("embedding_creation", { dimensions: vecArr.length });
           } catch (error) {
             console.error(`[${new Date().toISOString()}] Error creating embedding:`, error);
+            console.error(`[DEBUG] Full embedding error:`, error);
             await addError("embedding_creation", error.message || "Error creating embedding");
           }
 
@@ -350,6 +384,11 @@ serve(async (req) => {
           let matches: any[] = [];
           try {
             const step = logStepStart("Pinecone search");
+            console.log(`[DEBUG] Starting Pinecone search`);
+            console.log(`[DEBUG] Pinecone API Key available: ${!!PINECONE_API_KEY}`);
+            console.log(`[DEBUG] Pinecone Host: ${PINECONE_HOST}`);
+            console.log(`[DEBUG] Vector array length: ${vecArr.length}`);
+            
             results.steps.push({
               name: "pinecone_search",
               completed: false,
@@ -358,9 +397,11 @@ serve(async (req) => {
             await sendSSE('message', JSON.stringify(results));
             
             if (vecArr.length === 0) {
+              console.log(`[DEBUG] No embedding vector available for search`);
               throw new Error("No embedding vector available for search");
             }
             
+            console.log(`[DEBUG] Making Pinecone query request...`);
             const pineconeResponse = await fetchWithTimeout(`${PINECONE_HOST}/query`, {
               method: "POST",
               headers: {
@@ -379,13 +420,17 @@ serve(async (req) => {
               })
             }, 20000);
 
+            console.log(`[DEBUG] Pinecone response status: ${pineconeResponse.status}`);
             if (!pineconeResponse.ok) {
               const errorText = await pineconeResponse.text();
+              console.log(`[DEBUG] Pinecone error response: ${errorText}`);
               throw new Error(`Pinecone query failed ${pineconeResponse.status}: ${errorText}`);
             }
 
             const pineconeData = await pineconeResponse.json();
+            console.log(`[DEBUG] Pinecone response data:`, JSON.stringify(pineconeData, null, 2));
             matches = pineconeData.matches || [];
+            console.log(`[DEBUG] Found ${matches.length} matches from Pinecone`);
             
             logStepEnd(step);
             
@@ -397,6 +442,7 @@ serve(async (req) => {
             await addCompletedStep("pinecone_search", { matchCount: matches.length });
           } catch (error) {
             console.error(`[${new Date().toISOString()}] Error querying Pinecone:`, error);
+            console.error(`[DEBUG] Full Pinecone error:`, error);
             await addError("pinecone_search", error.message || "Error querying Pinecone");
           }
 
@@ -420,6 +466,8 @@ serve(async (req) => {
             );
 
             const marketIds = matches.map(m => m.id);
+            console.log(`[DEBUG] Extracted ${marketIds.length} market IDs from matches`);
+            console.log(`[DEBUG] Market IDs: ${marketIds.slice(0, 5).join(', ')}${marketIds.length > 5 ? '...' : ''}`);
             
             if (marketIds.length === 0) {
               console.log(`[${new Date().toISOString()}] No market IDs to fetch details for`);
@@ -432,7 +480,9 @@ serve(async (req) => {
               console.log(`[${new Date().toISOString()}] Fetching details for ${marketIds.length} markets using helper function`);
               
               // Use the imported getMarketsWithLatestPrices function instead of the RPC call
+              console.log(`[DEBUG] Calling getMarketsWithLatestPrices...`);
               details = await getMarketsWithLatestPrices(supabaseAdmin, marketIds);
+              console.log(`[DEBUG] Retrieved ${details.length} market details`);
               
               if (details.length === 0) {
                 results.warnings.push({
