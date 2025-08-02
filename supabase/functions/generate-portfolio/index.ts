@@ -221,7 +221,7 @@ serve(async (req) => {
                 "X-Title": "Market Analysis App"
               },
               body: JSON.stringify({
-                model: "perplexity/llama-3.1-sonar-small-128k-online",
+                model: "perplexity/sonar",
                 messages: [
                   { role: "system", content: "You give short news summaries." },
                   { role: "user", content: `Comment: ${content}\nToday's date: ${new Date().toISOString().slice(0,10)}\nProvide a concise update.` }
@@ -279,7 +279,7 @@ serve(async (req) => {
                 "X-Title": "Market Analysis App"
               },
               body: JSON.stringify({
-                model: "perplexity/llama-3.1-sonar-small-128k-online",
+                model: "perplexity/sonar",
                 messages: [
                   { role: "system", content: "You are a keyword extractor." },
                   { role: "user", content: keywordPrompt }
