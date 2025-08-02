@@ -8,35 +8,35 @@ verify_jwt = false
 
 [[functions]]
 name = "analyze-web-content"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "brave-search"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "web-scrape"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "web-research"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "extract-research-insights"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "generate-qa-tree"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "evaluate-qa-pair"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "evaluate-qa-final"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "get-orderbook"
@@ -48,12 +48,44 @@ verify_jwt = false
 
 [[functions]]
 name = "create-research-job"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "generate-queries"
-verify_jwt = false
+verify_jwt = true
 
 [[functions]]
 name = "generate-historical-event"
+verify_jwt = true
+
+[[functions]]
+name = "generate-portfolio"
+verify_jwt = true
+
+[[functions]]
+name = "execute-market-order"
+verify_jwt = true
+
+[[functions]]
+name = "get-top-movers"
 verify_jwt = false
+
+[[functions]]
+name = "search-markets"
+verify_jwt = false
+
+[[functions]]
+name = "price-history"
+verify_jwt = false
+
+[[functions]]
+name = "deep-research"
+verify_jwt = true
+
+[[functions]]
+name = "send-research-notification"
+verify_jwt = true
+
+[[functions]]
+name = "seed-historical-events"
+verify_jwt = true
