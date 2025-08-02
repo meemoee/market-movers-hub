@@ -30,31 +30,23 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
   const isYesOutcome = trade.outcome.toLowerCase().includes('yes');
   const outcomes = ['Yes', 'No'];
   
-  // DON'T INVERT ANYTHING! The LLM now gives us the correct prices directly
-  const actualCurrentPrice = trade.current_price;
-  const actualTargetPrice = trade.target_price;
-  const actualStopPrice = trade.stop_price;
+  // For display purposes - if recommending "No", we need to show the inverted prices
+  // because the trade.current_price represents the "Yes" price from the market data
+  const displayCurrentPrice = isYesOutcome ? trade.current_price : (1 - trade.current_price);
+  const displayTargetPrice = isYesOutcome ? trade.target_price : (1 - trade.target_price);
+  const displayStopPrice = trade.stop_price ? (isYesOutcome ? trade.stop_price : (1 - trade.stop_price)) : undefined;
   
-  // For button prices, we need to show the actual market prices
-  // The LLM gives us the trading price, but we need to show both outcomes
-  let yesPrice, noPrice;
-  if (isYesOutcome) {
-    // If recommending Yes, current_price is the Yes price
-    yesPrice = trade.current_price;
-    noPrice = 1 - trade.current_price;
-  } else {
-    // If recommending No, current_price is the No price
-    noPrice = trade.current_price;
-    yesPrice = 1 - trade.current_price;
-  }
+  // Button prices - always show actual market prices
+  const yesPrice = trade.current_price; // This is the "Yes" price from market data
+  const noPrice = 1 - trade.current_price; // This is the "No" price (complement)
 
   const truncateOutcome = (outcome: string) => {
     return outcome.length > 8 ? `${outcome.slice(0, 6)}...` : outcome;
   };
 
-  // Calculate price change using the LLM's direct prices
-  const priceChange = actualTargetPrice - actualCurrentPrice;
-  const isPositive = priceChange >= 0;
+  // Recalculate price change using display prices
+  const displayPriceChange = displayTargetPrice - displayCurrentPrice;
+  const displayIsPositive = displayPriceChange >= 0;
 
   return (
     <div className={`w-full ${isMobile ? 'px-2 py-2' : 'p-3'} space-y-3 overflow-hidden border border-border rounded-lg`}>
@@ -106,112 +98,101 @@ export function TradeIdeaCard({ trade }: TradeIdeaCardProps) {
         <div className="flex justify-between items-start pt-0.5">
           <div className="flex flex-col">
             <span className="text-3xl font-bold tracking-tight">
-              {formatPrice(actualCurrentPrice)}
+              {formatPrice(displayCurrentPrice)}
             </span>
             <span className={`text-sm font-medium flex items-center gap-1
-              ${isPositive ? 'text-green-500' : 'text-red-500'}`}
+              ${displayIsPositive ? 'text-green-500' : 'text-red-500'}`}
             >
-              {isPositive ? (
+              {displayIsPositive ? (
                 <TrendingUp className="w-4 h-4" />
               ) : (
                 <TrendingDown className="w-4 h-4" />
               )}
-              {formatPrice(actualTargetPrice)} Target
+              Target: {formatPrice(displayTargetPrice)}
+            </span>
+          </div>
+          <div className="flex flex-col items-end justify-end h-[60px]">
+            <span className="text-lg font-semibold text-primary">
+              Target
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {displayStopPrice ? `Stop: ${formatPrice(displayStopPrice)}` : 'No stop set'}
             </span>
           </div>
         </div>
         
         {/* Price visualization with target and stop indicators */}
-        <div className="relative h-[20px] w-full">
-          {/* Labels positioned above their respective indicators */}
-          
-          {/* Current price label */}
+        <div className="relative h-[3px] w-full">
+          {/* Base line showing current price position */}
           <div 
-            className="absolute text-[10px] text-white font-medium top-[-12px] transform -translate-x-1/2"
+            className="absolute bg-white/50 h-2 top-[-4px]" 
             style={{ 
-              left: `${calculatePosition(actualCurrentPrice)}%`
+              width: `${calculatePosition(displayCurrentPrice)}%`
             }}
-          >
-            Current
-          </div>
+          />
           
-          {/* Target price label */}
+          {/* Current price indicator */}
           <div 
-            className="absolute text-[10px] text-green-400 font-medium top-[-12px] transform -translate-x-1/2"
+            className="absolute h-3 w-0.5 bg-white top-[-6px]"
             style={{ 
-              left: `${Math.min(Math.max(calculatePosition(actualTargetPrice), 0), 100)}%`
+              left: `${calculatePosition(displayCurrentPrice)}%`
             }}
-          >
-            Target
-          </div>
+          />
           
-          {/* Stop price label */}
-          {actualStopPrice && (
+          {/* Target price indicator - positioned using display price */}
+          <div 
+            className="absolute h-4 w-0.5 bg-green-400 top-[-7px]"
+            style={{ 
+              left: `${Math.min(Math.max(calculatePosition(displayTargetPrice), 0), 100)}%`
+            }}
+          />
+          
+          {/* Stop price indicator - positioned using display price */}
+          {displayStopPrice && (
             <div 
-              className="absolute text-[10px] text-red-400 font-medium top-[-12px] transform -translate-x-1/2"
+              className="absolute h-4 w-0.5 bg-red-400 top-[-7px]"
               style={{ 
-                left: `${Math.min(Math.max(calculatePosition(actualStopPrice), 0), 100)}%`
+                left: `${Math.min(Math.max(calculatePosition(displayStopPrice), 0), 100)}%`
               }}
-            >
-              Stop
-            </div>
+            />
           )}
           
-          {/* Price visualization bar - positioned lower to make room for labels */}
-          <div className="absolute top-[4px] w-full h-[3px]">
-            {/* Base line showing current price position */}
+          {/* Price change visualization using display prices */}
+          {displayIsPositive ? (
             <div 
-              className="absolute bg-white/50 h-2 top-[-4px]" 
+              className="absolute bg-green-500/30 h-2 top-[-4px]" 
               style={{ 
-                width: `${calculatePosition(actualCurrentPrice)}%`
+                left: `${calculatePosition(displayCurrentPrice)}%`,
+                width: `${Math.max(0, Math.min(calculatePosition(displayTargetPrice) - calculatePosition(displayCurrentPrice), 100 - calculatePosition(displayCurrentPrice)))}%`
               }}
             />
-            
-            {/* Current price indicator */}
+          ) : (
             <div 
-              className="absolute h-3 w-0.5 bg-white top-[-6px]"
+              className="absolute bg-red-500/30 h-2 top-[-4px]" 
               style={{ 
-                left: `${calculatePosition(actualCurrentPrice)}%`
+                left: `${Math.max(calculatePosition(displayTargetPrice), 0)}%`,
+                width: `${Math.max(0, Math.min(calculatePosition(displayCurrentPrice) - calculatePosition(displayTargetPrice), calculatePosition(displayCurrentPrice)))}%`
               }}
             />
-            
-            {/* Target price indicator */}
-            <div 
-              className="absolute h-4 w-0.5 bg-green-400 top-[-7px]"
-              style={{ 
-                left: `${Math.min(Math.max(calculatePosition(actualTargetPrice), 0), 100)}%`
-              }}
-            />
-            
-            {/* Stop price indicator */}
-            {actualStopPrice && (
-              <div 
-                className="absolute h-4 w-0.5 bg-red-400 top-[-7px]"
-                style={{ 
-                  left: `${Math.min(Math.max(calculatePosition(actualStopPrice), 0), 100)}%`
-                }}
-              />
-            )}
-            
-            {/* Price change visualization */}
-            {isPositive ? (
-              <div 
-                className="absolute bg-green-500/30 h-2 top-[-4px]" 
-                style={{ 
-                  left: `${calculatePosition(actualCurrentPrice)}%`,
-                  width: `${Math.max(0, Math.min(calculatePosition(actualTargetPrice) - calculatePosition(actualCurrentPrice), 100 - calculatePosition(actualCurrentPrice)))}%`
-                }}
-              />
-            ) : (
-              <div 
-                className="absolute bg-red-500/30 h-2 top-[-4px]" 
-                style={{ 
-                  left: `${Math.max(calculatePosition(actualTargetPrice), 0)}%`,
-                  width: `${Math.max(0, Math.min(calculatePosition(actualCurrentPrice) - calculatePosition(actualTargetPrice), calculatePosition(actualCurrentPrice)))}%`
-                }}
-              />
-            )}
+          )}
+        </div>
+        
+        {/* Legend for the indicators */}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <div className="w-0.5 h-3 bg-white"></div>
+            <span>Current</span>
           </div>
+          <div className="flex items-center gap-1">
+            <div className="w-0.5 h-4 bg-green-400"></div>
+            <span>Target</span>
+          </div>
+          {displayStopPrice && (
+            <div className="flex items-center gap-1">
+              <div className="w-0.5 h-4 bg-red-400"></div>
+              <span>Stop</span>
+            </div>
+          )}
         </div>
       </div>
 

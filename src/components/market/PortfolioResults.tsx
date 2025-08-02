@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
@@ -81,36 +82,6 @@ interface PortfolioResults {
     tradeIdeas: TradeIdea[];
   }
 }
-
-// CRITICAL FIX: Validate and correct trade idea pricing
-const validateAndFixTradeIdea = (idea: TradeIdea): TradeIdea => {
-  console.log(`Validating trade idea: ${idea.market_title}`);
-  console.log(`Original - Current: ${idea.current_price}, Target: ${idea.target_price}, Stop: ${idea.stop_price}`);
-  
-  let correctedIdea = { ...idea };
-  
-  // Rule 1: Target MUST be higher than current (for profit)
-  if (correctedIdea.target_price <= correctedIdea.current_price) {
-    console.log(`FIXING: Target price ${correctedIdea.target_price} is not higher than current ${correctedIdea.current_price}`);
-    correctedIdea.target_price = correctedIdea.current_price + 0.05; // Add 5 cents for reasonable target
-  }
-  
-  // Rule 2: Stop MUST be lower than current (to limit losses)
-  if (correctedIdea.stop_price >= correctedIdea.current_price) {
-    console.log(`FIXING: Stop price ${correctedIdea.stop_price} is not lower than current ${correctedIdea.current_price}`);
-    correctedIdea.stop_price = Math.max(0.01, correctedIdea.current_price - 0.05); // Subtract 5 cents, but never go below 1 cent
-  }
-  
-  // Rule 3: Ensure stop is not higher than target (basic sanity check)
-  if (correctedIdea.stop_price >= correctedIdea.target_price) {
-    console.log(`FIXING: Stop price ${correctedIdea.stop_price} is not lower than target ${correctedIdea.target_price}`);
-    correctedIdea.stop_price = Math.max(0.01, correctedIdea.target_price - 0.10); // 10 cents below target
-  }
-  
-  console.log(`Corrected - Current: ${correctedIdea.current_price}, Target: ${correctedIdea.target_price}, Stop: ${correctedIdea.stop_price}`);
-  
-  return correctedIdea;
-};
 
 export function PortfolioResults({
   content,
@@ -293,24 +264,11 @@ export function PortfolioResults({
         // Display all markets from the embedding search (all 25 results)
         setMarkets(results.data.markets || []);
         
-        // CRITICAL FIX: Validate and correct trade ideas before setting state
-        const validatedTradeIdeas = (results.data.tradeIdeas || []).map(validateAndFixTradeIdea);
-        setTradeIdeas(validatedTradeIdeas);
+        setTradeIdeas(results.data.tradeIdeas || []);
         
         // Add data summaries to progress
         addProgressMessage(`Found ${results.data.markets.length} relevant markets`);
-        addProgressMessage(`Generated ${validatedTradeIdeas.length} trade ideas`);
-        
-        // Log any pricing corrections made
-        const correctionsMade = results.data.tradeIdeas.some((original, index) => {
-          const validated = validatedTradeIdeas[index];
-          return original.target_price !== validated.target_price || original.stop_price !== validated.stop_price;
-        });
-        
-        if (correctionsMade) {
-          console.log('✅ Trade idea pricing corrections applied successfully');
-          addProgressMessage('Applied pricing corrections to trade ideas');
-        }
+        addProgressMessage(`Generated ${results.data.tradeIdeas.length} trade ideas`);
       }
       
       if (results.status === 'completed') {
