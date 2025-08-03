@@ -77,105 +77,79 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       
       let accumulatedContent = ''
       
-      console.log('Creating ReadableStream to process response...')
-      const stream = new ReadableStream({
-        start(controller) {
-          console.log('Stream started, initializing decoder and reader')
-          const textDecoder = new TextDecoder()
-          const reader = new Response(data.body).body?.getReader()
+      console.log('Processing response stream directly...')
+      const textDecoder = new TextDecoder()
+      const reader = new Response(data.body).body?.getReader()
+      
+      console.log('Reader created:', !!reader)
+      
+      function processStream() {
+        console.log('Reading next chunk from stream...')
+        reader?.read().then(({done, value}) => {
+          console.log('Stream read result:', { done, chunkSize: value?.length })
           
-          console.log('Reader created:', !!reader)
-          
-          function push() {
-            console.log('Reading next chunk from stream...')
-            reader?.read().then(({done, value}) => {
-              console.log('Stream read result:', { done, chunkSize: value?.length })
-              
-              if (done) {
-                console.log('Stream complete, closing controller')
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
-              
-              const lines = chunk.split('\n').filter(line => line.trim())
-              console.log('Filtered lines:', lines.length, lines)
-              
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i]
-                console.log(`Processing line ${i}:`, line.substring(0, 100))
-                
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  console.log('Extracted JSON string:', jsonStr)
-                  
-                  if (jsonStr === '[DONE]') {
-                    console.log('Found DONE signal, skipping')
-                    continue
-                  }
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr)
-                    console.log('Parsed JSON:', parsed)
-                    
-                    const content = parsed.choices?.[0]?.delta?.content
-                    console.log('Extracted content:', content)
-                    
-                    if (content) {
-                      accumulatedContent += content
-                      console.log('Accumulated content length:', accumulatedContent.length)
-                      console.log('Current accumulated content:', accumulatedContent.substring(0, 100) + '...')
-                      
-                      setStreamingContent(accumulatedContent)
-                      console.log('Updated streaming content in UI')
-                    } else {
-                      console.log('No content in this chunk')
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
-                  }
-                } else {
-                  console.log('Line does not start with "data:", skipping:', line)
-                }
-              }
-              
-              console.log('Finished processing chunk, continuing to next...')
-              push()
-            }).catch(error => {
-              console.error('Error reading from stream:', error)
-              controller.error(error)
-            })
+          if (done) {
+            console.log('Stream complete, adding final message')
+            setMessages(prev => [...prev, { 
+              type: 'assistant', 
+              content: accumulatedContent 
+            }])
+            return
           }
           
-          console.log('Starting initial push...')
-          push()
-        }
-      })
-
-      console.log('Starting to consume processed stream...')
-      const reader = stream.getReader()
-      let readCount = 0
-      
-      while (true) {
-        readCount++
-        console.log(`Stream consumption iteration ${readCount}`)
-        
-        const { done } = await reader.read()
-        console.log('Stream read done?', done)
-        
-        if (done) {
-          console.log('Stream consumption complete')
-          break
-        }
+          const chunk = textDecoder.decode(value)
+          console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
+          
+          const lines = chunk.split('\n').filter(line => line.trim())
+          console.log('Filtered lines:', lines.length, lines)
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i]
+            console.log(`Processing line ${i}:`, line.substring(0, 100))
+            
+            if (line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              console.log('Extracted JSON string:', jsonStr)
+              
+              if (jsonStr === '[DONE]') {
+                console.log('Found DONE signal, skipping')
+                continue
+              }
+              
+              try {
+                const parsed = JSON.parse(jsonStr)
+                console.log('Parsed JSON:', parsed)
+                
+                const content = parsed.choices?.[0]?.delta?.content
+                console.log('Extracted content:', content)
+                
+                if (content) {
+                  accumulatedContent += content
+                  console.log('Accumulated content length:', accumulatedContent.length)
+                  console.log('Current accumulated content:', accumulatedContent.substring(0, 100) + '...')
+                  
+                  setStreamingContent(accumulatedContent)
+                  console.log('Updated streaming content in UI')
+                } else {
+                  console.log('No content in this chunk')
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
+              }
+            } else {
+              console.log('Line does not start with "data:", skipping:', line)
+            }
+          }
+          
+          console.log('Finished processing chunk, continuing to next...')
+          processStream()
+        }).catch(error => {
+          console.error('Error reading from stream:', error)
+        })
       }
-
-      console.log('Adding final message to chat with content length:', accumulatedContent.length)
-      setMessages(prev => [...prev, { 
-        type: 'assistant', 
-        content: accumulatedContent 
-      }])
+      
+      console.log('Starting stream processing...')
+      processStream()
 
       console.log('=== MarketChatbox: Chat message completed successfully ===')
 
