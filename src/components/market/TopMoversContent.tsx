@@ -74,13 +74,13 @@ export function TopMoversContent({
               market={{
                 market_id: mover.market_id,
                 question: mover.question,
-                price: mover.final_last_traded_price,
+                price: mover.final_last_price,
                 price_change: mover.price_change,
                 volume: mover.volume_change,
                 total_volume: mover.final_volume,
                 image: mover.image || '/placeholder.svg',
                 yes_sub_title: mover.yes_sub_title,
-                final_last_traded_price: mover.final_last_traded_price,
+                final_last_traded_price: mover.final_last_price,
                 final_best_ask: mover.final_best_ask,
                 final_best_bid: mover.final_best_bid,
                 final_no_best_ask: mover.final_no_best_ask,
@@ -88,6 +88,9 @@ export function TopMoversContent({
                 description: mover.description,
                 outcomes: mover.outcomes || ["Yes", "No"],
                 event_id: mover.event_id,
+                primary_tags: mover.primary_tags,
+                tag_slugs: mover.tag_slugs,
+                tags: mover.tags,
               }}
               isExpanded={expandedMarkets.has(mover.market_id)}
               onToggleExpand={() => toggleMarket(mover.market_id)}

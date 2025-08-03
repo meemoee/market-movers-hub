@@ -22,6 +22,9 @@ interface Market {
   description?: string;
   outcomes?: string[];
   event_id?: string;
+  primary_tags?: string[];
+  tag_slugs?: string[];
+  tags?: any[];
 }
 
 interface MarketCardProps {
@@ -63,6 +66,9 @@ export function MarketCard({
         onSell={onSell}
         outcomes={market.outcomes}
         onToggleExpand={onToggleExpand}
+        primaryTags={market.primary_tags}
+        tagSlugs={market.tag_slugs}
+        tags={market.tags}
       />
       <MarketStats
         lastTradedPrice={market.final_last_traded_price}
