@@ -686,6 +686,12 @@ serve(async (req) => {
                 return acc;
               }, {});
               
+              console.log(`[${new Date().toISOString()}] Starting trade ideas generation with ${bests.length} best markets`);
+              console.log(`[${new Date().toISOString()}] Markets being analyzed for trade ideas:`);
+              bests.forEach((market, i) => {
+                console.log(`  ${i+1}. Market ${market.market_id}: "${market.question}" | YES: ${market.yes_price} | NO: ${market.no_price}`);
+              });
+              
               const listText = bests
                 .map((r, i) => `${i+1}. ID: ${r.market_id} | ${r.question} — yes:${r.yes_price}, no:${r.no_price}`)
                 .join("\n");
@@ -714,6 +720,12 @@ Format:
     }
   ]
 }`;
+
+              console.log(`[${new Date().toISOString()}] Sending trade ideas prompt to AI model:`);
+              console.log(`[${new Date().toISOString()}] User prediction: "${content}"`);
+              console.log(`[${new Date().toISOString()}] Prompt length: ${ideasPrompt.length} characters`);
+              console.log(`[${new Date().toISOString()}] Available market IDs: ${bests.map(m => m.market_id).join(', ')}`);
+              console.log(`[${new Date().toISOString()}] Price ranges for trade analysis: ${bests.map(m => `${m.market_id}(YES:${m.yes_price},NO:${m.no_price})`).join(', ')}`);
 
               const ideasResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
