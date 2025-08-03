@@ -1,12 +1,11 @@
 
-import { ChevronDown, SlidersHorizontal, Tags } from 'lucide-react';
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { MultiRangeSlider } from '@/components/ui/multi-range-slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAvailableTags } from '@/hooks/useAvailableTags';
 
 interface TimeInterval {
   label: string;
@@ -41,8 +40,6 @@ interface TopMoversHeaderProps {
   setShowVolumeMaxThumb: (show: boolean) => void;
   sortBy: 'price_change' | 'volume';
   onSortChange: (value: 'price_change' | 'volume') => void;
-  selectedTags: string[];
-  onTagsChange: (tags: string[]) => void;
 }
 
 export function TopMoversHeader({
@@ -73,19 +70,8 @@ export function TopMoversHeader({
   setShowVolumeMaxThumb,
   sortBy,
   onSortChange,
-  selectedTags,
-  onTagsChange,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
-  const { data: availableTags = [], isLoading: tagsLoading } = useAvailableTags();
-
-  const handleTagToggle = (tagName: string) => {
-    if (selectedTags.includes(tagName)) {
-      onTagsChange(selectedTags.filter(t => t !== tagName));
-    } else {
-      onTagsChange([...selectedTags, tagName]);
-    }
-  };
 
   return (
     <div className="p-4 w-full relative">
@@ -120,62 +106,7 @@ export function TopMoversHeader({
           </div>
         </div>
 
-        <div className="flex-shrink-0 flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent/20 transition-colors">
-                <Tags className="w-4 h-4" />
-                <span className="text-sm">
-                  Tags{selectedTags.length > 0 && ` (${selectedTags.length})`}
-                </span>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[250px] bg-background/95 backdrop-blur-sm border-border max-h-[300px] overflow-y-auto">
-              <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {tagsLoading ? (
-                <div className="p-2 text-sm text-muted-foreground">Loading tags...</div>
-              ) : availableTags.length === 0 ? (
-                <div className="p-2 text-sm text-muted-foreground">No tags available</div>
-              ) : (
-                <div className="p-1">
-                  {selectedTags.length > 0 && (
-                    <>
-                      <DropdownMenuItem 
-                        className="cursor-pointer text-muted-foreground"
-                        onClick={() => onTagsChange([])}
-                      >
-                        Clear all tags
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                   {availableTags.map((tag) => (
-                     <DropdownMenuItem 
-                       key={tag.name}
-                       className="flex items-center justify-between gap-2 cursor-pointer"
-                       onClick={() => handleTagToggle(tag.name)}
-                     >
-                       <div className="flex items-center gap-2">
-                         <Checkbox 
-                           checked={selectedTags.includes(tag.name)}
-                           onChange={() => {}}
-                           className="pointer-events-none"
-                         />
-                         <span className="text-sm">{tag.name}</span>
-                       </div>
-                       {tag.count && (
-                         <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-                           {tag.count}
-                         </span>
-                       )}
-                     </DropdownMenuItem>
-                   ))}
-                </div>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
+        <div className="flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent/20 transition-colors">

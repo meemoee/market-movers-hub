@@ -9,11 +9,11 @@ interface MarketSearchResponse {
   total?: number;
 }
 
-export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number, tagFilter: string[] = []) {
+export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax, tagFilter],
+    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax],
     queryFn: async () => {
-      console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax, tagFilter });
+      console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
       
       // Ensure search query is properly trimmed
       const trimmedQuery = searchQuery.trim();
@@ -24,8 +24,7 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
           page,
           limit: 20,
           probabilityMin,
-          probabilityMax,
-          tagFilter
+          probabilityMax
         }
       });
 
@@ -41,7 +40,7 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
         console.log('First market in results:', {
           id: data.data[0].market_id,
           question: data.data[0].question,
-          probability: data.data[0].final_last_price
+          probability: data.data[0].final_last_traded_price
         });
       }
       

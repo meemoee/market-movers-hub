@@ -32,20 +32,17 @@ export interface TopMover {
   image: string;
   event_id: string;
   event_title?: string;
-  final_last_price: number;
+  final_last_traded_price: number;
   final_best_ask: number;
   final_best_bid: number;
   final_no_best_ask?: number;
   final_no_best_bid?: number;
   final_volume: number;
-  initial_last_price: number;
+  initial_last_traded_price: number;
   initial_volume: number;
   price_change: number;
   volume_change: number;
   volume_change_percentage: number;
-  primary_tags?: string[];
-  tag_slugs?: string[];
-  tags?: any[];
 }
 
 interface TopMoversListProps {
@@ -65,7 +62,6 @@ interface TopMoversListProps {
   showVolumeMinThumb: boolean;
   showVolumeMaxThumb: boolean;
   sortBy: 'price_change' | 'volume';
-  selectedTags: string[];
 }
 
 interface OrderBookData {
@@ -93,7 +89,6 @@ export default function TopMoversList({
   showVolumeMinThumb,
   showVolumeMaxThumb,
   sortBy,
-  selectedTags,
 }: TopMoversListProps) {
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -124,16 +119,14 @@ export default function TopMoversList({
     showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
     showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
     showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
-    sortBy,
-    selectedTags
+    sortBy
   );
 
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
     searchPage, 
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
-    showMaxThumb ? debouncedProbabilityRange[1] : undefined,
-    selectedTags
+    showMaxThumb ? debouncedProbabilityRange[1] : undefined
   );
 
   useEffect(() => {

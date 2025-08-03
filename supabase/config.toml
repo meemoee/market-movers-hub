@@ -59,9 +59,6 @@ enable_confirmations = false
 enable_signup = false
 enable_confirmations = false
 
-[functions.get-available-tags]
-verify_jwt = false
-
 [functions.generate-portfolio]
 verify_jwt = false
 

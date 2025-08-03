@@ -1,7 +1,6 @@
 
 import { HoverButton } from "@/components/ui/hover-button";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { MarketTags } from "./MarketTags";
 
 interface MarketHeaderProps {
   image: string;
@@ -14,9 +13,6 @@ interface MarketHeaderProps {
   onSell: () => void;
   outcomes?: string[];
   onToggleExpand: () => void;
-  primaryTags?: string[];
-  tagSlugs?: string[];
-  tags?: any[];
 }
 
 export function MarketHeader({ 
@@ -29,10 +25,7 @@ export function MarketHeader({
   onBuy, 
   onSell,
   outcomes = ["Yes", "No"],
-  onToggleExpand,
-  primaryTags,
-  tagSlugs,
-  tags
+  onToggleExpand
 }: MarketHeaderProps) {
   const isMobile = useIsMobile();
   
@@ -60,14 +53,6 @@ export function MarketHeader({
               {yesSubTitle}
             </p>
           )}
-          <div className="mt-1">
-            <MarketTags 
-              primaryTags={primaryTags} 
-              tagSlugs={tagSlugs} 
-              tags={tags} 
-              maxTags={isMobile ? 2 : 3}
-            />
-          </div>
         </div>
       </div>
       <div className={`flex ${isMobile ? 'w-full' : 'w-auto'} gap-2 ${isMobile ? 'h-9' : 'h-12'} flex-shrink-0`}>
