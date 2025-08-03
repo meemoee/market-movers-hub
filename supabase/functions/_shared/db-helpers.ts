@@ -140,6 +140,13 @@ export async function getRelatedMarketsWithPrices(
 ): Promise<RelatedMarket[]> {
   try {
     console.log(`[DB] Getting related markets for ${eventIds.length} events`);
+    console.log(`[DB] Event IDs sample: ${eventIds.slice(0, 3).join(', ')}${eventIds.length > 3 ? '...' : ''}`);
+    
+    const startTime = Date.now();
+    
+    // Limit event IDs to prevent timeouts
+    const limitedEventIds = eventIds.slice(0, 10);
+    console.log(`[DB] Processing ${limitedEventIds.length} events (limited from ${eventIds.length})`);
     
     // Get markets in the same events
     const { data, error } = await supabaseClient
@@ -149,13 +156,18 @@ export async function getRelatedMarketsWithPrices(
         event_id,
         question
       `)
-      .in('event_id', eventIds)
+      .in('event_id', limitedEventIds)
       .eq('active', true)
       .eq('closed', false)
-      .eq('archived', false);
+      .eq('archived', false)
+      .limit(30); // Add explicit limit
+      
+    const marketQueryTime = Date.now() - startTime;
+    console.log(`[DB] Related markets query took ${marketQueryTime}ms`);
       
     if (error) {
       console.error('[DB] Error fetching related markets:', error);
+      console.error(`[DB] Query failed after ${marketQueryTime}ms`);
       throw error;
     }
     
@@ -168,6 +180,7 @@ export async function getRelatedMarketsWithPrices(
     console.log(`[DB] Found ${marketIds.length} related markets, fetching price data`);
     
     // Get latest price data for these markets
+    const priceStartTime = Date.now();
     const { data: priceData, error: priceError } = await supabaseClient
       .from('market_prices')
       .select(`
@@ -181,10 +194,15 @@ export async function getRelatedMarketsWithPrices(
         liquidity
       `)
       .in('market_id', marketIds)
-      .order('timestamp', { ascending: false });
+      .order('timestamp', { ascending: false })
+      .limit(1000); // Limit price records to prevent timeout
+      
+    const priceQueryTime = Date.now() - priceStartTime;
+    console.log(`[DB] Related markets price query took ${priceQueryTime}ms`);
       
     if (priceError) {
       console.error('[DB] Error fetching price data for related markets:', priceError);
+      console.error(`[DB] Price query failed after ${priceQueryTime}ms`);
       throw priceError;
     }
     
