@@ -14,8 +14,8 @@ serve(async (req) => {
 
   let redis;
   try {
-    const { searchQuery = '', page = 1, limit = 20, probabilityMin = 0, probabilityMax = 100 } = await req.json();
-    console.log(`Searching markets with query: "${searchQuery}", page: ${page}, limit: ${limit}, probability range: ${probabilityMin}-${probabilityMax}`);
+    const { searchQuery = '', page = 1, limit = 20, probabilityMin = 0, probabilityMax = 100, tagFilter = [], excludedTags = [] } = await req.json();
+    console.log(`Searching markets with query: "${searchQuery}", page: ${page}, limit: ${limit}, probability range: ${probabilityMin}-${probabilityMax}, tagFilter: ${JSON.stringify(tagFilter)}, excludedTags: ${JSON.stringify(excludedTags)}`);
 
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
@@ -106,6 +106,30 @@ serve(async (req) => {
       const probability = market.final_last_traded_price * 100;
       return probability >= probabilityMin && probability <= probabilityMax;
     });
+
+    // Apply tag filter if tags are selected
+    if (tagFilter && Array.isArray(tagFilter) && tagFilter.length > 0) {
+      searchResults = searchResults.filter(market => {
+        const marketTags = [
+          ...(market.primary_tags || []),
+          ...(market.tag_slugs || [])
+        ];
+        
+        return tagFilter.some(tag => marketTags.includes(tag));
+      });
+    }
+
+    // Apply excluded tags filter if tags are excluded
+    if (excludedTags && Array.isArray(excludedTags) && excludedTags.length > 0) {
+      searchResults = searchResults.filter(market => {
+        const marketTags = [
+          ...(market.primary_tags || []),
+          ...(market.tag_slugs || [])
+        ];
+        
+        return !excludedTags.some(tag => marketTags.includes(tag));
+      });
+    }
 
     // Sort by recency (latest first) instead of price change
     searchResults.sort((a, b) => {

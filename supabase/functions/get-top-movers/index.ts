@@ -44,8 +44,8 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change', tagFilter = [] } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}, tagFilter: ${JSON.stringify(tagFilter)}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change', tagFilter = [], excludedTags = [] } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}, tagFilter: ${JSON.stringify(tagFilter)}, excludedTags: ${JSON.stringify(excludedTags)}`);
 
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
@@ -367,6 +367,20 @@ serve(async (req) => {
         return tagFilter.some(tag => marketTags.includes(tag));
       });
       console.log(`Filtered to ${allMarkets.length} markets matching tags: ${tagFilter.join(', ')}`);
+    }
+
+    // Apply excluded tags filter if tags are excluded
+    if (excludedTags && Array.isArray(excludedTags) && excludedTags.length > 0) {
+      allMarkets = allMarkets.filter(market => {
+        // Check if market has any of the excluded tags in primary_tags or tag_slugs
+        const marketTags = [
+          ...(market.primary_tags || []),
+          ...(market.tag_slugs || [])
+        ];
+        
+        return !excludedTags.some(tag => marketTags.includes(tag));
+      });
+      console.log(`Filtered to ${allMarkets.length} markets excluding tags: ${excludedTags.join(', ')}`);
     }
 
     // Then apply openOnly filter

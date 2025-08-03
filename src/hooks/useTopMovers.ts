@@ -49,7 +49,8 @@ export function useTopMovers(
   volumeMin?: number,
   volumeMax?: number,
   sortBy: 'price_change' | 'volume' = 'price_change',
-  tagFilter: string[] = []
+  tagFilter: string[] = [],
+  excludedTags: string[] = []
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
@@ -93,7 +94,7 @@ export function useTopMovers(
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy, tagFilter],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy, tagFilter, excludedTags],
     queryFn: async ({ pageParam = 1 }) => {
       console.log('Fetching top movers list:', { 
         interval, 
@@ -124,7 +125,8 @@ export function useTopMovers(
             volumeMin: volumeMin !== undefined ? Number(volumeMin) : undefined,
             volumeMax: volumeMax !== undefined ? Number(volumeMax) : undefined,
             sortBy,
-            tagFilter
+            tagFilter,
+            excludedTags
           }
         });
 

@@ -66,6 +66,7 @@ interface TopMoversListProps {
   showVolumeMaxThumb: boolean;
   sortBy: 'price_change' | 'volume';
   selectedTags: string[];
+  excludedTags: string[];
 }
 
 interface OrderBookData {
@@ -94,6 +95,7 @@ export default function TopMoversList({
   showVolumeMaxThumb,
   sortBy,
   selectedTags,
+  excludedTags,
 }: TopMoversListProps) {
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -125,7 +127,8 @@ export default function TopMoversList({
     showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
     showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
     sortBy,
-    selectedTags
+    selectedTags,
+    excludedTags
   );
 
   const marketSearchQuery = useMarketSearch(
@@ -133,7 +136,8 @@ export default function TopMoversList({
     searchPage, 
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
     showMaxThumb ? debouncedProbabilityRange[1] : undefined,
-    selectedTags
+    selectedTags,
+    excludedTags
   );
 
   useEffect(() => {

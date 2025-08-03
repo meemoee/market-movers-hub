@@ -9,9 +9,9 @@ interface MarketSearchResponse {
   total?: number;
 }
 
-export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number, tagFilter: string[] = []) {
+export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number, tagFilter: string[] = [], excludedTags: string[] = []) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax, tagFilter],
+    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax, tagFilter, excludedTags],
     queryFn: async () => {
       console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax, tagFilter });
       
@@ -25,7 +25,8 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
           limit: 20,
           probabilityMin,
           probabilityMax,
-          tagFilter
+          tagFilter,
+          excludedTags
         }
       });
 

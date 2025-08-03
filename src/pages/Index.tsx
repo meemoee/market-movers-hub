@@ -49,6 +49,7 @@ export default function Index() {
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [excludedTags, setExcludedTags] = useState<string[]>([]);
   const isMobile = useIsMobile();
 
   const handleIntervalChange = (newInterval: string) => {
@@ -158,6 +159,8 @@ export default function Index() {
                 onSortChange={setSortBy}
                 selectedTags={selectedTags}
                 onTagsChange={setSelectedTags}
+                excludedTags={excludedTags}
+                onExcludedTagsChange={setExcludedTags}
               />
             </div>
             
@@ -182,6 +185,7 @@ export default function Index() {
                   showVolumeMaxThumb={showVolumeMaxThumb}
                   sortBy={sortBy}
                   selectedTags={selectedTags}
+                  excludedTags={excludedTags}
                 />
               </div>
             </div>

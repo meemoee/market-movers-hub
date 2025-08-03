@@ -43,6 +43,8 @@ interface TopMoversHeaderProps {
   onSortChange: (value: 'price_change' | 'volume') => void;
   selectedTags: string[];
   onTagsChange: (tags: string[]) => void;
+  excludedTags: string[];
+  onExcludedTagsChange: (tags: string[]) => void;
 }
 
 export function TopMoversHeader({
@@ -75,15 +77,33 @@ export function TopMoversHeader({
   onSortChange,
   selectedTags,
   onTagsChange,
+  excludedTags,
+  onExcludedTagsChange,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
   const { data: availableTags = [], isLoading: tagsLoading } = useAvailableTags();
 
-  const handleTagToggle = (tagName: string) => {
-    if (selectedTags.includes(tagName)) {
-      onTagsChange(selectedTags.filter(t => t !== tagName));
+  const handleTagToggle = (tagName: string, isExcluded: boolean = false) => {
+    if (isExcluded) {
+      if (excludedTags.includes(tagName)) {
+        onExcludedTagsChange(excludedTags.filter(t => t !== tagName));
+      } else {
+        onExcludedTagsChange([...excludedTags, tagName]);
+        // Remove from included tags if it was there
+        if (selectedTags.includes(tagName)) {
+          onTagsChange(selectedTags.filter(t => t !== tagName));
+        }
+      }
     } else {
-      onTagsChange([...selectedTags, tagName]);
+      if (selectedTags.includes(tagName)) {
+        onTagsChange(selectedTags.filter(t => t !== tagName));
+      } else {
+        onTagsChange([...selectedTags, tagName]);
+        // Remove from excluded tags if it was there
+        if (excludedTags.includes(tagName)) {
+          onExcludedTagsChange(excludedTags.filter(t => t !== tagName));
+        }
+      }
     }
   };
 
@@ -126,52 +146,88 @@ export function TopMoversHeader({
               <button className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent/20 transition-colors">
                 <Tags className="w-4 h-4" />
                 <span className="text-sm">
-                  Tags{selectedTags.length > 0 && ` (${selectedTags.length})`}
+                  Tags{(selectedTags.length > 0 || excludedTags.length > 0) && ` (${selectedTags.length + excludedTags.length})`}
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[250px] bg-background/95 backdrop-blur-sm border-border max-h-[300px] overflow-y-auto">
+            <DropdownMenuContent align="end" className="w-[280px] bg-background/95 backdrop-blur-sm border-border max-h-[300px] overflow-y-auto">
               <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
+              <div className="px-3 pb-2">
+                <div className="flex gap-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <div className="w-3 h-3 border border-current rounded-sm flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-current rounded-sm"></div>
+                    </div>
+                    Include
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-3 h-3 border border-red-400 rounded-sm flex items-center justify-center text-red-400">
+                      ✕
+                    </div>
+                    Exclude
+                  </span>
+                </div>
+              </div>
               <DropdownMenuSeparator />
               {tagsLoading ? (
                 <div className="p-2 text-sm text-muted-foreground">Loading tags...</div>
               ) : availableTags.length === 0 ? (
                 <div className="p-2 text-sm text-muted-foreground">No tags available</div>
               ) : (
-                <div className="p-1">
-                  {selectedTags.length > 0 && (
-                    <>
-                      <DropdownMenuItem 
-                        className="cursor-pointer text-muted-foreground"
-                        onClick={() => onTagsChange([])}
-                      >
-                        Clear all tags
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                   {availableTags.map((tag) => (
-                     <DropdownMenuItem 
-                       key={tag.name}
-                       className="flex items-center justify-between gap-2 cursor-pointer"
-                       onClick={() => handleTagToggle(tag.name)}
-                     >
-                       <div className="flex items-center gap-2">
-                         <Checkbox 
-                           checked={selectedTags.includes(tag.name)}
-                           onChange={() => {}}
-                           className="pointer-events-none"
-                         />
-                         <span className="text-sm">{tag.name}</span>
-                       </div>
-                       {tag.count && (
-                         <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-                           {tag.count}
-                         </span>
-                       )}
-                     </DropdownMenuItem>
-                   ))}
-                </div>
+                 <div className="p-1">
+                   {(selectedTags.length > 0 || excludedTags.length > 0) && (
+                     <>
+                       <DropdownMenuItem 
+                         className="cursor-pointer text-muted-foreground"
+                         onClick={() => {
+                           onTagsChange([]);
+                           onExcludedTagsChange([]);
+                         }}
+                       >
+                         Clear all tags
+                       </DropdownMenuItem>
+                       <DropdownMenuSeparator />
+                     </>
+                   )}
+                    {availableTags.map((tag) => {
+                      const isIncluded = selectedTags.includes(tag.name);
+                      const isExcluded = excludedTags.includes(tag.name);
+                      
+                      return (
+                        <div key={tag.name} className="flex items-center gap-1">
+                          <DropdownMenuItem 
+                            className="flex items-center justify-between gap-2 cursor-pointer flex-1"
+                            onClick={() => handleTagToggle(tag.name, false)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Checkbox 
+                                checked={isIncluded}
+                                onChange={() => {}}
+                                className="pointer-events-none"
+                              />
+                              <span className="text-sm">{tag.name}</span>
+                            </div>
+                            {tag.count && (
+                              <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+                                {tag.count}
+                              </span>
+                            )}
+                          </DropdownMenuItem>
+                          <button
+                            className={`px-2 py-1 text-xs rounded border transition-colors ${
+                              isExcluded 
+                                ? 'bg-red-500/20 border-red-500/30 text-red-400' 
+                                : 'border-border text-muted-foreground hover:border-red-500/30 hover:text-red-400'
+                            }`}
+                            onClick={() => handleTagToggle(tag.name, true)}
+                            title={isExcluded ? 'Remove from excluded' : 'Exclude this tag'}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                 </div>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
