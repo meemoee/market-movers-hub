@@ -74,7 +74,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
         'X-Title': 'Market Chat App',
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model: "perplexity/sonar",
         messages: [
           {
             role: "system",
