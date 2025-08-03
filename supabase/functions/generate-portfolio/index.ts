@@ -505,9 +505,10 @@ serve(async (req) => {
             console.error(`[${new Date().toISOString()}] Error fetching market details:`, error);
             await addError("market_details", error.message || "Error fetching market details");
             
-            // Fallback to direct query
+            // Fallback to direct query using the same helper function
             try {
               const step = logStepStart("Market details fallback query");
+              console.log(`[${new Date().toISOString()}] Main market details query failed, trying fallback with real prices`);
               
               const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
               const supabaseAdmin = createClient(
@@ -519,39 +520,11 @@ serve(async (req) => {
               const marketIds = matches.map(m => m.id);
               
               if (marketIds.length > 0) {
-                console.log(`[DEBUG] Fallback query - fetching ${marketIds.length} markets`);
+                console.log(`[DEBUG] Fallback query - fetching ${marketIds.length} markets with REAL prices`);
                 
-                const { data, error } = await supabaseAdmin
-                  .from('markets')
-                  .select(`
-                    id,
-                    event_id,
-                    question,
-                    description,
-                    image,
-                    events!inner(title)
-                  `)
-                  .in('id', marketIds.slice(0, 50)) // Limit to prevent timeout
-                  .eq('active', true)
-                  .eq('closed', false)
-                  .eq('archived', false)
-                  .limit(50); // Add explicit limit
-                  
-                if (error) throw error;
-                
-                // Transform the data - fix the mapping since we removed the alias
-                details = data.map(d => ({
-                  market_id: d.id,  // Now using the actual id field
-                  event_id: d.event_id,
-                  event_title: d.events.title,
-                  question: d.question,
-                  description: d.description,
-                  image: d.image,
-                  yes_price: 0.5,
-                  no_price: 0.5
-                }));
-                
-                console.log(`[DEBUG] Fallback query successful - transformed ${details.length} markets`);
+                // Use the same helper function to get real price data in fallback
+                details = await getMarketsWithLatestPrices(supabaseAdmin, marketIds.slice(0, 30));
+                console.log(`[DEBUG] Fallback query successful - retrieved ${details.length} markets with real prices`);
                 
                 await addCompletedStep("market_details_fallback", { count: details.length });
                 console.log(`[${new Date().toISOString()}] Fetched basic details for ${details.length} markets (fallback)`);
