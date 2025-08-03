@@ -94,58 +94,96 @@ Keep responses conversational and accessible while maintaining analytical depth.
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
+    console.log('Starting to process OpenRouter stream...')
+    
     // Transform the OpenRouter stream to SSE format expected by frontend
     const reader = openRouterResponse.body?.getReader()
     const encoder = new TextEncoder()
     const decoder = new TextDecoder()
 
+    console.log('Created reader and encoders')
+
     const stream = new ReadableStream({
       start(controller) {
+        console.log('Stream started, beginning pump function')
+        
         function pump(): Promise<void> {
           return reader!.read().then(({ done, value }) => {
+            console.log('Read chunk:', { done, chunkSize: value?.length })
+            
             if (done) {
+              console.log('Stream finished, closing controller')
               controller.close()
               return
             }
 
             const chunk = decoder.decode(value)
+            console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
+            
             const lines = chunk.split('\n')
+            console.log('Split into lines:', lines.length)
 
-            for (const line of lines) {
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]
+              console.log(`Processing line ${i}:`, line.substring(0, 100))
+              
               if (line.startsWith('data: ') && line !== 'data: [DONE]') {
                 try {
                   const jsonStr = line.slice(6) // Remove 'data: ' prefix
+                  console.log('Parsing JSON:', jsonStr.substring(0, 150))
+                  
                   const data = JSON.parse(jsonStr)
+                  console.log('Parsed data:', JSON.stringify(data).substring(0, 200))
                   
                   // Transform OpenRouter format to expected frontend format
                   if (data.choices && data.choices[0]?.delta?.content) {
+                    const content = data.choices[0].delta.content
+                    console.log('Found content to stream:', content)
+                    
                     const transformedData = {
                       choices: [{
                         delta: {
-                          content: data.choices[0].delta.content
+                          content: content
                         }
                       }]
                     }
                     
+                    console.log('Transformed data:', JSON.stringify(transformedData))
+                    
                     // Send as SSE format expected by frontend
                     const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
+                    console.log('Sending SSE data:', sseData.substring(0, 200))
+                    
                     controller.enqueue(encoder.encode(sseData))
+                    console.log('Enqueued chunk successfully')
+                  } else {
+                    console.log('No content found in chunk, skipping')
                   }
                 } catch (e) {
                   console.error('Error parsing stream chunk:', e, 'Line:', line)
                 }
               } else if (line === 'data: [DONE]') {
+                console.log('Found DONE signal, sending to frontend')
                 controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              } else if (line.trim() === '') {
+                console.log('Empty line, skipping')
+              } else {
+                console.log('Non-data line:', line)
               }
             }
 
+            console.log('Finished processing chunk, continuing pump...')
             return pump()
+          }).catch(error => {
+            console.error('Error in pump function:', error)
+            controller.error(error)
           })
         }
         return pump()
       }
     })
 
+    console.log('Returning transformed stream response')
     return new Response(stream, {
       headers: {
         ...corsHeaders,

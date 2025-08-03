@@ -25,6 +25,11 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const { user } = useCurrentUser()
 
   const handleChatMessage = async (userMessage: string) => {
+    console.log('=== MarketChatbox: Starting chat message ===')
+    console.log('User message:', userMessage)
+    console.log('Current messages count:', messages.length)
+    console.log('Is loading:', isLoading)
+    
     if (!userMessage.trim() || isLoading) return
     
     setHasStartedChat(true)
@@ -34,12 +39,20 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
     
     try {
       if (abortControllerRef.current) {
+        console.log('Aborting previous request')
         abortControllerRef.current.abort()
       }
 
       abortControllerRef.current = new AbortController()
 
-      console.log('Sending request to market-chat function...')
+      console.log('Sending request to market-chat function with data:', {
+        message: userMessage,
+        chatHistoryLength: messages.length,
+        userId: user?.id,
+        marketId,
+        marketQuestion
+      })
+
       const { data, error } = await supabase.functions.invoke('market-chat', {
         body: {
           message: userMessage,
@@ -55,73 +68,125 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
         throw error
       }
 
-      console.log('Received response from market-chat:', data)
+      console.log('Received response from market-chat:', {
+        hasData: !!data,
+        hasBody: !!data?.body,
+        bodyType: typeof data?.body,
+        isReadableStream: data?.body instanceof ReadableStream
+      })
       
       let accumulatedContent = ''
       
+      console.log('Creating ReadableStream to process response...')
       const stream = new ReadableStream({
         start(controller) {
+          console.log('Stream started, initializing decoder and reader')
           const textDecoder = new TextDecoder()
           const reader = new Response(data.body).body?.getReader()
           
+          console.log('Reader created:', !!reader)
+          
           function push() {
+            console.log('Reading next chunk from stream...')
             reader?.read().then(({done, value}) => {
+              console.log('Stream read result:', { done, chunkSize: value?.length })
+              
               if (done) {
-                console.log('Stream complete')
+                console.log('Stream complete, closing controller')
                 controller.close()
                 return
               }
               
               const chunk = textDecoder.decode(value)
+              console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
               
               const lines = chunk.split('\n').filter(line => line.trim())
+              console.log('Filtered lines:', lines.length, lines)
               
-              for (const line of lines) {
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i]
+                console.log(`Processing line ${i}:`, line.substring(0, 100))
+                
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
+                  console.log('Extracted JSON string:', jsonStr)
                   
-                  if (jsonStr === '[DONE]') continue
+                  if (jsonStr === '[DONE]') {
+                    console.log('Found DONE signal, skipping')
+                    continue
+                  }
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
+                    console.log('Parsed JSON:', parsed)
                     
                     const content = parsed.choices?.[0]?.delta?.content
+                    console.log('Extracted content:', content)
+                    
                     if (content) {
                       accumulatedContent += content
+                      console.log('Accumulated content length:', accumulatedContent.length)
+                      console.log('Current accumulated content:', accumulatedContent.substring(0, 100) + '...')
+                      
                       setStreamingContent(accumulatedContent)
+                      console.log('Updated streaming content in UI')
+                    } else {
+                      console.log('No content in this chunk')
                     }
                   } catch (e) {
                     console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
                   }
+                } else {
+                  console.log('Line does not start with "data:", skipping:', line)
                 }
               }
               
+              console.log('Finished processing chunk, continuing to next...')
               push()
+            }).catch(error => {
+              console.error('Error reading from stream:', error)
+              controller.error(error)
             })
           }
           
+          console.log('Starting initial push...')
           push()
         }
       })
 
+      console.log('Starting to consume processed stream...')
       const reader = stream.getReader()
+      let readCount = 0
+      
       while (true) {
+        readCount++
+        console.log(`Stream consumption iteration ${readCount}`)
+        
         const { done } = await reader.read()
-        if (done) break
+        console.log('Stream read done?', done)
+        
+        if (done) {
+          console.log('Stream consumption complete')
+          break
+        }
       }
 
+      console.log('Adding final message to chat with content length:', accumulatedContent.length)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: accumulatedContent 
       }])
 
+      console.log('=== MarketChatbox: Chat message completed successfully ===')
+
     } catch (error) {
-      console.error('Error in chat:', error)
+      console.error('=== MarketChatbox: Error in chat ===', error)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: 'Sorry, I encountered an error processing your request.' 
       }])
     } finally {
+      console.log('Cleaning up: setting loading to false and clearing streaming content')
       setIsLoading(false)
       setStreamingContent('')
       abortControllerRef.current = null
