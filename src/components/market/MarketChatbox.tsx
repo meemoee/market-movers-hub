@@ -53,40 +53,54 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
         marketQuestion
       })
 
-      const { data, error } = await supabase.functions.invoke('market-chat', {
-        body: {
-          message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
-          userId: user?.id,
-          marketId,
-          marketQuestion
-        }
-      })
+      // Get auth token for direct fetch call
+      const { data: sessionData } = await supabase.auth.getSession()
+      const authToken = sessionData.session?.access_token
 
-      if (error) {
-        console.error('Supabase function error:', error)
-        throw error
+      if (!authToken) {
+        throw new Error("No authentication token available")
       }
 
-      console.log('Received response from market-chat:', {
-        hasData: !!data,
-        hasBody: !!data?.body,
-        bodyType: typeof data?.body,
-        isReadableStream: data?.body instanceof ReadableStream
-      })
+      // Make direct fetch call to edge function with streaming
+      const response = await fetch(
+        "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: userMessage,
+            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+            userId: user?.id,
+            marketId,
+            marketQuestion
+          }),
+          signal: abortControllerRef.current?.signal
+        }
+      )
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Edge function error: ${response.status} - ${errorText}`)
+      }
+
+      console.log('Got streaming response from market-chat')
       
+      // Process the streaming response
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('Failed to get response reader')
+      }
+
+      const decoder = new TextDecoder()
       let accumulatedContent = ''
       
-      console.log('Processing response stream directly...')
-      const textDecoder = new TextDecoder()
-      const reader = new Response(data.body).body?.getReader()
-      
-      console.log('Reader created:', !!reader)
-      
-      function processStream() {
-        console.log('Reading next chunk from stream...')
-        reader?.read().then(({done, value}) => {
-          console.log('Stream read result:', { done, chunkSize: value?.length })
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
           
           if (done) {
             console.log('Stream complete, adding final message')
@@ -94,62 +108,39 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
               type: 'assistant', 
               content: accumulatedContent 
             }])
-            return
+            break
           }
           
-          const chunk = textDecoder.decode(value)
-          console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split('\n')
           
-          const lines = chunk.split('\n').filter(line => line.trim())
-          console.log('Filtered lines:', lines.length, lines)
-          
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]
-            console.log(`Processing line ${i}:`, line.substring(0, 100))
-            
-            if (line.startsWith('data: ')) {
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
               const jsonStr = line.slice(6).trim()
-              console.log('Extracted JSON string:', jsonStr)
               
               if (jsonStr === '[DONE]') {
-                console.log('Found DONE signal, skipping')
                 continue
               }
               
               try {
                 const parsed = JSON.parse(jsonStr)
-                console.log('Parsed JSON:', parsed)
-                
                 const content = parsed.choices?.[0]?.delta?.content
-                console.log('Extracted content:', content)
                 
                 if (content) {
                   accumulatedContent += content
-                  console.log('Accumulated content length:', accumulatedContent.length)
-                  console.log('Current accumulated content:', accumulatedContent.substring(0, 100) + '...')
-                  
                   setStreamingContent(accumulatedContent)
-                  console.log('Updated streaming content in UI')
-                } else {
-                  console.log('No content in this chunk')
                 }
               } catch (e) {
-                console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
+                console.error('Error parsing SSE data:', e)
               }
-            } else {
-              console.log('Line does not start with "data:", skipping:', line)
             }
           }
-          
-          console.log('Finished processing chunk, continuing to next...')
-          processStream()
-        }).catch(error => {
-          console.error('Error reading from stream:', error)
-        })
+        }
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          throw error
+        }
       }
-      
-      console.log('Starting stream processing...')
-      processStream()
 
       console.log('=== MarketChatbox: Chat message completed successfully ===')
 
