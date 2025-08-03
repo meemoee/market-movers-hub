@@ -690,7 +690,7 @@ serve(async (req) => {
                 .map((r, i) => `${i+1}. ID: ${r.market_id} | ${r.question} — yes:${r.yes_price}, no:${r.no_price}`)
                 .join("\n");
                 
-              const ideasPrompt = `
+               const ideasPrompt = `
 User prediction: ${content}
 
 Here are the top markets that matched:
@@ -698,16 +698,22 @@ ${listText}
 
 Based on these, suggest the 3 best trade ideas that would make the user money if their prediction or sentiment ends up being CORRECT.
 
-Return ONLY a valid JSON array of exactly three such objects. No extra text. Don't pick an outcome with very small (<10%) or very high (90%+) odds unless you have good reason. NEVER suggest an outcome with price of 0 or 1 since those were already resolved.
+Return a JSON object with a "trades" array containing exactly three trade objects. Don't pick an outcome with very small (<10%) or very high (90%+) odds unless you have good reason. NEVER suggest an outcome with price of 0 or 1 since those were already resolved.
 
-Suggest 3 trades as a JSON array of objects with:
-  market_id (must be one of the specific IDs provided above, CRITICAL),
-  market_title, 
-  outcome, 
-  current_price, 
-  target_price, 
-  stop_price, 
-  rationale.`;
+Format:
+{
+  "trades": [
+    {
+      "market_id": "must be one of the specific IDs provided above, CRITICAL",
+      "market_title": "brief market title", 
+      "outcome": "YES or NO", 
+      "current_price": 0.45, 
+      "target_price": 0.65, 
+      "stop_price": 0.35, 
+      "rationale": "why this trade makes sense"
+    }
+  ]
+}`;
 
               const ideasResponse = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
@@ -720,7 +726,7 @@ Suggest 3 trades as a JSON array of objects with:
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-preview-05-20",
                   messages: [
-                    { role: "system", content: "You are a trading strategy assistant. Output ONLY valid JSON." },
+                    { role: "system", content: "You are a trading strategy assistant. Output ONLY valid JSON objects." },
                     { role: "user", content: ideasPrompt }
                   ],
                   response_format: { type: "json_object" }
@@ -728,10 +734,15 @@ Suggest 3 trades as a JSON array of objects with:
               }, 15000);
 
               const ideasData = await ideasResponse.json();
-              const rawIdeas = ideasData.choices?.[0]?.message?.content?.trim() || "[]";
+              const rawIdeas = ideasData.choices?.[0]?.message?.content?.trim() || '{"trades":[]}';
+              
+              console.log(`[${new Date().toISOString()}] Raw trade ideas response:`, rawIdeas);
               
               try {
-                const parsedIdeas = JSON.parse(rawIdeas);
+                const parsedResponse = JSON.parse(rawIdeas);
+                const parsedIdeas = parsedResponse.trades || [];
+                
+                console.log(`[${new Date().toISOString()}] Parsed ${parsedIdeas.length} trade ideas from response`);
                 
                 // Add image URL from our market details to each trade idea
                 tradeIdeas = parsedIdeas.map(idea => {
@@ -746,8 +757,24 @@ Suggest 3 trades as a JSON array of objects with:
                 
                 console.log(`[${new Date().toISOString()}] Generated ${tradeIdeas.length} trade ideas with market details`);
               } catch (jsonError) {
-                console.error(`[${new Date().toISOString()}] Error parsing trade ideas JSON:`, jsonError, rawIdeas);
+                console.error(`[${new Date().toISOString()}] Error parsing trade ideas JSON:`, jsonError);
+                console.error(`[${new Date().toISOString()}] Raw response that failed to parse:`, rawIdeas);
                 await addError("trade_ideas_json_parse", jsonError.message || "Error parsing trade ideas JSON", { raw: rawIdeas });
+                
+                // Fallback: try to extract any meaningful information
+                try {
+                  if (rawIdeas.includes('"market_id"')) {
+                    console.log(`[${new Date().toISOString()}] Attempting fallback extraction from malformed JSON`);
+                    // At least log that we got some response with market data
+                    results.warnings.push({
+                      step: "trade_ideas",
+                      message: "Trade ideas response received but couldn't parse JSON format",
+                      timestamp: new Date().toISOString()
+                    });
+                  }
+                } catch (fallbackError) {
+                  console.error(`[${new Date().toISOString()}] Fallback extraction also failed:`, fallbackError);
+                }
               }
             } else {
               results.warnings.push({
