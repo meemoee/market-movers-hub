@@ -156,6 +156,7 @@ export async function getRelatedMarketsWithPrices(
 ): Promise<RelatedMarket[]> {
   let redis;
   try {
+    console.log(`[REDIS] ===== STARTING getRelatedMarketsWithPrices =====`);
     console.log(`[REDIS] Getting related markets for ${eventIds.length} events using Redis cache`);
     console.log(`[REDIS] Event IDs sample: ${eventIds.slice(0, 3).join(', ')}${eventIds.length > 3 ? '...' : ''}`);
     
@@ -165,6 +166,7 @@ export async function getRelatedMarketsWithPrices(
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
       console.log('[REDIS] REDIS_URL not found, falling back to database query');
+      console.log('[REDIS] ===== FALLING BACK TO DATABASE =====');
       return await getRelatedMarketsWithPricesFromDB(supabaseClient, eventIds);
     }
 
@@ -251,7 +253,7 @@ export async function getRelatedMarketsWithPrices(
                 price_change: foundMarket.price_change,
                 volume_change: foundMarket.volume_change
               };
-              console.log(`[REDIS] Found market ${relatedMarket.market_id} with price ${relatedMarket.last_traded_price}, change ${relatedMarket.price_change}%`);
+              console.log(`[REDIS] Found market ${relatedMarket.market_id} with CACHED price ${relatedMarket.last_traded_price}, change ${relatedMarket.price_change}%`);
               relatedMarkets.push(relatedMarket);
             }
           }
@@ -290,6 +292,8 @@ export async function getRelatedMarketsWithPrices(
       console.log(`[REDIS] After active verification: ${activeRelatedMarkets.length} of ${relatedMarkets.length} markets are still active`);
       
       if (activeRelatedMarkets.length >= 3) {
+        console.log(`[REDIS] ===== RETURNING ${activeRelatedMarkets.length} CACHED MARKETS =====`);
+        activeRelatedMarkets.forEach(m => console.log(`[REDIS] Returning cached market ${m.market_id} with price ${m.last_traded_price}`));
         return activeRelatedMarkets.slice(0, 10);
       }
       
@@ -304,21 +308,27 @@ export async function getRelatedMarketsWithPrices(
     
     if (missingMarketIds.length > 0 && relatedMarkets.length < 5) {
       console.log(`[REDIS] Found ${missingMarketIds.length} markets not in cache, supplementing with database`);
+      console.log(`[REDIS] Missing market IDs: ${missingMarketIds.slice(0, 5).join(', ')}`);
+      console.log(`[REDIS] ===== CALLING DATABASE FALLBACK =====`);
       const dbMarkets = await getRelatedMarketsWithPricesFromDB(
         supabaseClient, 
         eventIds,
         missingMarketIds.slice(0, 5) // Limit to avoid timeouts
       );
+      console.log(`[REDIS] Database returned ${dbMarkets.length} markets`);
+      dbMarkets.forEach(m => console.log(`[REDIS] DB returned market ${m.market_id} with price ${m.last_traded_price}`));
       relatedMarkets.push(...dbMarkets);
     }
     
-    console.log(`[REDIS] Total: ${relatedMarkets.length} related markets found`);
+    console.log(`[REDIS] ===== FINAL RESULT: ${relatedMarkets.length} related markets found =====`);
+    relatedMarkets.forEach(m => console.log(`[REDIS] Final market ${m.market_id} with price ${m.last_traded_price}`));
     return relatedMarkets.slice(0, 10); // Return max 10 markets
     
   } catch (error) {
     console.error('[REDIS] Error getting related markets from Redis:', error);
     await redis?.close();
     // Fallback to database query
+    console.log('[REDIS] ===== ERROR FALLBACK TO DATABASE =====');
     return await getRelatedMarketsWithPricesFromDB(supabaseClient, eventIds);
   }
 }
@@ -329,6 +339,7 @@ async function getRelatedMarketsWithPricesFromDB(
   eventIds: string[],
   specificMarketIds?: string[]
 ): Promise<RelatedMarket[]> {
+  console.log('[DB] ===== STARTING getRelatedMarketsWithPricesFromDB =====');
   try {
     console.log('[DB] Falling back to database query for related markets');
     const startTime = Date.now();
