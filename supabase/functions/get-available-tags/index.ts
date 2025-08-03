@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.15';
-import Redis from 'https://deno.land/x/redis@v0.29.0/mod.ts';
+import { connect } from 'https://deno.land/x/redis@v0.29.0/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,13 +15,11 @@ Deno.serve(async (req) => {
   try {
     console.log('Getting available tags from Redis...');
     
-    const redis = new Redis({
+    const redis = await connect({
       hostname: Deno.env.get('REDIS_URL')?.replace('redis://', '').split('@')[1] || '',
       port: 6379,
       password: Deno.env.get('REDIS_URL')?.split('//')[1]?.split('@')[0] || '',
     });
-
-    await redis.connect();
     console.log('Connected to Redis successfully');
 
     // Get the latest key for a common interval (1440 = 1 day)
