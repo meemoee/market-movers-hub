@@ -94,7 +94,16 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
 
       const marketsWithPriceChanges = markets.map(market => {
         const moverData = topMoversData?.data?.find(m => m.market_id === market.id);
-        if (!moverData) return null;
+        if (!moverData) {
+          console.log(`No mover data found for market ${market.id}`);
+          return null;
+        }
+
+        console.log(`Found mover data for market ${market.id}:`, {
+          finalPrice: moverData.final_last_traded_price,
+          priceChange: moverData.price_change,
+          finalVolume: moverData.final_volume
+        });
 
         const clobtokenids = Array.isArray(market.clobtokenids) 
           ? market.clobtokenids.map(id => String(id))
