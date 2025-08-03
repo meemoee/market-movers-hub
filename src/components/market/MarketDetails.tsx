@@ -6,7 +6,7 @@ import PriceChart from './PriceChart';
 import { WebResearchCard } from './WebResearchCard';
 import { JobQueueResearchCard } from './JobQueueResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
-import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
+import { MarketChatbox } from './MarketChatbox';
 import { toast } from 'sonner';
 
 interface MarketDetailsProps {
@@ -184,7 +184,7 @@ export function MarketDetails({
       )}
 
       <div className="mt-6">
-        <SimilarHistoricalEvents marketId={marketId} marketQuestion={question} />
+        <MarketChatbox marketId={marketId} marketQuestion={question} />
       </div>
 
       {description && (
