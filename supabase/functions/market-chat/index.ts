@@ -94,8 +94,59 @@ Keep responses conversational and accessible while maintaining analytical depth.
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    // Return the stream directly without transformation
-    return new Response(openRouterResponse.body, {
+    // Transform the OpenRouter stream to SSE format expected by frontend
+    const reader = openRouterResponse.body?.getReader()
+    const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+
+    const stream = new ReadableStream({
+      start(controller) {
+        function pump(): Promise<void> {
+          return reader!.read().then(({ done, value }) => {
+            if (done) {
+              controller.close()
+              return
+            }
+
+            const chunk = decoder.decode(value)
+            const lines = chunk.split('\n')
+
+            for (const line of lines) {
+              if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                try {
+                  const jsonStr = line.slice(6) // Remove 'data: ' prefix
+                  const data = JSON.parse(jsonStr)
+                  
+                  // Transform OpenRouter format to expected frontend format
+                  if (data.choices && data.choices[0]?.delta?.content) {
+                    const transformedData = {
+                      choices: [{
+                        delta: {
+                          content: data.choices[0].delta.content
+                        }
+                      }]
+                    }
+                    
+                    // Send as SSE format expected by frontend
+                    const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
+                    controller.enqueue(encoder.encode(sseData))
+                  }
+                } catch (e) {
+                  console.error('Error parsing stream chunk:', e, 'Line:', line)
+                }
+              } else if (line === 'data: [DONE]') {
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              }
+            }
+
+            return pump()
+          })
+        }
+        return pump()
+      }
+    })
+
+    return new Response(stream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
