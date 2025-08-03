@@ -201,6 +201,7 @@ export async function getRelatedMarketsWithPrices(
     // Get market data from Redis cache (same approach as top movers)
     const relatedMarkets = [];
     const intervals = ['1440', '5', '10', '30', '60', '240', '480', '10080'];
+    let cacheTimestamp = null;
     
     for (const interval of intervals) {
       const latestKey = await redis.get(`topMovers:${interval}:latest`);
@@ -211,6 +212,15 @@ export async function getRelatedMarketsWithPrices(
       if (!manifestData) continue;
       
       const manifest = JSON.parse(manifestData);
+      
+      // Check cache freshness (flag if over 1 hour old)
+      if (manifest.timestamp) {
+        cacheTimestamp = new Date(manifest.timestamp);
+        const ageMinutes = (Date.now() - cacheTimestamp.getTime()) / (1000 * 60);
+        if (ageMinutes > 60) {
+          console.log(`[REDIS] Cache is ${Math.round(ageMinutes)} minutes old (interval: ${interval})`);
+        }
+      }
       
       // Search through chunks for our market IDs
       for (let i = 0; i < manifest.chunks; i++) {
@@ -241,6 +251,7 @@ export async function getRelatedMarketsWithPrices(
                 price_change: foundMarket.price_change,
                 volume_change: foundMarket.volume_change
               };
+              console.log(`[REDIS] Found market ${relatedMarket.market_id} with price ${relatedMarket.last_traded_price}, change ${relatedMarket.price_change}%`);
               relatedMarkets.push(relatedMarket);
             }
           }
@@ -255,6 +266,37 @@ export async function getRelatedMarketsWithPrices(
     
     const redisTime = Date.now() - startTime;
     console.log(`[REDIS] Redis lookup took ${redisTime}ms, found ${relatedMarkets.length} markets with cached data`);
+    
+    // Verify active status of cached markets
+    if (relatedMarkets.length > 0) {
+      const cachedMarketIds = relatedMarkets.map(m => m.market_id);
+      const { data: activeCheck } = await supabaseClient
+        .from('markets')
+        .select('id')
+        .in('id', cachedMarketIds)
+        .eq('active', true)
+        .eq('closed', false)
+        .eq('archived', false);
+      
+      const activeMarketIds = new Set(activeCheck?.map(m => m.id) || []);
+      const activeRelatedMarkets = relatedMarkets.filter(m => {
+        const isActive = activeMarketIds.has(m.market_id);
+        if (!isActive) {
+          console.log(`[REDIS] Filtering out inactive market: ${m.market_id}`);
+        }
+        return isActive;
+      });
+      
+      console.log(`[REDIS] After active verification: ${activeRelatedMarkets.length} of ${relatedMarkets.length} markets are still active`);
+      
+      if (activeRelatedMarkets.length >= 3) {
+        return activeRelatedMarkets.slice(0, 10);
+      }
+      
+      // Continue to database fallback if we don't have enough active markets
+      relatedMarkets.length = 0;
+      relatedMarkets.push(...activeRelatedMarkets);
+    }
     
     // If we didn't find enough markets in cache, supplement with database query
     const foundMarketIds = relatedMarkets.map(m => m.market_id);
@@ -281,7 +323,7 @@ export async function getRelatedMarketsWithPrices(
   }
 }
 
-// Fallback function for database queries (simplified version of old implementation)
+// Fallback function for database queries with real price data
 async function getRelatedMarketsWithPricesFromDB(
   supabaseClient: any,
   eventIds: string[],
@@ -289,6 +331,7 @@ async function getRelatedMarketsWithPricesFromDB(
 ): Promise<RelatedMarket[]> {
   try {
     console.log('[DB] Falling back to database query for related markets');
+    const startTime = Date.now();
     
     const limitedEventIds = eventIds.slice(0, 3);
     let query = supabaseClient
@@ -311,15 +354,78 @@ async function getRelatedMarketsWithPricesFromDB(
       return [];
     }
     
-    // Return markets without price data to avoid timeouts
-    return markets.map(market => ({
-      market_id: market.id,
-      event_id: market.event_id,
-      question: market.question,
-      last_traded_price: 0.5, // Default probability
-      price_change: 0,
-      volume: 0
-    }));
+    console.log(`[DB] Found ${markets.length} markets, fetching real price data`);
+    
+    // Use the optimized database function to get real prices with 5 second timeout
+    const marketIds = markets.map(m => m.id);
+    
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Price query timeout')), 5000)
+      );
+      
+      const pricePromise = supabaseClient.rpc('get_latest_prices_for_markets', {
+        market_ids: marketIds
+      });
+      
+      const { data: priceData, error: priceError } = await Promise.race([
+        pricePromise,
+        timeoutPromise
+      ]);
+      
+      if (priceError) {
+        console.log('[DB] Price query failed, using placeholder data:', priceError.message);
+        return markets.map(market => ({
+          market_id: market.id,
+          event_id: market.event_id,
+          question: market.question,
+          last_traded_price: 0.5,
+          price_change: 0,
+          volume: 0
+        }));
+      }
+      
+      // Map price data to markets
+      const priceByMarket: Record<string, any> = {};
+      for (const price of priceData || []) {
+        priceByMarket[price.market_id] = price;
+      }
+      
+      const dbTime = Date.now() - startTime;
+      console.log(`[DB] Database lookup took ${dbTime}ms, found price data for ${Object.keys(priceByMarket).length} markets`);
+      
+      return markets.map(market => {
+        const priceData = priceByMarket[market.id];
+        const relatedMarket = {
+          market_id: market.id,
+          event_id: market.event_id,
+          question: market.question,
+          yes_price: priceData?.yes_price,
+          no_price: priceData?.no_price,
+          best_bid: priceData?.best_bid,
+          best_ask: priceData?.best_ask,
+          last_traded_price: priceData?.last_traded_price || 0.5,
+          volume: priceData?.volume || 0,
+          liquidity: priceData?.liquidity,
+          price_change: 0, // Can't calculate change without historical data
+          volume_change: 0
+        };
+        console.log(`[DB] Market ${relatedMarket.market_id} with real price ${relatedMarket.last_traded_price}`);
+        return relatedMarket;
+      });
+      
+    } catch (timeoutError) {
+      console.log('[DB] Price query timed out after 5 seconds, using placeholder data');
+      return markets.map(market => ({
+        market_id: market.id,
+        event_id: market.event_id,
+        question: market.question,
+        last_traded_price: 0.5,
+        price_change: 0,
+        volume: 0
+      }));
+    }
+    
   } catch (error) {
     console.error('[DB] Error in database fallback:', error);
     return [];
