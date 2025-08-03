@@ -88,6 +88,9 @@ export function TopMoversContent({
                 description: mover.description,
                 outcomes: mover.outcomes || ["Yes", "No"],
                 event_id: mover.event_id,
+                primary_tags: mover.primary_tags,
+                tag_slugs: mover.tag_slugs,
+                tags: mover.tags,
               }}
               isExpanded={expandedMarkets.has(mover.market_id)}
               onToggleExpand={() => toggleMarket(mover.market_id)}
