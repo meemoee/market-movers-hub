@@ -32,13 +32,13 @@ export interface TopMover {
   image: string;
   event_id: string;
   event_title?: string;
-  final_last_traded_price: number;
+  final_last_price: number;
   final_best_ask: number;
   final_best_bid: number;
   final_no_best_ask?: number;
   final_no_best_bid?: number;
   final_volume: number;
-  initial_last_traded_price: number;
+  initial_last_price: number;
   initial_volume: number;
   price_change: number;
   volume_change: number;
