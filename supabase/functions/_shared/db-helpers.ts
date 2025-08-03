@@ -159,6 +159,7 @@ export async function getRelatedMarketsWithPrices(
     console.log(`[REDIS] ===== STARTING getRelatedMarketsWithPrices =====`);
     console.log(`[REDIS] Getting related markets for ${eventIds.length} events using Redis cache`);
     console.log(`[REDIS] Event IDs sample: ${eventIds.slice(0, 3).join(', ')}${eventIds.length > 3 ? '...' : ''}`);
+    console.log(`[REDIS] Full Event IDs list: ${JSON.stringify(eventIds)}`);
     
     const startTime = Date.now();
     
@@ -182,6 +183,8 @@ export async function getRelatedMarketsWithPrices(
     
     // First get related market IDs from database (quick query)
     const limitedEventIds = eventIds.slice(0, 5);
+    console.log(`[REDIS] Querying database for markets in ${limitedEventIds.length} event IDs: ${JSON.stringify(limitedEventIds)}`);
+    
     const { data: markets, error } = await supabaseClient
       .from('markets')
       .select('id, event_id, question')
@@ -191,8 +194,13 @@ export async function getRelatedMarketsWithPrices(
       .eq('archived', false)
       .limit(15);
       
+    console.log(`[REDIS] Database query result: ${markets?.length || 0} markets found, error: ${error?.message || 'none'}`);
+    if (markets?.length > 0) {
+      console.log(`[REDIS] Sample market from DB: ${JSON.stringify(markets[0])}`);
+    }
+      
     if (error || !markets?.length) {
-      console.log('[REDIS] No related markets found in database');
+      console.log('[REDIS] No related markets found in database - this might be the issue!');
       await redis?.close();
       return [];
     }
@@ -340,11 +348,16 @@ async function getRelatedMarketsWithPricesFromDB(
   specificMarketIds?: string[]
 ): Promise<RelatedMarket[]> {
   console.log('[DB] ===== STARTING getRelatedMarketsWithPricesFromDB =====');
+  console.log(`[DB] Input eventIds: ${JSON.stringify(eventIds)}`);
+  console.log(`[DB] Input specificMarketIds: ${JSON.stringify(specificMarketIds)}`);
+  
   try {
     console.log('[DB] Falling back to database query for related markets');
     const startTime = Date.now();
     
     const limitedEventIds = eventIds.slice(0, 3);
+    console.log(`[DB] Using limited event IDs: ${JSON.stringify(limitedEventIds)}`);
+    
     let query = supabaseClient
       .from('markets')
       .select('id, event_id, question')
@@ -355,13 +368,22 @@ async function getRelatedMarketsWithPricesFromDB(
       .limit(5);
     
     if (specificMarketIds?.length) {
+      console.log(`[DB] Filtering by specific market IDs: ${JSON.stringify(specificMarketIds)}`);
       query = query.in('id', specificMarketIds);
     }
     
+    console.log(`[DB] Executing markets query for related markets...`);
     const { data: markets, error } = await query;
+    
+    console.log(`[DB] Markets query result: found ${markets?.length || 0} markets, error: ${error?.message || 'none'}`);
+    if (markets?.length > 0) {
+      console.log(`[DB] Sample related market from query: ${JSON.stringify(markets[0])}`);
+      console.log(`[DB] All found market IDs: ${markets.map(m => m.id).join(', ')}`);
+    }
       
     if (error || !markets?.length) {
-      console.log('[DB] No related markets found');
+      console.log('[DB] No related markets found in database - this is likely the issue!');
+      console.log('[DB] This means the event IDs we are looking for do not have any other markets');
       return [];
     }
     

@@ -595,6 +595,10 @@ serve(async (req) => {
             let relatedByEvent: Record<string, any[]> = {};
             const eventIds = bests.map(b => b.event_id);
             
+            console.log(`[${new Date().toISOString()}] ===== RELATED MARKETS DEBUG =====`);
+            console.log(`[${new Date().toISOString()}] We have ${bests.length} best markets selected`);
+            console.log(`[${new Date().toISOString()}] Event IDs for related markets: ${JSON.stringify(eventIds)}`);
+            
             if (eventIds.length > 0) {
               // Create Supabase client
               const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -604,13 +608,25 @@ serve(async (req) => {
                 { auth: { persistSession: false } }
               );
               
+              console.log(`[${new Date().toISOString()}] Calling getRelatedMarketsWithPrices with ${eventIds.length} event IDs`);
+              
               // Use the imported getRelatedMarketsWithPrices function
               const rels = await getRelatedMarketsWithPrices(supabaseAdmin, eventIds);
+              
+              console.log(`[${new Date().toISOString()}] getRelatedMarketsWithPrices returned ${rels.length} related markets`);
+              if (rels.length > 0) {
+                console.log(`[${new Date().toISOString()}] Sample related market:`, JSON.stringify(rels[0], null, 2));
+              } else {
+                console.log(`[${new Date().toISOString()}] No related markets found! This is the issue.`);
+              }
               
               // Group by event_id
               relatedByEvent = {};
               for (const r of rels) {
-                (relatedByEvent[r.event_id] ||= []).push({
+                if (!relatedByEvent[r.event_id]) {
+                  relatedByEvent[r.event_id] = [];
+                }
+                relatedByEvent[r.event_id].push({
                   id: r.market_id,
                   question: r.question,
                   yes_price: r.yes_price,
@@ -625,8 +641,17 @@ serve(async (req) => {
             }
 
             // Add related markets to each best market
-            bests.forEach(b => b.related_markets = relatedByEvent[b.event_id] || []);
+            console.log(`[${new Date().toISOString()}] Adding related markets to ${bests.length} best markets`);
+            bests.forEach(b => {
+              const relatedForEvent = relatedByEvent[b.event_id] || [];
+              b.related_markets = relatedForEvent;
+              console.log(`[${new Date().toISOString()}] Market ${b.market_id} (event ${b.event_id}) has ${relatedForEvent.length} related markets`);
+            });
             results.data.markets = bests;
+            
+            console.log(`[${new Date().toISOString()}] Final related markets summary:`);
+            const totalRelated = bests.reduce((sum, m) => sum + (m.related_markets?.length || 0), 0);
+            console.log(`[${new Date().toISOString()}] Total related markets across all best markets: ${totalRelated}`);
             
             logStepEnd(step);
             
