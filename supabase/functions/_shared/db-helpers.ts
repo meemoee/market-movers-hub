@@ -179,7 +179,7 @@ export async function getRelatedMarketsWithPrices(
     const marketIds = data.map(m => m.id);
     console.log(`[DB] Found ${marketIds.length} related markets, fetching price data`);
     
-    // Get latest price data for these markets
+    // Get latest price data for these markets using efficient approach
     const priceStartTime = Date.now();
     const { data: priceData, error: priceError } = await supabaseClient
       .from('market_prices')
@@ -195,7 +195,7 @@ export async function getRelatedMarketsWithPrices(
       `)
       .in('market_id', marketIds)
       .order('timestamp', { ascending: false })
-      .limit(1000); // Limit price records to prevent timeout
+      .limit(500); // Further reduced limit for faster queries
       
     const priceQueryTime = Date.now() - priceStartTime;
     console.log(`[DB] Related markets price query took ${priceQueryTime}ms`);
@@ -206,7 +206,7 @@ export async function getRelatedMarketsWithPrices(
       throw priceError;
     }
     
-    // Map price data to markets
+    // Map price data to markets - only keep the latest price per market (first occurrence due to timestamp DESC order)
     const priceByMarket: Record<string, any> = {};
     for (const price of priceData || []) {
       if (!priceByMarket[price.market_id]) {
