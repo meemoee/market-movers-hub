@@ -13,12 +13,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('Getting available tags from Redis...');
+    console.log('Getting available tags from Redis tag totals...');
+    
+    // Parse Redis URL properly like get-top-movers does
+    const redisUrl = Deno.env.get('REDIS_URL');
+    if (!redisUrl) {
+      throw new Error('REDIS_URL environment variable not set');
+    }
+
+    console.log('Parsing Redis URL...');
+    const url = new URL(redisUrl);
     
     const redis = await connect({
-      hostname: Deno.env.get('REDIS_URL')?.replace('redis://', '').split('@')[1] || '',
-      port: 6379,
-      password: Deno.env.get('REDIS_URL')?.split('//')[1]?.split('@')[0] || '',
+      hostname: url.hostname,
+      port: parseInt(url.port) || 6379,
+      password: url.password || undefined,
     });
     console.log('Connected to Redis successfully');
 
@@ -26,6 +35,7 @@ Deno.serve(async (req) => {
     const latestKey = await redis.get('topMovers:1440:latest');
     if (!latestKey) {
       console.log('No latest key found for interval 1440');
+      await redis.close();
       return Response.json(
         { data: [], error: 'No data available' },
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -34,64 +44,58 @@ Deno.serve(async (req) => {
 
     console.log(`Latest key lookup result for interval 1440: ${latestKey}`);
 
-    // Get the manifest
-    const manifestKey = `topMovers:1440:${latestKey}:manifest`;
-    console.log(`Looking for manifest at key: ${manifestKey}`);
-    const manifestData = await redis.get(manifestKey);
+    // Get tag totals (much faster than scanning all chunks)
+    const tagTotalsKey = `topMovers:1440:${latestKey}:tagTotals`;
+    console.log(`Looking for tag totals at key: ${tagTotalsKey}`);
+    const tagTotalsData = await redis.get(tagTotalsKey);
     
-    if (!manifestData) {
-      console.log('No manifest found');
+    if (!tagTotalsData) {
+      console.log('No tag totals found, falling back to tag list');
+      
+      // Fallback: get tag names from the tag set
+      const tagListKey = `topMovers:1440:${latestKey}:tags`;
+      const tagNames = await redis.smembers(tagListKey);
+      
+      if (!tagNames || tagNames.length === 0) {
+        console.log('No tags found in tag set either');
+        await redis.close();
+        return Response.json(
+          { data: [], error: 'No tags available' },
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       await redis.close();
+      
+      // Return simple tag list without counts
+      const sortedTags = tagNames.sort((a, b) => a.localeCompare(b));
+      console.log(`Found ${sortedTags.length} tags from tag set`);
+      
       return Response.json(
-        { data: [], error: 'No manifest data available' },
+        { data: sortedTags.map(tag => ({ name: tag, count: null })) },
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const manifest = JSON.parse(manifestData);
-    console.log(`Found manifest with ${manifest.chunks} chunks for interval 1440`);
-
-    // Collect all unique tags from all chunks
-    const allTags = new Set<string>();
-
-    for (let i = 0; i < manifest.chunks; i++) {
-      const chunkKey = `topMovers:1440:${latestKey}:chunk:${i}`;
-      const chunkData = await redis.get(chunkKey);
-      
-      if (chunkData) {
-        const markets = JSON.parse(chunkData);
-        
-        markets.forEach((market: any) => {
-          // Add primary_tags
-          if (market.primary_tags && Array.isArray(market.primary_tags)) {
-            market.primary_tags.forEach((tag: string) => {
-              if (tag && tag.trim()) {
-                allTags.add(tag.trim());
-              }
-            });
-          }
-          
-          // Add tag_slugs as backup
-          if (market.tag_slugs && Array.isArray(market.tag_slugs)) {
-            market.tag_slugs.forEach((tag: string) => {
-              if (tag && tag.trim()) {
-                allTags.add(tag.trim());
-              }
-            });
-          }
-        });
-      }
-    }
+    const tagTotals = JSON.parse(tagTotalsData);
+    console.log(`Found tag totals for ${Object.keys(tagTotals).length} tags`);
 
     await redis.close();
 
-    // Convert to sorted array
-    const sortedTags = Array.from(allTags).sort((a, b) => a.localeCompare(b));
+    // Convert to array with tag names and counts, sorted by count desc
+    const tagsWithCounts = Object.entries(tagTotals)
+      .map(([name, totals]: [string, any]) => ({
+        name,
+        count: totals.count,
+        movers: totals.movers,
+        avg_abs_price_change: totals.avg_abs_price_change,
+      }))
+      .sort((a, b) => b.count - a.count); // Sort by count descending
 
-    console.log(`Found ${sortedTags.length} unique tags`);
+    console.log(`Returning ${tagsWithCounts.length} tags with counts`);
 
     return Response.json(
-      { data: sortedTags },
+      { data: tagsWithCounts },
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

@@ -79,11 +79,11 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
   const { data: availableTags = [], isLoading: tagsLoading } = useAvailableTags();
 
-  const handleTagToggle = (tag: string) => {
-    if (selectedTags.includes(tag)) {
-      onTagsChange(selectedTags.filter(t => t !== tag));
+  const handleTagToggle = (tagName: string) => {
+    if (selectedTags.includes(tagName)) {
+      onTagsChange(selectedTags.filter(t => t !== tagName));
     } else {
-      onTagsChange([...selectedTags, tag]);
+      onTagsChange([...selectedTags, tagName]);
     }
   };
 
@@ -150,20 +150,27 @@ export function TopMoversHeader({
                       <DropdownMenuSeparator />
                     </>
                   )}
-                  {availableTags.map((tag) => (
-                    <DropdownMenuItem 
-                      key={tag}
-                      className="flex items-center gap-2 cursor-pointer"
-                      onClick={() => handleTagToggle(tag)}
-                    >
-                      <Checkbox 
-                        checked={selectedTags.includes(tag)}
-                        onChange={() => {}}
-                        className="pointer-events-none"
-                      />
-                      <span className="text-sm">{tag}</span>
-                    </DropdownMenuItem>
-                  ))}
+                   {availableTags.map((tag) => (
+                     <DropdownMenuItem 
+                       key={tag.name}
+                       className="flex items-center justify-between gap-2 cursor-pointer"
+                       onClick={() => handleTagToggle(tag.name)}
+                     >
+                       <div className="flex items-center gap-2">
+                         <Checkbox 
+                           checked={selectedTags.includes(tag.name)}
+                           onChange={() => {}}
+                           className="pointer-events-none"
+                         />
+                         <span className="text-sm">{tag.name}</span>
+                       </div>
+                       {tag.count && (
+                         <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+                           {tag.count}
+                         </span>
+                       )}
+                     </DropdownMenuItem>
+                   ))}
                 </div>
               )}
             </DropdownMenuContent>
