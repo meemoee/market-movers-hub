@@ -82,23 +82,42 @@ export async function getMarketsWithLatestPrices(
     
     console.log(`[DB] Found ${data.length} markets, fetching price data`);
     
-    // Get latest price data for these markets
+    // Get latest price data using optimized database function
     const priceStartTime = Date.now();
-    const { data: priceData, error: priceError } = await supabaseClient
-      .from('market_prices')
-      .select(`
-        market_id,
-        yes_price,
-        no_price,
-        best_bid,
-        best_ask,
-        last_traded_price,
-        volume,
-        liquidity
-      `)
-      .in('market_id', limitedMarketIds)
-      .order('timestamp', { ascending: false })
-      .limit(1000); // Limit price records to prevent timeout
+    let priceData;
+    let priceError;
+    
+    try {
+      console.log(`[DB] Using optimized RPC function for ${limitedMarketIds.length} markets`);
+      const { data, error } = await supabaseClient.rpc('get_latest_prices_for_markets', {
+        market_ids: limitedMarketIds
+      });
+      priceData = data;
+      priceError = error;
+    } catch (error) {
+      console.error('[DB] RPC function failed, using fallback query:', error);
+      // Fallback to direct query with better filtering
+      const { data, error: fallbackError } = await supabaseClient
+        .from('market_prices')
+        .select(`
+          market_id,
+          yes_price,
+          no_price,
+          best_bid,
+          best_ask,
+          last_traded_price,
+          volume,
+          liquidity
+        `)
+        .in('market_id', limitedMarketIds)
+        .not('last_traded_price', 'is', null)
+        .gt('last_traded_price', 0)
+        .lt('last_traded_price', 1)
+        .order('timestamp', { ascending: false })
+        .limit(100); // Much smaller limit
+      priceData = data;
+      priceError = fallbackError;
+    }
       
     const priceQueryTime = Date.now() - priceStartTime;
     console.log(`[DB] Price query took ${priceQueryTime}ms`);
@@ -106,15 +125,25 @@ export async function getMarketsWithLatestPrices(
     if (priceError) {
       console.error('[DB] Error fetching price data:', priceError);
       console.error(`[DB] Price query failed after ${priceQueryTime}ms`);
-      throw priceError;
+      // Return markets without prices rather than failing completely
+      console.log('[DB] Returning markets without price data due to error');
+      return (data || []).map(market => ({
+        market_id: market.id,
+        event_id: market.event_id,
+        event_title: market.events.title,
+        question: market.question,
+        description: market.description,
+        image: market.image,
+        last_traded_price: 0.5, // Default price
+        volume: 0,
+        liquidity: 0
+      }));
     }
     
-    // Map price data to markets
+    // Map price data to markets (RPC returns one row per market with latest price)
     const priceByMarket: Record<string, any> = {};
     for (const price of priceData || []) {
-      if (!priceByMarket[price.market_id]) {
-        priceByMarket[price.market_id] = price;
-      }
+      priceByMarket[price.market_id] = price;
     }
     
     console.log(`[DB] Found price data for ${Object.keys(priceByMarket).length} markets`);
