@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory, userId, marketId, marketQuestion } = await req.json()
+    const { message, chatHistory, userId, marketId, marketQuestion, selectedModel } = await req.json()
     console.log('Received market chat request:', { 
       message, 
       chatHistory, 
@@ -140,7 +140,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
         'X-Title': 'Market Chat App',
       },
       body: JSON.stringify({
-        model: "perplexity/sonar",
+        model: selectedModel || "perplexity/sonar",
         messages: [
           {
             role: "system",
