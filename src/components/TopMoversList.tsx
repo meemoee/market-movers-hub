@@ -43,6 +43,9 @@ export interface TopMover {
   price_change: number;
   volume_change: number;
   volume_change_percentage: number;
+  primary_tags?: string[];
+  tag_slugs?: string[];
+  tags?: any[];
 }
 
 interface TopMoversListProps {
