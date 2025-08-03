@@ -53,84 +53,17 @@ serve(async (req) => {
       throw new Error('No API key available for OpenRouter')
     }
 
-    // Fetch market data from Redis (same source as top movers)
-    let marketData = null
-    try {
-      // Connect to Redis
-      const redis = await import('https://deno.land/x/redis@v0.29.0/mod.ts')
-      const redisClient = redis.connect({
-        hostname: Deno.env.get('REDIS_HOSTNAME') || 'localhost',
-        port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
-        password: Deno.env.get('REDIS_PASSWORD'),
-      })
-      
-      console.log('Connected to Redis for market data lookup')
-      
-      // Get latest key for 1440 minute interval (24h)
-      const latestKeys = await (await redisClient).zrevrange('topMovers:1440:keys', 0, 0)
-      if (latestKeys.length > 0) {
-        const latestKey = latestKeys[0]
-        console.log('Latest key lookup result:', latestKey)
-        
-        // Look for manifest
-        const manifestKey = `topMovers:1440:${latestKey}:manifest`
-        const manifestData = await (await redisClient).get(manifestKey)
-        
-        if (manifestData) {
-          const manifest = JSON.parse(manifestData)
-          console.log('Found manifest with', manifest.chunks.length, 'chunks')
-          
-          // Search through chunks for our specific marketId
-          for (let i = 0; i < manifest.chunks.length; i++) {
-            const chunkKey = `topMovers:1440:${latestKey}:chunk:${i}`
-            const chunkData = await (await redisClient).get(chunkKey)
-            
-            if (chunkData) {
-              const markets = JSON.parse(chunkData)
-              const foundMarket = markets.find((m: any) => m.market_id === marketId)
-              
-              if (foundMarket) {
-                marketData = foundMarket
-                console.log('Found market data for', marketId)
-                break
-              }
-            }
-          }
-        }
-      }
-      
-      await (await redisClient).quit()
-    } catch (error) {
-      console.error('Error fetching market data from Redis:', error)
-    }
+    // Create a lightweight initial system prompt (for speed)
+    const quickSystemPrompt = `You are a helpful market analysis assistant focused on prediction markets. 
 
-    // Create market-specific system prompt with rich context
-    const marketContext = marketData ? `
-Current Market Data:
-- Question: ${marketData.question}
-- Current Price: ${marketData.final_last_price || 'N/A'}
-- Price Change (24h): ${marketData.price_change ? (marketData.price_change * 100).toFixed(1) + '%' : 'N/A'}
-- Volume: ${marketData.final_volume || 'N/A'}
-- Volume Change: ${marketData.volume_change || 'N/A'}
-- Best Bid: ${marketData.final_best_bid || 'N/A'}
-- Best Ask: ${marketData.final_best_ask || 'N/A'}
-- Tags: ${marketData.primary_tags ? marketData.primary_tags.join(', ') : 'N/A'}
-- Description: ${marketData.description ? marketData.description.substring(0, 300) + '...' : 'N/A'}
-- Outcomes: ${marketData.outcomes ? marketData.outcomes.join(' vs ') : 'N/A'}` : `
 Current Market Context:
 - Market Question: ${marketQuestion || 'Not specified'}
-- Market ID: ${marketId || 'Not specified'}`
+- Market ID: ${marketId || 'Not specified'}
 
-    const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets. 
-${marketContext}
+You should provide insights and analysis related to this specific prediction market. Be concise, informative, and helpful.`
 
-You should provide insights and analysis related to this specific prediction market. Be concise, informative, and helpful. Focus on factors that might influence the market outcome, relevant news, historical context, and analytical perspectives.
-
-When discussing price movements, consider the 24-hour changes and current market dynamics. Use the market description and tags to provide relevant context.
-
-Keep responses conversational and accessible while maintaining analytical depth.`
-
-    console.log('Making request to OpenRouter API...')
+    // Start the AI call immediately for fastest response
+    console.log('Making request to OpenRouter API with quick prompt...')
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -140,20 +73,66 @@ Keep responses conversational and accessible while maintaining analytical depth.
         'X-Title': 'Market Chat App',
       },
       body: JSON.stringify({
-        model: "perplexity/sonar",
+        model: "openai/gpt-4o-mini", // Faster model for quick first token
         messages: [
           {
             role: "system",
-            content: systemPrompt
+            content: quickSystemPrompt
           },
           {
             role: "user",
             content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
           }
         ],
-        stream: true
+        stream: true,
+        max_tokens: 1000, // Limit response length for speed
+        temperature: 0.7
       })
     })
+
+    // Fetch market data asynchronously (don't block the response)
+    // This will be available for future messages in the conversation
+    setTimeout(async () => {
+      try {
+        const redis = await import('https://deno.land/x/redis@v0.29.0/mod.ts')
+        const redisClient = redis.connect({
+          hostname: Deno.env.get('REDIS_HOSTNAME') || 'localhost',
+          port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
+          password: Deno.env.get('REDIS_PASSWORD'),
+        })
+        
+        console.log('Fetching market data in background for future use')
+        
+        const latestKeys = await (await redisClient).zrevrange('topMovers:1440:keys', 0, 0)
+        if (latestKeys.length > 0) {
+          const latestKey = latestKeys[0]
+          const manifestKey = `topMovers:1440:${latestKey}:manifest`
+          const manifestData = await (await redisClient).get(manifestKey)
+          
+          if (manifestData) {
+            const manifest = JSON.parse(manifestData)
+            for (let i = 0; i < manifest.chunks.length; i++) {
+              const chunkKey = `topMovers:1440:${latestKey}:chunk:${i}`
+              const chunkData = await (await redisClient).get(chunkKey)
+              
+              if (chunkData) {
+                const markets = JSON.parse(chunkData)
+                const foundMarket = markets.find((m: any) => m.market_id === marketId)
+                
+                if (foundMarket) {
+                  console.log('Market data cached for future conversations:', foundMarket.question)
+                  break
+                }
+              }
+            }
+          }
+        }
+        
+        await (await redisClient).quit()
+      } catch (error) {
+        console.error('Background market data fetch failed:', error)
+      }
+    }, 0)
 
     if (!openRouterResponse.ok) {
       console.error('OpenRouter API error:', openRouterResponse.status, await openRouterResponse.text())
