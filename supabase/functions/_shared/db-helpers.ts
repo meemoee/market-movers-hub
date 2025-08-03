@@ -144,11 +144,11 @@ export async function getRelatedMarketsWithPrices(
     
     const startTime = Date.now();
     
-    // Limit event IDs to prevent timeouts
-    const limitedEventIds = eventIds.slice(0, 10);
+    // Limit event IDs to prevent timeouts - reduced to 5 events for better performance
+    const limitedEventIds = eventIds.slice(0, 5);
     console.log(`[DB] Processing ${limitedEventIds.length} events (limited from ${eventIds.length})`);
     
-    // Get markets in the same events
+    // Get markets in the same events - limit to 10 markets total
     const { data, error } = await supabaseClient
       .from('markets')
       .select(`
@@ -160,7 +160,7 @@ export async function getRelatedMarketsWithPrices(
       .eq('active', true)
       .eq('closed', false)
       .eq('archived', false)
-      .limit(30); // Add explicit limit
+      .limit(10); // Reduced limit for better performance
       
     const marketQueryTime = Date.now() - startTime;
     console.log(`[DB] Related markets query took ${marketQueryTime}ms`);
@@ -179,42 +179,69 @@ export async function getRelatedMarketsWithPrices(
     const marketIds = data.map(m => m.id);
     console.log(`[DB] Found ${marketIds.length} related markets, fetching price data`);
     
-    // Get latest price data for these markets using efficient approach
+    // Get latest price data using efficient DISTINCT ON approach
     const priceStartTime = Date.now();
-    const { data: priceData, error: priceError } = await supabaseClient
-      .from('market_prices')
-      .select(`
-        market_id,
-        yes_price,
-        no_price,
-        best_bid,
-        best_ask,
-        last_traded_price,
-        volume,
-        liquidity
-      `)
-      .in('market_id', marketIds)
-      .order('timestamp', { ascending: false })
-      .limit(500); // Further reduced limit for faster queries
-      
-    const priceQueryTime = Date.now() - priceStartTime;
-    console.log(`[DB] Related markets price query took ${priceQueryTime}ms`);
-      
-    if (priceError) {
-      console.error('[DB] Error fetching price data for related markets:', priceError);
-      console.error(`[DB] Price query failed after ${priceQueryTime}ms`);
-      throw priceError;
-    }
+    let priceByMarket: Record<string, any> = {};
     
-    // Map price data to markets - only keep the latest price per market (first occurrence due to timestamp DESC order)
-    const priceByMarket: Record<string, any> = {};
-    for (const price of priceData || []) {
-      if (!priceByMarket[price.market_id]) {
-        priceByMarket[price.market_id] = price;
+    try {
+      console.log(`[DB] Executing efficient price query for ${marketIds.length} markets`);
+      
+      // Use raw SQL with DISTINCT ON for maximum efficiency
+      const { data: priceData, error: priceError } = await supabaseClient
+        .rpc('get_latest_prices_for_markets', {
+          market_ids: marketIds
+        });
+      
+      const priceQueryTime = Date.now() - priceStartTime;
+      console.log(`[DB] Efficient price query took ${priceQueryTime}ms`);
+      
+      if (priceError) {
+        console.warn(`[DB] Efficient price query failed after ${priceQueryTime}ms:`, priceError);
+        console.log('[DB] Falling back to basic price query');
+        
+        // Fallback to basic query with very limited results
+        const fallbackStartTime = Date.now();
+        const { data: fallbackData, error: fallbackError } = await supabaseClient
+          .from('market_prices')
+          .select(`
+            market_id,
+            yes_price,
+            no_price,
+            best_bid,
+            best_ask,
+            last_traded_price,
+            volume,
+            liquidity
+          `)
+          .in('market_id', marketIds.slice(0, 5)) // Only first 5 markets for fallback
+          .order('timestamp', { ascending: false })
+          .limit(50); // Very small limit for fallback
+          
+        const fallbackTime = Date.now() - fallbackStartTime;
+        console.log(`[DB] Fallback price query took ${fallbackTime}ms`);
+        
+        if (!fallbackError && fallbackData) {
+          for (const price of fallbackData) {
+            if (!priceByMarket[price.market_id]) {
+              priceByMarket[price.market_id] = price;
+            }
+          }
+          console.log(`[DB] Fallback found price data for ${Object.keys(priceByMarket).length} markets`);
+        } else {
+          console.warn('[DB] Both efficient and fallback price queries failed, continuing without prices');
+        }
+      } else {
+        // Process efficient query results
+        for (const price of priceData || []) {
+          priceByMarket[price.market_id] = price;
+        }
+        console.log(`[DB] Efficient query found price data for ${Object.keys(priceByMarket).length} markets`);
       }
+    } catch (queryError) {
+      const priceQueryTime = Date.now() - priceStartTime;
+      console.warn(`[DB] Price query exception after ${priceQueryTime}ms:`, queryError);
+      console.log('[DB] Continuing without price data due to query timeout/error');
     }
-    
-    console.log(`[DB] Found price data for ${Object.keys(priceByMarket).length} related markets`);
     
     // Combine market and price data
     return (data || []).map(market => ({
