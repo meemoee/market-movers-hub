@@ -356,25 +356,51 @@ async function getRelatedMarketsWithPricesFromDB(
     
     console.log(`[DB] Found ${markets.length} markets, fetching real price data`);
     
-    // Use the optimized database function to get real prices with 5 second timeout
+    // Use direct market_prices query with better timeout and fallback
     const marketIds = markets.map(m => m.id);
     
     try {
+      console.log(`[DB] Fetching prices for markets: ${marketIds.join(', ')}`);
+      
+      // Try the optimized RPC function first
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Price query timeout')), 5000)
+        setTimeout(() => reject(new Error('RPC timeout')), 3000)
       );
       
-      const pricePromise = supabaseClient.rpc('get_latest_prices_for_markets', {
+      const rpcPromise = supabaseClient.rpc('get_latest_prices_for_markets', {
         market_ids: marketIds
       });
       
-      const { data: priceData, error: priceError } = await Promise.race([
-        pricePromise,
-        timeoutPromise
-      ]);
+      let priceData;
+      let priceError;
+      
+      try {
+        const result = await Promise.race([rpcPromise, timeoutPromise]);
+        priceData = result.data;
+        priceError = result.error;
+        console.log(`[DB] RPC query completed, found ${priceData?.length || 0} price records`);
+      } catch (rpcTimeoutError) {
+        console.log('[DB] RPC query timed out, trying direct query');
+        
+        // Fallback to direct market_prices query
+        const directResult = await supabaseClient
+          .from('market_prices')
+          .select('market_id, yes_price, no_price, best_bid, best_ask, last_traded_price, volume, liquidity')
+          .in('market_id', marketIds)
+          .not('last_traded_price', 'is', null)
+          .gt('last_traded_price', 0)
+          .lt('last_traded_price', 1)
+          .order('timestamp', { ascending: false })
+          .limit(100);
+          
+        priceData = directResult.data;
+        priceError = directResult.error;
+        console.log(`[DB] Direct query completed, found ${priceData?.length || 0} price records`);
+      }
       
       if (priceError) {
-        console.log('[DB] Price query failed, using placeholder data:', priceError.message);
+        console.log('[DB] Both price queries failed:', priceError.message);
+        // Still return markets but with placeholder prices
         return markets.map(market => ({
           market_id: market.id,
           event_id: market.event_id,
@@ -385,10 +411,12 @@ async function getRelatedMarketsWithPricesFromDB(
         }));
       }
       
-      // Map price data to markets
+      // Map price data to markets (take the most recent price for each market)
       const priceByMarket: Record<string, any> = {};
       for (const price of priceData || []) {
-        priceByMarket[price.market_id] = price;
+        if (!priceByMarket[price.market_id]) {
+          priceByMarket[price.market_id] = price;
+        }
       }
       
       const dbTime = Date.now() - startTime;
@@ -396,21 +424,30 @@ async function getRelatedMarketsWithPricesFromDB(
       
       return markets.map(market => {
         const priceData = priceByMarket[market.id];
+        
+        // If we have real price data, use it; otherwise use reasonable defaults
+        const lastPrice = priceData?.last_traded_price || 0.5;
         const relatedMarket = {
           market_id: market.id,
           event_id: market.event_id,
           question: market.question,
-          yes_price: priceData?.yes_price,
-          no_price: priceData?.no_price,
-          best_bid: priceData?.best_bid,
-          best_ask: priceData?.best_ask,
-          last_traded_price: priceData?.last_traded_price || 0.5,
+          yes_price: priceData?.yes_price || lastPrice,
+          no_price: priceData?.no_price || (1 - lastPrice),
+          best_bid: priceData?.best_bid || (lastPrice - 0.01),
+          best_ask: priceData?.best_ask || (lastPrice + 0.01),
+          last_traded_price: lastPrice,
           volume: priceData?.volume || 0,
-          liquidity: priceData?.liquidity,
+          liquidity: priceData?.liquidity || 0,
           price_change: 0, // Can't calculate change without historical data
           volume_change: 0
         };
-        console.log(`[DB] Market ${relatedMarket.market_id} with real price ${relatedMarket.last_traded_price}`);
+        
+        if (priceData) {
+          console.log(`[DB] Market ${relatedMarket.market_id} with REAL price ${relatedMarket.last_traded_price} (from database)`);
+        } else {
+          console.log(`[DB] Market ${relatedMarket.market_id} with DEFAULT price ${relatedMarket.last_traded_price} (no data found)`);
+        }
+        
         return relatedMarket;
       });
       
