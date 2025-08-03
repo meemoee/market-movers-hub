@@ -74,7 +74,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
         'X-Title': 'Market Chat App',
       },
       body: JSON.stringify({
-        model: "perplexity/llama-3.1-sonar-small-128k-online",
+        model: "perplexity/sonar",
         messages: [
           {
             role: "system",
