@@ -129,6 +129,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 if (content) {
                   accumulatedContent += content
                   setStreamingContent(accumulatedContent)
+                  // Yield control to allow React to re-render
+                  await new Promise(resolve => setTimeout(resolve, 0))
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e)
