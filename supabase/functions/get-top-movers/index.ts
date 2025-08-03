@@ -244,12 +244,12 @@ serve(async (req) => {
         console.log(`Creating placeholder data for ${missingMarketIds.length} markets`);
         const placeholderMarkets = missingMarketIds.map(market_id => ({
           market_id,
-          final_last_traded_price: 0,
+          final_last_price: 0,
           final_best_ask: 0,
           final_best_bid: 0,
           final_volume: 0,
           price_change: 0,
-          initial_last_traded_price: 0,
+          initial_last_price: 0,
           initial_volume: 0,
           volume_change: 0,
           volume_change_percentage: 0
@@ -322,7 +322,7 @@ serve(async (req) => {
     // First apply probability filters if they exist
     if (probabilityMin !== undefined || probabilityMax !== undefined) {
       allMarkets = allMarkets.filter(market => {
-        const probability = market.final_last_traded_price * 100; // Convert to percentage
+        const probability = market.final_last_price * 100; // Convert to percentage
         const meetsMin = probabilityMin === undefined || probability >= probabilityMin;
         const meetsMax = probabilityMax === undefined || probability <= probabilityMax;
         return meetsMin && meetsMax;

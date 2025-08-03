@@ -76,7 +76,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
       const { data: topMoversData, error: topMoversError } = await supabase.functions.invoke<{
         data: Array<{
           market_id: string;
-          final_last_traded_price: number;
+          final_last_price: number;
           final_best_ask: number;
           final_best_bid: number;
           final_volume: number;
@@ -100,7 +100,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         }
 
         console.log(`Found mover data for market ${market.id}:`, {
-          finalPrice: moverData.final_last_traded_price,
+          finalPrice: moverData.final_last_price,
           priceChange: moverData.price_change,
           finalVolume: moverData.final_volume
         });
@@ -115,7 +115,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         // Clean text fields before returning
         const cleanedMarket = cleanTextFields({
           ...market,
-          finalPrice: moverData.final_last_traded_price,
+          finalPrice: moverData.final_last_price,
           priceChange: moverData.price_change,
           totalVolume: moverData.final_volume,
           volume_change: moverData.volume_change,
