@@ -724,7 +724,7 @@ Format:
                   "X-Title": "Market Analysis App"
                 },
                 body: JSON.stringify({
-                  model: "google/gemini-2.5-flash-preview-05-20",
+                  model: "google/gemini-2.5-flash",
                   messages: [
                     { role: "system", content: "You are a trading strategy assistant. Output ONLY valid JSON objects." },
                     { role: "user", content: ideasPrompt }
