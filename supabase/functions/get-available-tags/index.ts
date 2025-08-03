@@ -28,9 +28,10 @@ Deno.serve(async (req) => {
     
     console.log('[STEP 2] Connecting to Redis...');
     const redis = await connect({
-      hostname: url.hostname,
-      port: parseInt(url.port) || 6379,
-      password: url.password || undefined,
+      hostname: new URL(redisUrl).hostname,
+      port: parseInt(new URL(redisUrl).port) || 6379,
+      password: new URL(redisUrl).password || undefined,
+      tls: redisUrl.startsWith('rediss://')
     });
     console.log(`[STEP 3] Connected to Redis successfully in ${Date.now() - startTime}ms`);
 
