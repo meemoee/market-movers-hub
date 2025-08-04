@@ -33,12 +33,13 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [streamingMessage, setStreamingMessage] = useState<StreamingMessage>({ content: '', reasoning: '' })
+  const [streamingContent, setStreamingContent] = useState('')
+  const [streamingReasoning, setStreamingReasoning] = useState('')
+  const [hasStreamingStarted, setHasStreamingStarted] = useState(false)
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const streamingRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
 
   // Fetch available models on component mount
@@ -81,6 +82,11 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
+    
+    // Reset streaming state
+    setStreamingContent('')
+    setStreamingReasoning('')
+    setHasStreamingStarted(false)
     
     try {
       if (abortControllerRef.current) {
@@ -177,19 +183,22 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
                 
                 if (content) {
                   accumulatedContent += content
-                  // Direct DOM update for immediate rendering
-                  if (streamingRef.current) {
-                    streamingRef.current.textContent = accumulatedContent
+                  
+                  // Immediate state updates for streaming
+                  setStreamingContent(accumulatedContent)
+                  if (!hasStreamingStarted) {
+                    setHasStreamingStarted(true)
                   }
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
                   console.log('REASONING:', reasoning)
-                  // Update reasoning immediately via DOM
-                  const reasoningElement = document.querySelector('[data-streaming-reasoning]')
-                  if (reasoningElement) {
-                    reasoningElement.textContent = accumulatedReasoning
+                  
+                  // Immediate state updates for reasoning
+                  setStreamingReasoning(accumulatedReasoning)
+                  if (!hasStreamingStarted) {
+                    setHasStreamingStarted(true)
                   }
                 }
               } catch (e) {
@@ -215,7 +224,9 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
     } finally {
       console.log('Cleaning up: setting loading to false and clearing streaming content')
       setIsLoading(false)
-      setStreamingMessage({ content: '', reasoning: '' })
+      setStreamingContent('')
+      setStreamingReasoning('')
+      setHasStreamingStarted(false)
       abortControllerRef.current = null
     }
   }
@@ -239,9 +250,10 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
       ) : (
         <ChatMessages 
           messages={messages}
-          streamingMessage={streamingMessage}
+          streamingContent={streamingContent}
+          streamingReasoning={streamingReasoning}
+          hasStreamingStarted={hasStreamingStarted}
           isLoading={isLoading}
-          streamingRef={streamingRef}
         />
       )}
 
@@ -296,34 +308,47 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
 // Memoized chat messages component for optimized re-renders
 const ChatMessages = memo(function ChatMessages({ 
   messages, 
-  streamingMessage, 
-  isLoading,
-  streamingRef 
+  streamingContent,
+  streamingReasoning,
+  hasStreamingStarted,
+  isLoading
 }: {
   messages: Message[]
-  streamingMessage: StreamingMessage
+  streamingContent: string
+  streamingReasoning: string
+  hasStreamingStarted: boolean
   isLoading: boolean
-  streamingRef: React.RefObject<HTMLDivElement>
 }) {
-  const hasStreamingContent = streamingMessage.content || streamingMessage.reasoning
   
   return (
     <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
       {messages.map((message, index) => (
         <MessageBubble key={index} message={message} />
       ))}
-      {isLoading && (
+      
+      {/* Only show streaming bubbles when content has started arriving */}
+      {hasStreamingStarted && (
         <div className="space-y-2">
-          <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-            <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-            <div data-streaming-reasoning className="text-xs text-yellow-700 whitespace-pre-wrap font-mono"></div>
-          </div>
-          <div className="bg-muted/50 p-3 rounded-lg">
-            <div ref={streamingRef} className="text-sm whitespace-pre-wrap font-mono" />
-          </div>
+          {streamingReasoning && (
+            <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+              <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+              <div className="text-xs text-yellow-700 whitespace-pre-wrap font-mono">
+                {streamingReasoning}
+              </div>
+            </div>
+          )}
+          {streamingContent && (
+            <div className="bg-muted/50 p-3 rounded-lg">
+              <div className="text-sm whitespace-pre-wrap font-mono">
+                {streamingContent}
+              </div>
+            </div>
+          )}
         </div>
       )}
-      {isLoading && (streamingRef.current?.textContent || '').length === 0 && (
+      
+      {/* Only show thinking when loading but no streaming has started */}
+      {isLoading && !hasStreamingStarted && (
         <div className="bg-muted/50 p-3 rounded-lg">
           <p className="text-sm text-muted-foreground">Thinking...</p>
         </div>
