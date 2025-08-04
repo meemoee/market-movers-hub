@@ -60,38 +60,44 @@ serve(async (req) => {
     const redisStart = performance.now()
     try {
       // Connect to Redis
-      const redis = await import('https://deno.land/x/redis@v0.29.0/mod.ts')
-      const redisClient = redis.connect({
-        hostname: Deno.env.get('REDIS_HOSTNAME') || 'localhost',
-        port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
-        password: Deno.env.get('REDIS_PASSWORD'),
+      const { connect } = await import('https://deno.land/x/redis@v0.29.0/mod.ts')
+      const redisUrl = Deno.env.get('REDIS_URL')
+      if (!redisUrl) {
+        throw new Error('REDIS_URL environment variable is not set')
+      }
+      const url = new URL(redisUrl)
+      const redisClient = await connect({
+        hostname: url.hostname,
+        port: parseInt(url.port),
+        password: url.password,
+        tls: redisUrl.startsWith('rediss://')
       })
-      
+
       console.log('Connected to Redis for market data lookup')
-      
+
       // Get latest key for 1440 minute interval (24h)
-      const latestKeys = await (await redisClient).zrevrange('topMovers:1440:keys', 0, 0)
+      const latestKeys = await redisClient.zrevrange('topMovers:1440:keys', 0, 0)
       if (latestKeys.length > 0) {
         const latestKey = latestKeys[0]
         console.log('Latest key lookup result:', latestKey)
-        
+
         // Look for manifest
         const manifestKey = `topMovers:1440:${latestKey}:manifest`
-        const manifestData = await (await redisClient).get(manifestKey)
-        
+        const manifestData = await redisClient.get(manifestKey)
+
         if (manifestData) {
           const manifest = JSON.parse(manifestData)
           console.log('Found manifest with', manifest.chunks.length, 'chunks')
-          
+
           // Search through chunks for our specific marketId
           for (let i = 0; i < manifest.chunks.length; i++) {
             const chunkKey = `topMovers:1440:${latestKey}:chunk:${i}`
-            const chunkData = await (await redisClient).get(chunkKey)
-            
+            const chunkData = await redisClient.get(chunkKey)
+
             if (chunkData) {
               const markets = JSON.parse(chunkData)
               const foundMarket = markets.find((m: any) => m.market_id === marketId)
-              
+
               if (foundMarket) {
                 marketData = foundMarket
                 console.log('Found market data for', marketId)
@@ -101,8 +107,8 @@ serve(async (req) => {
           }
         }
       }
-      
-      await (await redisClient).quit()
+
+      await redisClient.quit()
     } catch (error) {
       console.error('Error fetching market data from Redis:', error)
     }
