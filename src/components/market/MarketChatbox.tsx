@@ -1,5 +1,5 @@
 import { MessageCircle, Send, Settings } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, memo } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
@@ -23,17 +23,22 @@ interface OpenRouterModel {
   description?: string
 }
 
-export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
+interface StreamingMessage {
+  content: string
+  reasoning: string
+}
+
+export const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
-  const [streamingReasoning, setStreamingReasoning] = useState('')
+  const [streamingMessage, setStreamingMessage] = useState<StreamingMessage>({ content: '', reasoning: '' })
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const streamingRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
 
   // Fetch available models on component mount
@@ -172,18 +177,23 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 
                 if (content) {
                   accumulatedContent += content
-                  setStreamingContent(accumulatedContent)
+                  // Direct DOM update for immediate rendering
+                  if (streamingRef.current) {
+                    streamingRef.current.textContent = accumulatedContent
+                  }
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
-                  setStreamingReasoning(accumulatedReasoning)
                   console.log('REASONING:', reasoning)
                 }
                 
+                // Update React state less frequently for reasoning only
                 if (content || reasoning) {
-                  // Simple yield after every chunk
-                  await new Promise(resolve => setTimeout(resolve, 0))
+                  setStreamingMessage({
+                    content: accumulatedContent,
+                    reasoning: accumulatedReasoning
+                  })
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e)
@@ -208,8 +218,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
     } finally {
       console.log('Cleaning up: setting loading to false and clearing streaming content')
       setIsLoading(false)
-      setStreamingContent('')
-      setStreamingReasoning('')
+      setStreamingMessage({ content: '', reasoning: '' })
       abortControllerRef.current = null
     }
   }
@@ -231,53 +240,12 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
           </p>
         </div>
       ) : (
-        <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
-          {messages.map((message, index) => (
-            <div key={index} className="space-y-2">
-              {message.reasoning && (
-                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
-                    {message.reasoning}
-                  </ReactMarkdown>
-                </div>
-              )}
-              <div className="bg-muted/50 p-3 rounded-lg">
-                {message.type === 'user' ? (
-                  <p className="text-sm font-medium">{message.content}</p>
-                ) : (
-                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                    {message.content || ''}
-                  </ReactMarkdown>
-                )}
-              </div>
-            </div>
-          ))}
-          {(streamingReasoning || streamingContent) && (
-            <div className="space-y-2">
-              {streamingReasoning && (
-                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
-                    {streamingReasoning}
-                  </ReactMarkdown>
-                </div>
-              )}
-              {streamingContent && (
-                <div className="bg-muted/50 p-3 rounded-lg">
-                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                    {streamingContent}
-                  </ReactMarkdown>
-                </div>
-              )}
-            </div>
-          )}
-          {isLoading && !streamingContent && !streamingReasoning && (
-            <div className="bg-muted/50 p-3 rounded-lg">
-              <p className="text-sm text-muted-foreground">Thinking...</p>
-            </div>
-          )}
-        </div>
+        <ChatMessages 
+          messages={messages}
+          streamingMessage={streamingMessage}
+          isLoading={isLoading}
+          streamingRef={streamingRef}
+        />
       )}
 
       {/* Model Selection */}
@@ -326,4 +294,74 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       </div>
     </Card>
   )
-}
+})
+
+// Memoized chat messages component for optimized re-renders
+const ChatMessages = memo(function ChatMessages({ 
+  messages, 
+  streamingMessage, 
+  isLoading,
+  streamingRef 
+}: {
+  messages: Message[]
+  streamingMessage: StreamingMessage
+  isLoading: boolean
+  streamingRef: React.RefObject<HTMLDivElement>
+}) {
+  const hasStreamingContent = streamingMessage.content || streamingMessage.reasoning
+  
+  return (
+    <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
+      {messages.map((message, index) => (
+        <MessageBubble key={index} message={message} />
+      ))}
+      {hasStreamingContent && (
+        <div className="space-y-2">
+          {streamingMessage.reasoning && (
+            <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+              <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+              <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                {streamingMessage.reasoning}
+              </ReactMarkdown>
+            </div>
+          )}
+          {streamingMessage.content && (
+            <div className="bg-muted/50 p-3 rounded-lg">
+              <div ref={streamingRef} className="text-sm whitespace-pre-wrap font-mono" />
+            </div>
+          )}
+        </div>
+      )}
+      {isLoading && !hasStreamingContent && (
+        <div className="bg-muted/50 p-3 rounded-lg">
+          <p className="text-sm text-muted-foreground">Thinking...</p>
+        </div>
+      )}
+    </div>
+  )
+})
+
+// Memoized message bubble for individual messages
+const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
+  return (
+    <div className="space-y-2">
+      {message.reasoning && (
+        <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+          <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+          <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+            {message.reasoning}
+          </ReactMarkdown>
+        </div>
+      )}
+      <div className="bg-muted/50 p-3 rounded-lg">
+        {message.type === 'user' ? (
+          <p className="text-sm font-medium">{message.content}</p>
+        ) : (
+          <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+            {message.content || ''}
+          </ReactMarkdown>
+        )}
+      </div>
+    </div>
+  )
+})
