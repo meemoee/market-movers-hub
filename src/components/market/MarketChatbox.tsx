@@ -1,6 +1,5 @@
 import { MessageCircle, Send, Settings } from 'lucide-react'
-import { useState, useRef, useEffect, useMemo, memo } from 'react'
-import { flushSync } from 'react-dom'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
@@ -24,19 +23,13 @@ interface OpenRouterModel {
   description?: string
 }
 
-interface StreamingMessage {
-  content: string
-  reasoning: string
-}
-
-const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
+export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
-  const [hasStreamingStarted, setHasStreamingStarted] = useState(false)
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -72,48 +65,35 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
   }, [user?.id])
 
   const handleChatMessage = async (userMessage: string) => {
-    console.log('🔥 FRONTEND LOG: === MarketChatbox: Starting chat message ===')
-    console.log('🔥 FRONTEND LOG: User message:', userMessage)
-    console.log('🔥 FRONTEND LOG: Current messages count:', messages.length)
-    console.log('🔥 FRONTEND LOG: Is loading:', isLoading)
-    console.log('🔥 FRONTEND LOG: Selected model:', selectedModel)
-    console.log('🔥 FRONTEND LOG: User ID:', user?.id)
-    console.log('🔥 FRONTEND LOG: Market ID:', marketId)
-    console.log('🔥 FRONTEND LOG: Market Question:', marketQuestion)
+    console.log('=== MarketChatbox: Starting chat message ===')
+    console.log('User message:', userMessage)
+    console.log('Current messages count:', messages.length)
+    console.log('Is loading:', isLoading)
     
-    if (!userMessage.trim() || isLoading) {
-      console.log('🔥 FRONTEND LOG: Early return - empty message or loading')
-      return
-    }
+    if (!userMessage.trim() || isLoading) return
     
     setHasStartedChat(true)
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
     
-    // Reset streaming state
-    setStreamingContent('')
-    setStreamingReasoning('')
-    setHasStreamingStarted(false)
-    
     try {
       if (abortControllerRef.current) {
-        console.log('🔥 FRONTEND LOG: Aborting previous request')
+        console.log('Aborting previous request')
         abortControllerRef.current.abort()
       }
 
       abortControllerRef.current = new AbortController()
 
-      console.log('🔥 FRONTEND LOG: Sending request to market-chat function with data:', {
+      console.log('Sending request to market-chat function with data:', {
         message: userMessage,
         chatHistoryLength: messages.length,
         userId: user?.id,
         marketId,
-        marketQuestion,
-        selectedModel
+        marketQuestion
       })
 
-      // Get auth token
+      // Get auth token for direct fetch call
       const { data: sessionData } = await supabase.auth.getSession()
       const authToken = sessionData.session?.access_token
 
@@ -121,141 +101,115 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
         throw new Error("No authentication token available")
       }
 
-      console.log('🔥 FRONTEND LOG: Got auth token:', authToken.substring(0, 20) + '...')
-
-      // Use fetch with streaming instead of EventSource
-      const response = await fetch("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat", {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
-          userId: user?.id,
-          marketId,
-          marketQuestion,
-          selectedModel
-        }),
-        signal: abortControllerRef.current.signal
-      })
-
-      console.log('🔥 FRONTEND LOG: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      })
+      // Make direct fetch call to edge function with streaming
+      const response = await fetch(
+        "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: userMessage,
+            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+            userId: user?.id,
+            marketId,
+            marketQuestion,
+            selectedModel
+          }),
+          signal: abortControllerRef.current?.signal
+        }
+      )
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const errorText = await response.text()
+        throw new Error(`Edge function error: ${response.status} - ${errorText}`)
       }
 
+      console.log('Got streaming response from market-chat')
+      
+      // Process the streaming response
       const reader = response.body?.getReader()
       if (!reader) {
-        throw new Error('No reader available')
+        throw new Error('Failed to get response reader')
       }
 
       const decoder = new TextDecoder()
       let accumulatedContent = ''
       let accumulatedReasoning = ''
-      let buffer = ''
-
-      console.log('🔥 FRONTEND LOG: Starting to read stream...')
-
-      while (true) {
-        const { done, value } = await reader.read()
-        
-        console.log('🔥 FRONTEND LOG: Read chunk:', {
-          done,
-          chunkSize: value?.length,
-          timestamp: Date.now()
-        })
-
-        if (done) {
-          console.log('🔥 FRONTEND LOG: Stream complete')
-          break
-        }
-
-        const chunk = decoder.decode(value, { stream: true })
-        console.log('🔥 FRONTEND LOG: Decoded chunk:', chunk.substring(0, 200))
-        
-        buffer += chunk
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          console.log('🔥 FRONTEND LOG: Processing line:', line.substring(0, 100))
-
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6)
-            console.log('🔥 FRONTEND LOG: Data string:', dataStr.substring(0, 100))
-
-            if (dataStr === '[DONE]') {
-              console.log('🔥 FRONTEND LOG: Found DONE signal')
-              setMessages(prev => [...prev, { 
-                type: 'assistant', 
-                content: accumulatedContent,
-                reasoning: accumulatedReasoning 
-              }])
-              setIsLoading(false)
-              return
-            }
-
-            try {
-              const parsed = JSON.parse(dataStr)
-              console.log('🔥 FRONTEND LOG: Parsed JSON:', JSON.stringify(parsed).substring(0, 200))
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log('Stream complete, adding final message')
+            setMessages(prev => [...prev, { 
+              type: 'assistant', 
+              content: accumulatedContent,
+              reasoning: accumulatedReasoning 
+            }])
+            break
+          }
+          
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split('\n')
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
               
-              const content = parsed.choices?.[0]?.delta?.content
-              const reasoning = parsed.choices?.[0]?.delta?.reasoning
-              
-              if (content) {
-                accumulatedContent += content
-                console.log('🔥 FRONTEND LOG: >>> UPDATING CONTENT DISPLAY <<<')
-                console.log('🔥 FRONTEND LOG: New content chunk:', content)
-                console.log('🔥 FRONTEND LOG: Total accumulated content length:', accumulatedContent.length)
-                setStreamingContent(accumulatedContent)
-                if (!hasStreamingStarted) {
-                  console.log('🔥 FRONTEND LOG: >>> STARTING STREAMING DISPLAY <<<')
-                  setHasStreamingStarted(true)
-                }
+              if (jsonStr === '[DONE]') {
+                continue
               }
               
-              if (reasoning) {
-                accumulatedReasoning += reasoning
-                console.log('🔥 FRONTEND LOG: >>> UPDATING REASONING DISPLAY <<<')
-                console.log('🔥 FRONTEND LOG: New reasoning chunk:', reasoning)
-                console.log('🔥 FRONTEND LOG: Total accumulated reasoning length:', accumulatedReasoning.length)
-                setStreamingReasoning(accumulatedReasoning)
-                if (!hasStreamingStarted) {
-                  console.log('🔥 FRONTEND LOG: >>> STARTING STREAMING DISPLAY <<<')
-                  setHasStreamingStarted(true)
+              try {
+                const parsed = JSON.parse(jsonStr)
+                const content = parsed.choices?.[0]?.delta?.content
+                const reasoning = parsed.choices?.[0]?.delta?.reasoning
+                
+                if (content) {
+                  accumulatedContent += content
+                  setStreamingContent(accumulatedContent)
                 }
+                
+                if (reasoning) {
+                  accumulatedReasoning += reasoning
+                  setStreamingReasoning(accumulatedReasoning)
+                  console.log('REASONING:', reasoning)
+                }
+                
+                if (content || reasoning) {
+                  // Yield control to allow React to re-render
+                  await new Promise(resolve => setTimeout(resolve, 0))
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e)
               }
-            } catch (e) {
-              console.error('🔥 FRONTEND LOG: Error parsing JSON:', e, 'Data:', dataStr)
             }
           }
         }
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          throw error
+        }
       }
 
-      console.log('🔥 FRONTEND LOG: === MarketChatbox: Chat message completed successfully ===')
+      console.log('=== MarketChatbox: Chat message completed successfully ===')
 
     } catch (error) {
-      console.error('🔥 FRONTEND LOG: === MarketChatbox: Error in chat ===', error)
+      console.error('=== MarketChatbox: Error in chat ===', error)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: 'Sorry, I encountered an error processing your request.' 
       }])
     } finally {
-      console.log('🔥 FRONTEND LOG: Cleaning up: setting loading to false and clearing streaming content')
-      setTimeout(() => {
-        setIsLoading(false)
-        setStreamingContent('')
-        setStreamingReasoning('')
-        setHasStreamingStarted(false)
-      }, 200)
+      console.log('Cleaning up: setting loading to false and clearing streaming content')
+      setIsLoading(false)
+      setStreamingContent('')
+      setStreamingReasoning('')
       abortControllerRef.current = null
     }
   }
@@ -277,13 +231,53 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
           </p>
         </div>
       ) : (
-        <ChatMessages 
-          messages={messages}
-          streamingContent={streamingContent}
-          streamingReasoning={streamingReasoning}
-          hasStreamingStarted={hasStreamingStarted}
-          isLoading={isLoading}
-        />
+        <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
+          {messages.map((message, index) => (
+            <div key={index} className="space-y-2">
+              {message.reasoning && (
+                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                    {message.reasoning}
+                  </ReactMarkdown>
+                </div>
+              )}
+              <div className="bg-muted/50 p-3 rounded-lg">
+                {message.type === 'user' ? (
+                  <p className="text-sm font-medium">{message.content}</p>
+                ) : (
+                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                    {message.content || ''}
+                  </ReactMarkdown>
+                )}
+              </div>
+            </div>
+          ))}
+          {(streamingReasoning || streamingContent) && (
+            <div className="space-y-2">
+              {streamingReasoning && (
+                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                    {streamingReasoning}
+                  </ReactMarkdown>
+                </div>
+              )}
+              {streamingContent && (
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                    {streamingContent}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
+          )}
+          {isLoading && !streamingContent && !streamingReasoning && (
+            <div className="bg-muted/50 p-3 rounded-lg">
+              <p className="text-sm text-muted-foreground">Thinking...</p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Model Selection */}
@@ -332,83 +326,4 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
       </div>
     </Card>
   )
-})
-
-// Memoized chat messages component for optimized re-renders
-const ChatMessages = memo(function ChatMessages({ 
-  messages, 
-  streamingContent,
-  streamingReasoning,
-  hasStreamingStarted,
-  isLoading
-}: {
-  messages: Message[]
-  streamingContent: string
-  streamingReasoning: string
-  hasStreamingStarted: boolean
-  isLoading: boolean
-}) {
-  
-  return (
-    <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
-      {messages.map((message, index) => (
-        <MessageBubble key={index} message={message} />
-      ))}
-      
-      {/* Only show streaming bubbles when content has started arriving */}
-      {hasStreamingStarted && (
-        <div className="space-y-2">
-          {streamingReasoning && (
-            <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-              <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-              <div className="text-xs text-yellow-700 whitespace-pre-wrap font-mono">
-                {streamingReasoning}
-              </div>
-            </div>
-          )}
-          {streamingContent && (
-            <div className="bg-muted/50 p-3 rounded-lg">
-              <div className="text-sm whitespace-pre-wrap font-mono">
-                {streamingContent}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Only show thinking when loading but no streaming has started */}
-      {isLoading && !hasStreamingStarted && (
-        <div className="bg-muted/50 p-3 rounded-lg">
-          <p className="text-sm text-muted-foreground">Thinking...</p>
-        </div>
-      )}
-    </div>
-  )
-})
-
-// Memoized message bubble for individual messages
-const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
-  return (
-    <div className="space-y-2">
-      {message.reasoning && (
-        <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-          <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-          <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
-            {message.reasoning}
-          </ReactMarkdown>
-        </div>
-      )}
-      <div className="bg-muted/50 p-3 rounded-lg">
-        {message.type === 'user' ? (
-          <p className="text-sm font-medium">{message.content}</p>
-        ) : (
-          <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-            {message.content || ''}
-          </ReactMarkdown>
-        )}
-      </div>
-    </div>
-  )
-})
-
-export { MarketChatbox }
+}
