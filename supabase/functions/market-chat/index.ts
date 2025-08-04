@@ -15,10 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory, userId, marketId, marketQuestion, marketDescription, selectedModel } = await req.json()
+    const { message, chatHistory = [], userId, marketId, marketQuestion, marketDescription, selectedModel } = await req.json()
     console.log('Received market chat request:', {
       message,
-      chatHistory,
+      chatHistoryLength: Array.isArray(chatHistory) ? chatHistory.length : 'invalid',
       userId: userId ? 'provided' : 'not provided',
       marketId,
       marketQuestion,
@@ -162,17 +162,14 @@ Current Market Context:
 - Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}
 - Market ID: ${marketId || 'Not specified'}`
 
-    const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets, finding news, quotes, expert opinions, and dates that alter the likelihood of this prediction market. 
+    const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets. Use the market information below only as background context and always prioritize the user's most recent question when generating search queries and responses.
 ${marketContext}
 
-CREATE SEARCHES RELEVANT TO THE MARKET DETAILS. This conversation is about the given prediction market. Assume the user is referencing this prediction market context if there is no other chat history. If the user has unclear intention, provide the latest news related to this prediction market. You should provide insights and analysis related to this specific prediction market. Be concise, informative, and helpful. Focus on factors that might influence the market outcome, relevant news, historical context, and analytical perspectives.
-
-When discussing price movements, consider the 24-hour changes and current market dynamics. Use the market description and tags to provide relevant context.
-
-Keep responses conversational and accessible while maintaining analytical depth.`
+In your first reply, surface the most relevant and up-to-date online sources, citing each with a URL. Provide concise insights on how the information affects the market outcome. Keep responses conversational, informative, and analytically focused.`
 
     console.log('Making request to OpenRouter API...')
     const fetchStart = performance.now()
+    const historyMessages = Array.isArray(chatHistory) ? chatHistory : []
     const requestBody = {
       model: selectedModel || "perplexity/sonar",
       messages: [
@@ -180,9 +177,10 @@ Keep responses conversational and accessible while maintaining analytical depth.
           role: "system",
           content: systemPrompt
         },
+        ...historyMessages,
         {
           role: "user",
-          content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
+          content: message
         }
       ],
       stream: true,
