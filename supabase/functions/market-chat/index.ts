@@ -142,6 +142,24 @@ Keep responses conversational and accessible while maintaining analytical depth.
 
     console.log('Making request to OpenRouter API...')
     const fetchStart = performance.now()
+    const requestBody = {
+      model: selectedModel || "perplexity/sonar",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt
+        },
+        {
+          role: "user",
+          content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
+        }
+      ],
+      stream: true,
+      reasoning: {
+        maxTokens: 8000
+      }
+    }
+    console.log('OpenRouter request body:', requestBody)
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -150,23 +168,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
         'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Chat App',
       },
-      body: JSON.stringify({
-        model: selectedModel || "perplexity/sonar",
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
-          }
-        ],
-        stream: true,
-        reasoning: {
-          maxTokens: 8000
-        }
-      })
+      body: JSON.stringify(requestBody)
     })
 
     if (!openRouterResponse.ok) {
