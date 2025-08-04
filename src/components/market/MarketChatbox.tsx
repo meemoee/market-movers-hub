@@ -317,8 +317,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         finalAgentId = chain.config.layers.at(-1)?.agents[0]?.agentId
 
         if (result.outputs && result.outputs.length > 0) {
+          const finalLayerIndex = chain.config.layers.length
+          // Filter out outputs from the final layer rather than by agent ID
+          // so intermediate results are preserved even if agent IDs repeat
           const chainMessages = result.outputs
-            .filter(o => o.agentId !== finalAgentId)
+            .filter(o => o.layer !== finalLayerIndex)
             .map(o => ({
               type: 'assistant' as const,
               content: `Agent ${o.agentId}: ${o.output}`
