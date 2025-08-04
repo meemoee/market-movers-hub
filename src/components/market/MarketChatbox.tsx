@@ -287,6 +287,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         throw new Error("No authentication token available")
       }
       
+      const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
+      const marketContextMessage = {
+        role: 'assistant' as const,
+        content: `Current Market Context:\n- Market Question: ${marketQuestion || 'Not specified'}\n- Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}\n- Market ID: ${marketId || 'Not specified'}`
+      }
+      const chatHistoryWithContext = baseHistory.length === 0 ? [marketContextMessage] : baseHistory
+
       worker.postMessage({
         type: 'START_STREAM',
         data: {
@@ -300,7 +307,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             },
             body: JSON.stringify({
               message: userMessage,
-              chatHistory: messages.map(m => ({ role: m.type, content: m.content })),
+              chatHistory: chatHistoryWithContext,
               userId: user?.id,
               marketId,
               marketQuestion,
