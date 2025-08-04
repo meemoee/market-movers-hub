@@ -105,7 +105,7 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
         marketQuestion
       })
 
-      // Get auth token for direct fetch call
+      // Use EventSource for proper SSE streaming instead of fetch
       const { data: sessionData } = await supabase.auth.getSession()
       const authToken = sessionData.session?.access_token
 
@@ -113,128 +113,80 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
         throw new Error("No authentication token available")
       }
 
-      // Make direct fetch call to edge function with streaming
-      const response = await fetch(
-        "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: userMessage,
-            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
-            userId: user?.id,
-            marketId,
-            marketQuestion,
-            selectedModel
-          }),
-          signal: abortControllerRef.current?.signal
-        }
-      )
+      // Create the SSE URL with auth params
+      const sseUrl = new URL("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat")
+      sseUrl.searchParams.append('message', userMessage)
+      sseUrl.searchParams.append('chatHistory', messages.map(m => `${m.type}: ${m.content}`).join('\n'))
+      sseUrl.searchParams.append('userId', user?.id || '')
+      sseUrl.searchParams.append('marketId', marketId)
+      sseUrl.searchParams.append('marketQuestion', marketQuestion)
+      sseUrl.searchParams.append('selectedModel', selectedModel)
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Edge function error: ${response.status} - ${errorText}`)
-      }
-
-      console.log('Got streaming response from market-chat')
+      console.log('Creating EventSource for real streaming...')
       
-      // Process the streaming response immediately with detailed logging
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('Failed to get response reader')
-      }
+      const eventSource = new EventSource(sseUrl.toString(), {
+        headers: {
+          "Authorization": `Bearer ${authToken}`,
+          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc"
+        }
+      } as any)
 
-      const decoder = new TextDecoder()
       let accumulatedContent = ''
       let accumulatedReasoning = ''
-      let buffer = ''
-      
-      console.log('Starting stream processing at:', Date.now())
-      
-      try {
-        while (true) {
-          const startTime = Date.now()
-          const { done, value } = await reader.read()
-          const readTime = Date.now() - startTime
+
+      eventSource.onmessage = (event) => {
+        const timestamp = Date.now()
+        console.log(`[${timestamp}] EventSource message received:`, event.data.substring(0, 100))
+        
+        if (event.data === '[DONE]') {
+          console.log('Stream complete via EventSource')
+          eventSource.close()
+          setMessages(prev => [...prev, { 
+            type: 'assistant', 
+            content: accumulatedContent,
+            reasoning: accumulatedReasoning 
+          }])
+          setIsLoading(false)
+          return
+        }
+
+        try {
+          const parsed = JSON.parse(event.data)
+          const content = parsed.choices?.[0]?.delta?.content
+          const reasoning = parsed.choices?.[0]?.delta?.reasoning
           
-          console.log(`[${Date.now()}] Read chunk - done: ${done}, size: ${value?.length}, readTime: ${readTime}ms`)
-          
-          if (done) {
-            console.log('Stream complete, adding final message')
-            flushSync(() => {
-              setMessages(prev => [...prev, { 
-                type: 'assistant', 
-                content: accumulatedContent,
-                reasoning: accumulatedReasoning 
-              }])
-            })
-            break
-          }
-          
-          const chunk = decoder.decode(value, { stream: true })
-          buffer += chunk
-          
-          console.log(`[${Date.now()}] Processing chunk:`, chunk.substring(0, 100))
-          
-          // Process complete SSE events immediately
-          const events = buffer.split('\n\n')
-          buffer = events.pop() || '' // Keep incomplete event in buffer
-          
-          for (const event of events) {
-            if (!event.trim()) continue
-            
-            const lines = event.split('\n')
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const jsonStr = line.slice(6).trim()
-                
-                if (jsonStr === '[DONE]') {
-                  console.log('Received DONE signal')
-                  continue
-                }
-                
-                try {
-                  const parsed = JSON.parse(jsonStr)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  const reasoning = parsed.choices?.[0]?.delta?.reasoning
-                  
-                  if (content) {
-                    accumulatedContent += content
-                    console.log(`[${Date.now()}] IMMEDIATE content update:`, content.substring(0, 50))
-                    
-                    // Update state immediately without delay
-                    setStreamingContent(accumulatedContent)
-                    if (!hasStreamingStarted) {
-                      setHasStreamingStarted(true)
-                    }
-                  }
-                  
-                  if (reasoning) {
-                    accumulatedReasoning += reasoning
-                    console.log(`[${Date.now()}] IMMEDIATE reasoning update:`, reasoning.substring(0, 50))
-                    
-                    // Update state immediately without delay
-                    setStreamingReasoning(accumulatedReasoning)
-                    if (!hasStreamingStarted) {
-                      setHasStreamingStarted(true)
-                    }
-                  }
-                } catch (e) {
-                  console.error('Error parsing SSE data:', e, 'Line:', line)
-                }
-              }
+          if (content) {
+            accumulatedContent += content
+            console.log(`[${timestamp}] INSTANT content display:`, content)
+            setStreamingContent(accumulatedContent)
+            if (!hasStreamingStarted) {
+              setHasStreamingStarted(true)
             }
           }
-        }
-      } catch (error: any) {
-        if (error.name !== 'AbortError') {
-          throw error
+          
+          if (reasoning) {
+            accumulatedReasoning += reasoning
+            console.log(`[${timestamp}] INSTANT reasoning display:`, reasoning)
+            setStreamingReasoning(accumulatedReasoning)
+            if (!hasStreamingStarted) {
+              setHasStreamingStarted(true)
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing EventSource data:', e, event.data)
         }
       }
+
+      eventSource.onerror = (error) => {
+        console.error('EventSource error:', error)
+        eventSource.close()
+        throw new Error('EventSource connection failed')
+      }
+
+      // Clean up EventSource on abort
+      abortControllerRef.current?.signal.addEventListener('abort', () => {
+        eventSource.close()
+      })
 
       console.log('=== MarketChatbox: Chat message completed successfully ===')
 
@@ -246,14 +198,11 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
       }])
     } finally {
       console.log('Cleaning up: setting loading to false and clearing streaming content')
-      // Delay cleanup to ensure final render is complete
       setTimeout(() => {
-        flushSync(() => {
-          setIsLoading(false)
-          setStreamingContent('')
-          setStreamingReasoning('')
-          setHasStreamingStarted(false)
-        })
+        setIsLoading(false)
+        setStreamingContent('')
+        setStreamingReasoning('')
+        setHasStreamingStarted(false)
       }, 200)
       abortControllerRef.current = null
     }

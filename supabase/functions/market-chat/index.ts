@@ -14,7 +14,27 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory, userId, marketId, marketQuestion, selectedModel } = await req.json()
+    let message, chatHistory, userId, marketId, marketQuestion, selectedModel
+    
+    // Handle both GET (EventSource) and POST requests
+    if (req.method === 'GET') {
+      const url = new URL(req.url)
+      message = url.searchParams.get('message') || ''
+      chatHistory = url.searchParams.get('chatHistory') || ''
+      userId = url.searchParams.get('userId') || null
+      marketId = url.searchParams.get('marketId') || ''
+      marketQuestion = url.searchParams.get('marketQuestion') || ''
+      selectedModel = url.searchParams.get('selectedModel') || 'perplexity/sonar'
+    } else {
+      const body = await req.json()
+      message = body.message
+      chatHistory = body.chatHistory
+      userId = body.userId
+      marketId = body.marketId
+      marketQuestion = body.marketQuestion
+      selectedModel = body.selectedModel
+    }
+    
     console.log('Received market chat request:', { 
       message, 
       chatHistory, 
