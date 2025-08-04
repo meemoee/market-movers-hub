@@ -39,34 +39,17 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
 
-  // DOM-based streaming content update with browser repaint forcing
+  // DOM-based streaming content update - simplified for real-time display
   const updateStreamingContent = useCallback((content: string, isComplete: boolean = false) => {
     if (streamingContentRef.current) {
       if (isComplete) {
         // Final update: clear DOM content and let React take over
         streamingContentRef.current.innerHTML = ''
         setStreamingContent(content)
-        setIsStreaming(false)
       } else {
         // Live update: directly manipulate DOM for immediate display
         const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
         streamingContentRef.current.innerHTML = `<div class="text-sm whitespace-pre-wrap">${content}${cursor}</div>`
-        setIsStreaming(true)
-        
-        // Force browser repaint using multiple techniques
-        // 1. Force layout/reflow by accessing offsetHeight
-        streamingContentRef.current.offsetHeight
-        
-        // 2. Trigger a CSS transform change to force repaint
-        streamingContentRef.current.style.transform = 'translateZ(0)'
-        
-        // 3. Use requestAnimationFrame to ensure paint cycle
-        requestAnimationFrame(() => {
-          if (streamingContentRef.current) {
-            // Reset transform after repaint
-            streamingContentRef.current.style.transform = ''
-          }
-        })
       }
     }
   }, [])
@@ -142,6 +125,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             break
         }
       }
+      
+      setIsStreaming(true)
       
       worker.postMessage({
         type: 'TEST_CHUNKS',
