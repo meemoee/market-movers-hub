@@ -294,6 +294,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       let finalPrompt = userMessage
       let finalModel = selectedModel
+      let finalAgentId: string | undefined
 
       if (activeChainId) {
         const chain = chains.find(c => c.id === activeChainId)
@@ -312,12 +313,19 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             authToken
           }
         )
+
+        finalAgentId = chain.config.layers.at(-1)?.agents[0]?.agentId
+
         if (result.outputs && result.outputs.length > 0) {
-          const chainMessages = result.outputs.map(o => ({
-            type: 'assistant' as const,
-            content: `Agent ${o.agentId}: ${o.output}`
-          }))
-          setMessages(prev => [...prev, ...chainMessages])
+          const chainMessages = result.outputs
+            .filter(o => o.agentId !== finalAgentId)
+            .map(o => ({
+              type: 'assistant' as const,
+              content: `Agent ${o.agentId}: ${o.output}`
+            }))
+          if (chainMessages.length > 0) {
+            setMessages(prev => [...prev, ...chainMessages])
+          }
         }
         finalPrompt = result.prompt
         finalModel = result.model
@@ -349,7 +357,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
             const finalMessage: Message = {
               type: 'assistant',
-              content: data.content,
+              content: finalAgentId ? `Agent ${finalAgentId}: ${data.content}` : data.content,
               reasoning: data.reasoning
             }
             setMessages(prev => [...prev, finalMessage])
