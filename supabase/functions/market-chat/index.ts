@@ -174,7 +174,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
 
     const stream = new ReadableStream({
       start(controller) {
-        console.log('Stream started, beginning pump function')
+        console.log('[STREAM-DEBUG] Stream started, beginning pump function')
         
         let edgeChunkCount = 0
         let totalOpenRouterBytes = 0
@@ -186,10 +186,47 @@ Keep responses conversational and accessible while maintaining analytical depth.
             console.log(`[EDGE-CHUNK-${edgeChunkCount}] OpenRouter read:`, { 
               done, 
               chunkSize: value?.length,
-              totalBytesFromOpenRouter: totalOpenRouterBytes + (value?.length || 0)
+              totalBytesFromOpenRouter: totalOpenRouterBytes + (value?.length || 0),
+              bufferLength: lineBuffer.length
             })
             
             if (done) {
+              console.log('[STREAM-DEBUG] OpenRouter stream done, processing final buffer')
+              // Process any remaining data in buffer
+              if (lineBuffer.trim()) {
+                console.log('[STREAM-DEBUG] Processing final buffered line:', lineBuffer.substring(0, 100))
+                const lines = [lineBuffer]
+                
+                for (const line of lines) {
+                  if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                    try {
+                      const jsonStr = line.slice(6)
+                      const data = JSON.parse(jsonStr)
+                      
+                      if (data.choices && data.choices[0]?.delta) {
+                        const delta = data.choices[0].delta
+                        const transformedData = {
+                          choices: [{
+                            delta: {
+                              content: delta.content,
+                              reasoning: delta.reasoning
+                            }
+                          }]
+                        }
+                        
+                        const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
+                        const encoded = encoder.encode(sseData)
+                        controller.enqueue(encoded)
+                        totalOutputBytes += encoded.length
+                        console.log('[STREAM-DEBUG] Sent final buffered data to frontend')
+                      }
+                    } catch (e) {
+                      console.error('[STREAM-DEBUG] Final buffer JSON parse error:', e)
+                    }
+                  }
+                }
+              }
+              
               console.log(`[EDGE-STREAM-COMPLETE] Processed ${edgeChunkCount} chunks from OpenRouter`)
               console.log(`[EDGE-STREAM-COMPLETE] Total bytes from OpenRouter: ${totalOpenRouterBytes}`)
               console.log(`[EDGE-STREAM-COMPLETE] Total bytes sent to frontend: ${totalOutputBytes}`)
@@ -199,6 +236,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
 
             totalOpenRouterBytes += value?.length || 0
             const chunk = decoder.decode(value)
+            console.log(`[STREAM-DEBUG] Raw chunk preview:`, chunk.substring(0, 200))
             
             // Combine with any buffered incomplete line from previous chunk
             const fullChunk = lineBuffer + chunk
@@ -208,18 +246,27 @@ Keep responses conversational and accessible while maintaining analytical depth.
             // (meaning it might be incomplete)
             if (!chunk.endsWith('\n')) {
               lineBuffer = lines.pop() || ''
+              console.log(`[STREAM-DEBUG] Buffering incomplete line:`, lineBuffer.substring(0, 100))
             } else {
               lineBuffer = ''
+              console.log('[STREAM-DEBUG] No incomplete line to buffer')
             }
             
-            console.log(`[EDGE-CHUNK-${edgeChunkCount}] Processing ${lines.length} complete lines`)
+            console.log(`[EDGE-CHUNK-${edgeChunkCount}] Processing ${lines.length} complete lines, buffer size: ${lineBuffer.length}`)
 
+            let processedLines = 0
+            let sentDataLines = 0
+            
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i]
+              processedLines++
+              
+              console.log(`[STREAM-DEBUG] Line ${i}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`)
               
               if (line.startsWith('data: ') && line !== 'data: [DONE]') {
                 try {
                   const jsonStr = line.slice(6) // Remove 'data: ' prefix
+                  console.log(`[STREAM-DEBUG] Parsing JSON:`, jsonStr.substring(0, 200))
                   const data = JSON.parse(jsonStr)
                   
                   // Transform OpenRouter format to expected frontend format
@@ -227,6 +274,8 @@ Keep responses conversational and accessible while maintaining analytical depth.
                     const delta = data.choices[0].delta
                     const content = delta.content
                     const reasoning = delta.reasoning
+                    
+                    console.log(`[STREAM-DEBUG] Found delta - content: "${content}", reasoning: "${reasoning ? reasoning.substring(0, 50) : 'none'}"`)
                     
                     const transformedData = {
                       choices: [{
@@ -241,17 +290,28 @@ Keep responses conversational and accessible while maintaining analytical depth.
                     const encoded = encoder.encode(sseData)
                     controller.enqueue(encoded)
                     totalOutputBytes += encoded.length
+                    sentDataLines++
+                    console.log(`[STREAM-DEBUG] Sent data to frontend, size: ${encoded.length} bytes`)
+                  } else {
+                    console.log(`[STREAM-DEBUG] No delta found in data:`, data)
                   }
                 } catch (e) {
                   console.error(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] JSON parse error:`, e)
+                  console.error(`[STREAM-DEBUG] Failed line:`, line)
                 }
               } else if (line === 'data: [DONE]') {
                 const doneData = 'data: [DONE]\n\n'
                 const encoded = encoder.encode(doneData)
                 controller.enqueue(encoded)
                 totalOutputBytes += encoded.length
+                sentDataLines++
+                console.log('[STREAM-DEBUG] Sent [DONE] to frontend')
+              } else if (line.trim()) {
+                console.log(`[STREAM-DEBUG] Ignored non-data line:`, line)
               }
             }
+            
+            console.log(`[STREAM-DEBUG] Chunk ${edgeChunkCount} summary: processed ${processedLines} lines, sent ${sentDataLines} data chunks`)
 
             edgeChunkCount++
             return pump()
@@ -260,7 +320,13 @@ Keep responses conversational and accessible while maintaining analytical depth.
             controller.error(error)
           })
         }
-        return pump()
+        
+        // Start pumping immediately without waiting for completion
+        console.log('[STREAM-DEBUG] Starting pump without waiting for completion')
+        pump().catch(error => {
+          console.error('[STREAM-DEBUG] Pump error:', error)
+          controller.error(error)
+        })
       }
     })
 
