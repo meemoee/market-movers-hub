@@ -139,6 +139,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       const decoder = new TextDecoder()
       let accumulatedContent = ''
       let accumulatedReasoning = ''
+      let tokenCount = 0
+      const batchSize = 20
       
       try {
         while (true) {
@@ -173,17 +175,23 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 if (content) {
                   accumulatedContent += content
                   setStreamingContent(accumulatedContent)
+                  tokenCount++
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
                   setStreamingReasoning(accumulatedReasoning)
                   console.log('REASONING:', reasoning)
+                  tokenCount++
                 }
                 
-                if (content || reasoning) {
-                  // Yield control to allow React to re-render
-                  await new Promise(resolve => setTimeout(resolve, 0))
+                // Batch updates and use microtasks instead of timers
+                if ((content || reasoning) && tokenCount % batchSize === 0) {
+                  // Use microtask queue for yielding - not throttled when tab is hidden
+                  if (document.visibilityState === 'visible') {
+                    await new Promise(resolve => queueMicrotask(() => resolve(undefined)))
+                  }
+                  // Skip delays entirely when tab is hidden for immediate updates
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e)
