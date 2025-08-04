@@ -15,7 +15,7 @@ interface Layer {
   agents: AgentBlock[]
 }
 
-interface ChainConfig {
+export interface ChainConfig {
   layers: Layer[]
 }
 
