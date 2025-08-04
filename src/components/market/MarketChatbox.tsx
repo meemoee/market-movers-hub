@@ -300,7 +300,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
               </div>
             </div>
           ))}
-          {(streamingReasoning || streamingContent) && (
+          {(streamingReasoning || streamingContent || isStreaming) && (
             <div className="space-y-2">
               {streamingReasoning && (
                 <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
