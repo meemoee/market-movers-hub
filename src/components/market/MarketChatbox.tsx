@@ -1,4 +1,4 @@
-import { MessageCircle, Send, Settings } from 'lucide-react'
+import { BookmarkPlus, MessageCircle, Send, Settings } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
@@ -6,6 +6,16 @@ import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 
 interface MarketChatboxProps {
   marketId: string
@@ -25,6 +35,12 @@ interface OpenRouterModel {
   description?: string
 }
 
+interface Agent {
+  id: string
+  prompt: string
+  model: string
+}
+
 export function MarketChatbox({ marketId, marketQuestion, marketDescription }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -36,6 +52,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [selectedAgent, setSelectedAgent] = useState('')
+  const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
+  const [newAgentPrompt, setNewAgentPrompt] = useState('')
+  const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
@@ -93,6 +114,56 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
     fetchModels()
   }, [user?.id])
+
+  useEffect(() => {
+    const fetchAgents = async () => {
+      if (!user?.id) return
+      const { data, error } = await supabase
+        .from('agents')
+        .select('id, prompt, model')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Failed to fetch agents:', error)
+        return
+      }
+      setAgents(data || [])
+    }
+
+    fetchAgents()
+  }, [user?.id])
+
+  const handleSelectAgent = (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (agent) {
+      setSelectedAgent(agentId)
+      setSelectedModel(agent.model)
+      setChatMessage(agent.prompt)
+    }
+  }
+
+  const handleSaveAgent = async () => {
+    if (!newAgentPrompt.trim() || !user?.id) return
+    const { data, error } = await supabase
+      .from('agents')
+      .insert({ user_id: user.id, prompt: newAgentPrompt, model: newAgentModel })
+      .select()
+      .single()
+    if (error) {
+      console.error('Failed to save agent:', error)
+      return
+    }
+    if (data) {
+      setAgents(prev => [data, ...prev])
+      setSelectedAgent(data.id)
+      setSelectedModel(data.model)
+      setChatMessage(data.prompt)
+      setNewAgentPrompt('')
+      setNewAgentModel(selectedModel)
+      setIsAgentDialogOpen(false)
+    }
+  }
 
   // Chat functionality using Web Worker
   const handleChatMessage = async (userMessage: string) => {
@@ -334,6 +405,73 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </div>
       )}
 
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Saved Agent:</span>
+        <Select
+          value={selectedAgent}
+          onValueChange={handleSelectAgent}
+          disabled={isLoading || agents.length === 0}
+        >
+          <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectValue placeholder={agents.length === 0 ? 'No agents' : 'Select agent'} />
+          </SelectTrigger>
+          {agents.length > 0 && (
+            <SelectContent>
+              {agents.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id} className="text-xs">
+                  {agent.prompt.slice(0, 30)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          )}
+        </Select>
+        <Dialog
+          open={isAgentDialogOpen}
+          onOpenChange={(open) => {
+            setIsAgentDialogOpen(open)
+            if (open) {
+              setNewAgentModel(selectedModel)
+            }
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs">
+              <BookmarkPlus className="w-4 h-4 mr-1" /> Add
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Save New Agent</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Textarea
+                value={newAgentPrompt}
+                onChange={(e) => setNewAgentPrompt(e.target.value)}
+                placeholder="Agent prompt"
+                className="text-sm"
+              />
+              <Select value={newAgentModel} onValueChange={setNewAgentModel} disabled={modelsLoading}>
+                <SelectTrigger className="w-full h-8 text-xs">
+                  <SelectValue placeholder={modelsLoading ? 'Loading...' : 'Select model'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableModels.map((model) => (
+                    <SelectItem key={model.id} value={model.id} className="text-xs">
+                      {model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" onClick={handleSaveAgent} disabled={!newAgentPrompt.trim()}>
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
       {/* Model Selection */}
       <div className="mb-4 flex items-center gap-2">
         <Settings className="w-4 h-4 text-muted-foreground" />
@@ -370,7 +508,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           placeholder="Ask about this market..."
           className="flex-grow p-2 bg-background border border-border rounded-lg text-sm"
         />
-        <button 
+        <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
           onClick={() => handleChatMessage(chatMessage)}
           disabled={isLoading}
