@@ -32,9 +32,10 @@ interface AgentChainDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   agents: Agent[]
+  onSaved?: () => void
 }
 
-export function AgentChainDialog({ open, onOpenChange, agents }: AgentChainDialogProps) {
+export function AgentChainDialog({ open, onOpenChange, agents, onSaved }: AgentChainDialogProps) {
   const { user } = useCurrentUser()
   const [chainName, setChainName] = useState('')
   const [layers, setLayers] = useState<Layer[]>([
@@ -114,6 +115,7 @@ export function AgentChainDialog({ open, onOpenChange, agents }: AgentChainDialo
     }
     reset()
     onOpenChange(false)
+    onSaved?.()
   }
 
   return (

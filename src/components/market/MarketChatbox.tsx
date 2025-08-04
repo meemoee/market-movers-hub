@@ -35,6 +35,12 @@ interface Agent {
   model: string
 }
 
+interface AgentChain {
+  id: string
+  name: string
+  config: any
+}
+
 export function MarketChatbox({ marketId, marketQuestion, marketDescription }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -52,6 +58,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [isChainDialogOpen, setIsChainDialogOpen] = useState(false)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
+  const [chains, setChains] = useState<AgentChain[]>([])
+  const [selectedChain, setSelectedChain] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
@@ -128,6 +136,24 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
     fetchAgents()
   }, [user?.id])
+
+  const fetchChains = useCallback(async () => {
+    if (!user?.id) return
+    const { data, error } = await supabase
+      .from('agent_chains')
+      .select('id, name, config')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('Failed to fetch agent chains:', error)
+      return
+    }
+    setChains(data || [])
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchChains()
+  }, [fetchChains])
 
   const handleSelectAgent = (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -431,6 +457,21 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         >
           <BookmarkPlus size={16} />
         </button>
+        <span className="text-sm text-muted-foreground">Saved Chain:</span>
+        {chains.length > 0 && (
+          <Select value={selectedChain} onValueChange={setSelectedChain} disabled={isLoading}>
+            <SelectTrigger className="w-[200px] h-8 text-xs">
+              <SelectValue placeholder="Select chain" />
+            </SelectTrigger>
+            <SelectContent>
+              {chains.map((chain) => (
+                <SelectItem key={chain.id} value={chain.id} className="text-xs">
+                  {chain.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
           onClick={() => setIsChainDialogOpen(true)}
@@ -528,7 +569,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <AgentChainDialog open={isChainDialogOpen} onOpenChange={setIsChainDialogOpen} agents={agents} />
+      <AgentChainDialog open={isChainDialogOpen} onOpenChange={setIsChainDialogOpen} agents={agents} onSaved={fetchChains} />
     </>
   )
 }
