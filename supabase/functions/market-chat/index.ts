@@ -9,6 +9,7 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  const startTime = performance.now()
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -53,8 +54,10 @@ serve(async (req) => {
       throw new Error('No API key available for OpenRouter')
     }
 
+    console.log('api key ready', performance.now() - startTime)
     // Fetch market data from Redis (same source as top movers)
     let marketData = null
+    const redisStart = performance.now()
     try {
       // Connect to Redis
       const redis = await import('https://deno.land/x/redis@v0.29.0/mod.ts')
@@ -103,6 +106,7 @@ serve(async (req) => {
     } catch (error) {
       console.error('Error fetching market data from Redis:', error)
     }
+    console.log('redis lookup time', performance.now() - redisStart)
 
     // Create market-specific system prompt with rich context
     const marketContext = marketData ? `
@@ -131,6 +135,7 @@ When discussing price movements, consider the 24-hour changes and current market
 Keep responses conversational and accessible while maintaining analytical depth.`
 
     console.log('Making request to OpenRouter API...')
+    const fetchStart = performance.now()
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -175,14 +180,19 @@ Keep responses conversational and accessible while maintaining analytical depth.
     const stream = new ReadableStream({
       start(controller) {
         console.log('[STREAM-DEBUG] Stream started, beginning pump function')
-        
+
         let edgeChunkCount = 0
         let totalOpenRouterBytes = 0
         let totalOutputBytes = 0
         let lineBuffer = '' // Buffer for incomplete lines
-        
+        let firstChunkLogged = false
+
         function pump(): Promise<void> {
           return reader!.read().then(({ done, value }) => {
+            if (!firstChunkLogged && value) {
+              console.log('time to first token', performance.now() - fetchStart)
+              firstChunkLogged = true
+            }
             console.log(`[EDGE-CHUNK-${edgeChunkCount}] OpenRouter read:`, { 
               done, 
               chunkSize: value?.length,
