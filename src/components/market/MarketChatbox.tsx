@@ -172,12 +172,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 
                 if (content) {
                   accumulatedContent += content
-                  updateCounter++
-                  
-                  // Update UI every 5 tokens or after 50ms delay for smoother streaming
-                  if (updateCounter % 5 === 0) {
-                    setStreamingContent(accumulatedContent)
-                  }
+                  // Update UI immediately when content arrives
+                  setStreamingContent(accumulatedContent)
                 }
                 
                 if (reasoning) {
