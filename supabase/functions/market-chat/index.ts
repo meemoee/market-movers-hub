@@ -163,7 +163,20 @@ Keep responses conversational and accessible while maintaining analytical depth.
       info: {
         marketId,
         marketQuestion,
-        marketDescription: marketData?.description || marketDescription || undefined
+        marketDescription: marketData?.description || marketDescription || undefined,
+        lastPrice: marketData?.final_last_price,
+        priceChange: marketData?.price_change,
+        volume: marketData?.final_volume,
+        volumeChange: marketData?.volume_change,
+        volumeChangePercentage: marketData?.volume_change_percentage,
+        bestBid: marketData?.final_best_bid,
+        bestAsk: marketData?.final_best_ask,
+        noBestBid: marketData?.final_no_best_bid,
+        noBestAsk: marketData?.final_no_best_ask,
+        initialLastPrice: marketData?.initial_last_price,
+        initialVolume: marketData?.initial_volume,
+        outcomes: marketData?.outcomes,
+        tags: marketData?.primary_tags
       }
     }
     console.log('OpenRouter request body:', requestBody)
