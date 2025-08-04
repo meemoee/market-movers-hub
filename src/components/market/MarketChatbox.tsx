@@ -65,6 +65,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
+  const [streamingAgentId, setStreamingAgentId] = useState<string | null>(null)
 
   // DOM-based streaming content update with flushSync for immediate display
   const updateStreamingContent = useCallback((content: string, isComplete: boolean = false) => {
@@ -294,6 +295,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       let finalPrompt = userMessage
       let finalModel = selectedModel
+      let finalAgentId: string | null = selectedAgent || null
 
       if (activeChainId) {
         const chain = chains.find(c => c.id === activeChainId)
@@ -312,9 +314,19 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             authToken
           }
         )
+        if (result.outputs && result.outputs.length > 0) {
+          const chainMessages = result.outputs.map(o => ({
+            type: 'assistant' as const,
+            content: `Agent ${o.agentId}: ${o.output}`
+          }))
+          setMessages(prev => [...prev, ...chainMessages])
+        }
         finalPrompt = result.prompt
         finalModel = result.model
+        finalAgentId = result.finalAgentId
       }
+
+      setStreamingAgentId(finalAgentId)
 
       console.log('📤 [CHAT] Starting web worker for streaming')
 
@@ -342,7 +354,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
             const finalMessage: Message = {
               type: 'assistant',
-              content: data.content,
+              content: streamingAgentId ? `Agent ${streamingAgentId}: ${data.content}` : data.content,
               reasoning: data.reasoning
             }
             setMessages(prev => [...prev, finalMessage])
@@ -350,6 +362,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setIsStreaming(false)
             setStreamingContent('')
             setStreamingReasoning('')
+            setStreamingAgentId(null)
             worker.terminate()
             break
           }
@@ -365,6 +378,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setIsStreaming(false)
             setStreamingContent('')
             setStreamingReasoning('')
+            setStreamingAgentId(null)
             worker.terminate()
             break
           }
@@ -377,6 +391,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         setIsStreaming(false)
         setStreamingContent('')
         setStreamingReasoning('')
+        setStreamingAgentId(null)
       }
 
       const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
@@ -469,6 +484,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           ))}
           {(streamingReasoning || streamingContent || isStreaming) && (
             <div className="space-y-2">
+              {streamingAgentId && (
+                <div className="text-xs text-muted-foreground">Agent {streamingAgentId}:</div>
+              )}
               {streamingReasoning && (
                 <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
                   <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
