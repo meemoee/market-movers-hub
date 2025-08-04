@@ -28,7 +28,7 @@ interface StreamingMessage {
   reasoning: string
 }
 
-export const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
+const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
@@ -365,3 +365,5 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Messag
     </div>
   )
 })
+
+export { MarketChatbox }
