@@ -139,13 +139,26 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       const decoder = new TextDecoder()
       let accumulatedContent = ''
       let accumulatedReasoning = ''
-      let updateCounter = 0
+      let lineBuffer = '' // Buffer for incomplete SSE lines
+      let chunkCounter = 0
+      let linesProcessed = 0
+      let dataLinesProcessed = 0
+      
+      console.log('🔄 [STREAM-FRONTEND] Starting stream processing')
       
       try {
         while (true) {
           const { done, value } = await reader.read()
           
           if (done) {
+            console.log(`🏁 [STREAM-FRONTEND] Stream complete. Final stats:`)
+            console.log(`   - Chunks processed: ${chunkCounter}`)
+            console.log(`   - Lines processed: ${linesProcessed}`)
+            console.log(`   - Data lines processed: ${dataLinesProcessed}`)
+            console.log(`   - Final content length: ${accumulatedContent.length}`)
+            console.log(`   - Final reasoning length: ${accumulatedReasoning.length}`)
+            console.log(`   - Remaining buffer: "${lineBuffer}"`)
+            
             setMessages(prev => [...prev, { 
               type: 'assistant', 
               content: accumulatedContent,
@@ -154,40 +167,88 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             break
           }
           
-          const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split('\n')
+          chunkCounter++
+          const rawChunk = decoder.decode(value, { stream: true })
+          console.log(`📦 [STREAM-FRONTEND-${chunkCounter}] Received chunk:`)
+          console.log(`   - Byte length: ${value.length}`)
+          console.log(`   - Text length: ${rawChunk.length}`)
+          console.log(`   - Current buffer length: ${lineBuffer.length}`)
+          console.log(`   - Raw chunk preview: "${rawChunk.substring(0, 200)}${rawChunk.length > 200 ? '...' : ''}"`)
           
-          for (const line of lines) {
+          // Concatenate with any buffered incomplete line from previous chunks
+          const fullText = lineBuffer + rawChunk
+          console.log(`🔗 [STREAM-FRONTEND-${chunkCounter}] After concatenation:`)
+          console.log(`   - Full text length: ${fullText.length}`)
+          console.log(`   - Full text preview: "${fullText.substring(0, 200)}${fullText.length > 200 ? '...' : ''}"`)
+          
+          // Split into lines
+          const lines = fullText.split('\n')
+          console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Split into ${lines.length} lines`)
+          
+          // Process all complete lines (all but the last, unless it ends with \n)
+          const completeLines = fullText.endsWith('\n') ? lines : lines.slice(0, -1)
+          lineBuffer = fullText.endsWith('\n') ? '' : lines[lines.length - 1]
+          
+          console.log(`✅ [STREAM-FRONTEND-${chunkCounter}] Processing ${completeLines.length} complete lines`)
+          console.log(`💾 [STREAM-FRONTEND-${chunkCounter}] Buffering incomplete line: "${lineBuffer}"`)
+          
+          for (let i = 0; i < completeLines.length; i++) {
+            const line = completeLines[i]
+            linesProcessed++
+            
+            console.log(`📋 [STREAM-FRONTEND-${chunkCounter}] Line ${i + 1}/${completeLines.length}: "${line}"`)
+            
             if (line.trim() && line.startsWith('data: ')) {
+              dataLinesProcessed++
               const jsonStr = line.slice(6).trim()
               
+              console.log(`🎯 [STREAM-FRONTEND-${chunkCounter}] Found data line #${dataLinesProcessed}:`)
+              console.log(`   - JSON string: "${jsonStr}"`)
+              
               if (jsonStr === '[DONE]') {
+                console.log(`🏁 [STREAM-FRONTEND-${chunkCounter}] Found [DONE] marker`)
                 continue
               }
               
               try {
                 const parsed = JSON.parse(jsonStr)
+                console.log(`🎨 [STREAM-FRONTEND-${chunkCounter}] Parsed JSON:`, parsed)
+                
                 const content = parsed.choices?.[0]?.delta?.content
                 const reasoning = parsed.choices?.[0]?.delta?.reasoning
                 
+                console.log(`📊 [STREAM-FRONTEND-${chunkCounter}] Extracted data:`)
+                console.log(`   - Content: "${content || 'none'}"`)
+                console.log(`   - Reasoning: "${reasoning || 'none'}"`)
+                
                 if (content) {
                   accumulatedContent += content
+                  console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Updated content total length: ${accumulatedContent.length}`)
                   // Update UI immediately when content arrives
                   setStreamingContent(accumulatedContent)
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
+                  console.log(`🤔 [STREAM-FRONTEND-${chunkCounter}] Updated reasoning total length: ${accumulatedReasoning.length}`)
                   setStreamingReasoning(accumulatedReasoning)
                 }
               } catch (e) {
-                console.error('Error parsing SSE data:', e)
+                console.error(`❌ [STREAM-FRONTEND-${chunkCounter}] Error parsing SSE data:`, e)
+                console.error(`   - Failed JSON string: "${jsonStr}"`)
+                console.error(`   - Error details:`, e)
               }
+            } else if (line.trim()) {
+              console.log(`⚠️ [STREAM-FRONTEND-${chunkCounter}] Non-data line: "${line}"`)
             }
           }
           
-          // Final update to ensure latest content is displayed
-          setStreamingContent(accumulatedContent)
+          console.log(`📈 [STREAM-FRONTEND-${chunkCounter}] Chunk summary:`)
+          console.log(`   - Lines processed in this chunk: ${completeLines.length}`)
+          console.log(`   - Data lines found: ${completeLines.filter(l => l.startsWith('data: ')).length}`)
+          console.log(`   - Current content length: ${accumulatedContent.length}`)
+          console.log(`   - Current reasoning length: ${accumulatedReasoning.length}`)
+          console.log(`   - Buffer status: "${lineBuffer}"`)
         }
       } catch (error: any) {
         if (error.name !== 'AbortError') {
