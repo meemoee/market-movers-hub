@@ -170,8 +170,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             break
             
           case 'REASONING_CHUNK':
-            console.log('🧠 [WORKER-MSG] Received reasoning chunk - storing for final update')
-            // Don't update state during streaming to avoid React batching
+            console.log('🧠 [WORKER-MSG] Received reasoning chunk')
+            setStreamingReasoning(data.reasoning)
             break
             
           case 'STREAM_COMPLETE':
