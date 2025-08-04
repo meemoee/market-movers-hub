@@ -52,7 +52,7 @@ self.onmessage = async function(e) {
         const chunk = decoder.decode(value, { stream: true });
         console.log('📦 [WORKER] Received chunk:', chunk.substring(0, 100) + '...');
         
-        // Parse the chunk for content and reasoning
+        // Parse the SSE format - split by lines and look for data: lines
         const lines = chunk.split('\n');
         
         for (const line of lines) {
@@ -62,28 +62,46 @@ self.onmessage = async function(e) {
               if (jsonStr.trim() === '[DONE]') continue;
               
               const parsed = JSON.parse(jsonStr);
+              console.log('🎨 [WORKER] Parsed JSON:', parsed);
               
-              if (parsed.content) {
-                accumulatedContent += parsed.content;
+              // Handle different response formats
+              let content = null;
+              let reasoning = null;
+              
+              // Check for OpenRouter/OpenAI format
+              if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                content = parsed.choices[0].delta.content;
+                reasoning = parsed.choices[0].delta.reasoning;
+              }
+              // Check for direct content/reasoning format
+              else if (parsed.content || parsed.reasoning) {
+                content = parsed.content;
+                reasoning = parsed.reasoning;
+              }
+              
+              console.log('📊 [WORKER] Extracted - content:', content, 'reasoning:', reasoning);
+              
+              if (content) {
+                accumulatedContent += content;
                 
                 // Send immediate update to main thread
                 self.postMessage({
                   type: 'CONTENT_CHUNK',
                   data: { 
                     content: accumulatedContent,
-                    newChunk: parsed.content
+                    newChunk: content
                   }
                 });
               }
               
-              if (parsed.reasoning) {
-                accumulatedReasoning += parsed.reasoning;
+              if (reasoning) {
+                accumulatedReasoning += reasoning;
                 
                 self.postMessage({
                   type: 'REASONING_CHUNK', 
                   data: { 
                     reasoning: accumulatedReasoning,
-                    newChunk: parsed.reasoning
+                    newChunk: reasoning
                   }
                 });
               }
