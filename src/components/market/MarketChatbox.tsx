@@ -1,4 +1,4 @@
-import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus } from 'lucide-react'
+import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
@@ -57,6 +57,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [selectedAgent, setSelectedAgent] = useState('')
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
   const [isChainDialogOpen, setIsChainDialogOpen] = useState(false)
+  const [editingChain, setEditingChain] = useState<AgentChain | null>(null)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const [chains, setChains] = useState<AgentChain[]>([])
@@ -169,6 +170,30 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setSelectedChain(chainId)
     // Immediately execute the chain to mimic regular agent behavior
     handleChatMessage('', chainId)
+  }
+
+  const handleEditChain = () => {
+    const chain = chains.find(c => c.id === selectedChain)
+    if (chain) {
+      setEditingChain(chain)
+      setIsChainDialogOpen(true)
+    }
+  }
+
+  const renderChainSummary = () => {
+    const chain = chains.find(c => c.id === selectedChain)
+    if (!chain) return null
+    const getAgentLabel = (id: string) => agents.find(a => a.id === id)?.prompt.slice(0, 20) || 'Unknown'
+    return (
+      <div className="mt-2 text-xs text-muted-foreground space-y-1">
+        {chain.config.layers.map((layer, idx) => (
+          <div key={idx}>
+            <span className="font-medium">Layer {idx + 1}:</span>{' '}
+            {layer.agents.map(a => getAgentLabel(a.agentId)).join(', ')}
+          </div>
+        ))}
+      </div>
+    )
   }
 
   const saveAgent = async () => {
@@ -474,51 +499,63 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </div>
       )}
 
-      <div className="mb-4 flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Saved Agent:</span>
-        {agents.length > 0 && (
-          <Select value={selectedAgent} onValueChange={handleSelectAgent} disabled={isLoading}>
-            <SelectTrigger className="w-[200px] h-8 text-xs">
-              <SelectValue placeholder="Select agent" />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id} className="text-xs">
-                  {agent.prompt.slice(0, 30)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <button
-          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
-          onClick={() => setIsAgentDialogOpen(true)}
-          disabled={isLoading}
-        >
-          <BookmarkPlus size={16} />
-        </button>
-        <span className="text-sm text-muted-foreground">Saved Chain:</span>
-        {chains.length > 0 && (
-          <Select value={selectedChain} onValueChange={handleSelectChain} disabled={isLoading}>
-            <SelectTrigger className="w-[200px] h-8 text-xs">
-              <SelectValue placeholder="Select chain" />
-            </SelectTrigger>
-            <SelectContent>
-              {chains.map((chain) => (
-                <SelectItem key={chain.id} value={chain.id} className="text-xs">
-                  {chain.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <button
-          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
-          onClick={() => setIsChainDialogOpen(true)}
-          disabled={isLoading}
-        >
-          <GitBranchPlus size={16} />
-        </button>
+      <div className="mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Saved Agent:</span>
+          {agents.length > 0 && (
+            <Select value={selectedAgent} onValueChange={handleSelectAgent} disabled={isLoading}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id} className="text-xs">
+                    {agent.prompt.slice(0, 30)}...
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <button
+            className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+            onClick={() => setIsAgentDialogOpen(true)}
+            disabled={isLoading}
+          >
+            <BookmarkPlus size={16} />
+          </button>
+          <span className="text-sm text-muted-foreground">Saved Chain:</span>
+          {chains.length > 0 && (
+            <Select value={selectedChain} onValueChange={handleSelectChain} disabled={isLoading}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Select chain" />
+              </SelectTrigger>
+              <SelectContent>
+                {chains.map((chain) => (
+                  <SelectItem key={chain.id} value={chain.id} className="text-xs">
+                    {chain.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <button
+            className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+            onClick={() => { setEditingChain(null); setIsChainDialogOpen(true) }}
+            disabled={isLoading}
+          >
+            <GitBranchPlus size={16} />
+          </button>
+          {selectedChain && (
+            <button
+              className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+              onClick={handleEditChain}
+              disabled={isLoading}
+            >
+              <GitBranch size={16} />
+            </button>
+          )}
+        </div>
+        {selectedChain && renderChainSummary()}
       </div>
 
       {/* Model Selection */}
@@ -609,7 +646,16 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <AgentChainDialog open={isChainDialogOpen} onOpenChange={setIsChainDialogOpen} agents={agents} onSaved={fetchChains} />
+      <AgentChainDialog
+        open={isChainDialogOpen}
+        onOpenChange={(open) => {
+          setIsChainDialogOpen(open)
+          if (!open) setEditingChain(null)
+        }}
+        agents={agents}
+        onSaved={fetchChains}
+        chain={editingChain || undefined}
+      />
     </>
   )
 }

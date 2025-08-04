@@ -1,15 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { Trash2, Plus } from 'lucide-react'
 import { supabase } from "@/integrations/supabase/client"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { ChainConfig } from "@/utils/executeAgentChain"
 
 interface Agent {
   id: string
@@ -21,7 +20,7 @@ interface AgentBlock {
   agentId: string
   prompt: string
   copies: number
-  routes?: number[]
+  routes: number[]
 }
 
 interface Layer {
@@ -33,15 +32,15 @@ interface AgentChainDialogProps {
   onOpenChange: (open: boolean) => void
   agents: Agent[]
   onSaved?: () => void
+  chain?: { id: string; name: string; config: ChainConfig }
 }
 
-export function AgentChainDialog({ open, onOpenChange, agents, onSaved }: AgentChainDialogProps) {
+const initialLayer: Layer = { agents: [{ agentId: '', prompt: '', copies: 1, routes: [] }] }
+
+export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }: AgentChainDialogProps) {
   const { user } = useCurrentUser()
   const [chainName, setChainName] = useState('')
-  const [layers, setLayers] = useState<Layer[]>([
-    { agents: [{ agentId: '', prompt: '', copies: 1 }] }
-  ])
-  const [advancedRouting, setAdvancedRouting] = useState<Record<number, boolean>>({})
+  const [layers, setLayers] = useState<Layer[]>([initialLayer])
 
   const addLayer = () => {
     setLayers(prev => [...prev, { agents: [] }])
@@ -54,7 +53,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved }: AgentC
   const addAgentToLayer = (layerIndex: number) => {
     setLayers(prev => prev.map((layer, i) => i === layerIndex ? {
       ...layer,
-      agents: [...layer.agents, { agentId: '', prompt: '', copies: 1 }]
+      agents: [...layer.agents, { agentId: '', prompt: '', copies: 1, routes: [] }]
     } : layer))
   }
 
@@ -97,18 +96,50 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved }: AgentC
 
   const reset = () => {
     setChainName('')
-    setLayers([{ agents: [{ agentId: '', prompt: '', copies: 1 }] }])
-    setAdvancedRouting({})
+    setLayers([initialLayer])
   }
+
+  useEffect(() => {
+    if (open) {
+      if (chain) {
+        setChainName(chain.name)
+        setLayers(
+          chain.config.layers.map(l => ({
+            agents: l.agents.map(a => ({ ...a, routes: a.routes || [] }))
+          })) as Layer[]
+        )
+      } else {
+        reset()
+      }
+    }
+  }, [open, chain])
 
   const saveChain = async () => {
     if (!user?.id || !chainName.trim()) return
-    const config = { layers }
-    const { error } = await supabase.from('agent_chains').insert({
-      user_id: user.id,
-      name: chainName,
-      config
-    })
+    for (let i = 0; i < layers.length - 1; i++) {
+      for (const block of layers[i].agents) {
+        if (!block.routes || block.routes.length === 0) {
+          alert('All agents must route to at least one agent in the next layer')
+          return
+        }
+      }
+    }
+    const config: ChainConfig = { layers }
+    let error
+    if (chain) {
+      const { error: updateError } = await supabase
+        .from('agent_chains')
+        .update({ name: chainName, config })
+        .eq('id', chain.id)
+      error = updateError
+    } else {
+      const { error: insertError } = await supabase.from('agent_chains').insert({
+        user_id: user.id,
+        name: chainName,
+        config
+      })
+      error = insertError
+    }
     if (error) {
       console.error('Failed to save agent chain:', error)
       return
@@ -196,35 +227,23 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved }: AgentC
               </Button>
 
               {layerIndex < layers.length - 1 && layers[layerIndex + 1].agents.length > 0 && (
-                <div className="pt-4 border-t">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Switch
-                      id={`advanced-${layerIndex}`}
-                      checked={advancedRouting[layerIndex] || false}
-                      onCheckedChange={(checked) => setAdvancedRouting(prev => ({ ...prev, [layerIndex]: checked }))}
-                    />
-                    <Label htmlFor={`advanced-${layerIndex}`} className="text-xs">Advanced routing</Label>
-                  </div>
-                  {advancedRouting[layerIndex] && (
-                    <div className="space-y-2">
-                      {layer.agents.map((_, agentIdx) => (
-                        <div key={agentIdx} className="flex flex-wrap items-center gap-2 text-xs">
-                          <span>Agent {agentIdx + 1} to:</span>
-                          {layers[layerIndex + 1].agents.map((_, targetIdx) => (
-                            <label key={targetIdx} className="flex items-center gap-1">
-                              <input
-                                type="checkbox"
-                                checked={layers[layerIndex].agents[agentIdx].routes?.includes(targetIdx) || false}
-                                onChange={() => handleRoutingChange(layerIndex, agentIdx, targetIdx)}
-                                className="h-3 w-3"
-                              />
-                              Agent {targetIdx + 1}
-                            </label>
-                          ))}
-                        </div>
+                <div className="pt-4 border-t space-y-2">
+                  {layer.agents.map((_, agentIdx) => (
+                    <div key={agentIdx} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span>Agent {agentIdx + 1} to:</span>
+                      {layers[layerIndex + 1].agents.map((_, targetIdx) => (
+                        <label key={targetIdx} className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={layers[layerIndex].agents[agentIdx].routes?.includes(targetIdx) || false}
+                            onChange={() => handleRoutingChange(layerIndex, agentIdx, targetIdx)}
+                            className="h-3 w-3"
+                          />
+                          Agent {targetIdx + 1}
+                        </label>
                       ))}
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
             </Card>
