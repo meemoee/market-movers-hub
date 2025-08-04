@@ -318,7 +318,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
         if (result.outputs && result.outputs.length > 0) {
           const chainMessages = result.outputs
-            .filter(o => o.agentId !== finalAgentId)
             .map(o => ({
               type: 'assistant' as const,
               content: `Agent ${o.agentId}: ${o.output}`
