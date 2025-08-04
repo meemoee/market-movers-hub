@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 interface MarketChatboxProps {
   marketId: string
   marketQuestion: string
+  marketDescription?: string
 }
 
 interface Message {
@@ -24,7 +25,7 @@ interface OpenRouterModel {
   description?: string
 }
 
-export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
+export function MarketChatbox({ marketId, marketQuestion, marketDescription }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
@@ -239,6 +240,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
               userId: user?.id,
               marketId,
               marketQuestion,
+              marketDescription,
               selectedModel
             })
           }
