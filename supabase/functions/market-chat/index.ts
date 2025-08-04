@@ -176,33 +176,66 @@ Keep responses conversational and accessible while maintaining analytical depth.
       start(controller) {
         console.log('Stream started, beginning pump function')
         
+        let edgeChunkCount = 0
+        let totalOpenRouterBytes = 0
+        let totalOutputBytes = 0
+        
         function pump(): Promise<void> {
           return reader!.read().then(({ done, value }) => {
-            console.log('Read chunk:', { done, chunkSize: value?.length })
+            const chunkStartTime = performance.now()
+            console.log(`[EDGE-CHUNK-${edgeChunkCount}] OpenRouter read:`, { 
+              done, 
+              chunkSize: value?.length,
+              totalBytesFromOpenRouter: totalOpenRouterBytes + (value?.length || 0)
+            })
             
             if (done) {
-              console.log('Stream finished, closing controller')
+              console.log(`[EDGE-STREAM-COMPLETE] Processed ${edgeChunkCount} chunks from OpenRouter`)
+              console.log(`[EDGE-STREAM-COMPLETE] Total bytes from OpenRouter: ${totalOpenRouterBytes}`)
+              console.log(`[EDGE-STREAM-COMPLETE] Total bytes sent to frontend: ${totalOutputBytes}`)
               controller.close()
               return
             }
 
+            totalOpenRouterBytes += value?.length || 0
+            const decodeStartTime = performance.now()
             const chunk = decoder.decode(value)
-            console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
+            const decodeTime = performance.now() - decodeStartTime
+            
+            console.log(`[EDGE-CHUNK-${edgeChunkCount}] Decoded OpenRouter chunk in ${decodeTime.toFixed(2)}ms:`, {
+              chunkPreview: chunk.substring(0, 150) + (chunk.length > 150 ? '...' : ''),
+              chunkLength: chunk.length,
+              hasNewlines: chunk.includes('\n')
+            })
             
             const lines = chunk.split('\n')
-            console.log('Split into lines:', lines.length)
+            console.log(`[EDGE-CHUNK-${edgeChunkCount}] Split into ${lines.length} lines`)
 
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i]
-              console.log(`Processing line ${i}:`, line.substring(0, 100))
+              console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Processing:`, {
+                line: line.substring(0, 100) + (line.length > 100 ? '...' : ''),
+                lineLength: line.length,
+                startsWithData: line.startsWith('data: '),
+                isDone: line === 'data: [DONE]'
+              })
               
               if (line.startsWith('data: ') && line !== 'data: [DONE]') {
                 try {
+                  const parseStartTime = performance.now()
                   const jsonStr = line.slice(6) // Remove 'data: ' prefix
-                  console.log('Parsing JSON:', jsonStr.substring(0, 150))
+                  console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Extracting JSON:`, {
+                    jsonPreview: jsonStr.substring(0, 200) + (jsonStr.length > 200 ? '...' : ''),
+                    jsonLength: jsonStr.length
+                  })
                   
                   const data = JSON.parse(jsonStr)
-                  console.log('Parsed data:', JSON.stringify(data).substring(0, 200))
+                  const parseTime = performance.now() - parseStartTime
+                  console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Parsed OpenRouter data in ${parseTime.toFixed(2)}ms:`, {
+                    hasChoices: !!data.choices,
+                    choicesCount: data.choices?.length || 0,
+                    fullData: JSON.stringify(data).substring(0, 300)
+                  })
                   
                   // Transform OpenRouter format to expected frontend format
                   if (data.choices && data.choices[0]?.delta) {
@@ -210,12 +243,14 @@ Keep responses conversational and accessible while maintaining analytical depth.
                     const content = delta.content
                     const reasoning = delta.reasoning
                     
-                    if (content) {
-                      console.log('Found content to stream:', content)
-                    }
-                    if (reasoning) {
-                      console.log('Found reasoning to stream:', reasoning)
-                    }
+                    console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Delta analysis:`, {
+                      hasContent: !!content,
+                      contentLength: content?.length || 0,
+                      contentValue: content || null,
+                      hasReasoning: !!reasoning,
+                      reasoningLength: reasoning?.length || 0,
+                      reasoningValue: reasoning || null
+                    })
                     
                     const transformedData = {
                       choices: [{
@@ -226,34 +261,55 @@ Keep responses conversational and accessible while maintaining analytical depth.
                       }]
                     }
                     
-                    console.log('Transformed data:', JSON.stringify(transformedData))
-                    
-                    // Send as SSE format expected by frontend
+                    const transformStartTime = performance.now()
                     const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
-                    console.log('Sending SSE data:', sseData.substring(0, 200))
+                    const transformTime = performance.now() - transformStartTime
                     
-                    controller.enqueue(encoder.encode(sseData))
-                    console.log('Enqueued chunk successfully')
+                    console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Transformed in ${transformTime.toFixed(2)}ms:`, {
+                      outputPreview: sseData.substring(0, 200) + (sseData.length > 200 ? '...' : ''),
+                      outputLength: sseData.length
+                    })
+                    
+                    const enqueueStartTime = performance.now()
+                    const encoded = encoder.encode(sseData)
+                    controller.enqueue(encoded)
+                    const enqueueTime = performance.now() - enqueueStartTime
+                    
+                    totalOutputBytes += encoded.length
+                    console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Enqueued to frontend in ${enqueueTime.toFixed(2)}ms:`, {
+                      encodedBytes: encoded.length,
+                      totalOutputBytes: totalOutputBytes
+                    })
                   } else {
-                    console.log('No content or reasoning found in chunk, skipping')
+                    console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] No valid delta found, skipping`)
                   }
                 } catch (e) {
-                  console.error('Error parsing stream chunk:', e, 'Line:', line)
+                  console.error(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] JSON parse error:`, {
+                    error: e,
+                    line: line,
+                    jsonStr: line.slice(6)
+                  })
                 }
               } else if (line === 'data: [DONE]') {
-                console.log('Found DONE signal, sending to frontend')
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+                console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Found DONE signal, forwarding`)
+                const doneData = 'data: [DONE]\n\n'
+                const encoded = encoder.encode(doneData)
+                controller.enqueue(encoded)
+                totalOutputBytes += encoded.length
+                console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] DONE signal sent, bytes: ${encoded.length}`)
               } else if (line.trim() === '') {
-                console.log('Empty line, skipping')
+                console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Empty line, skipping`)
               } else {
-                console.log('Non-data line:', line)
+                console.log(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] Non-data line:`, line)
               }
             }
 
-            console.log('Finished processing chunk, continuing pump...')
+            const chunkTime = performance.now() - chunkStartTime
+            console.log(`[EDGE-CHUNK-${edgeChunkCount}] Completed processing in ${chunkTime.toFixed(2)}ms`)
+            edgeChunkCount++
             return pump()
           }).catch(error => {
-            console.error('Error in pump function:', error)
+            console.error(`[EDGE-ERROR] Error in pump function:`, error)
             controller.error(error)
           })
         }
