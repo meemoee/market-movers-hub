@@ -162,8 +162,7 @@ Current Market Context:
 - Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}
 - Market ID: ${marketId || 'Not specified'}`
 
-    const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets. Use the market information below only as background context and always prioritize the user's most recent question when generating search queries and responses.
-${marketContext}
+    const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets. Use any market information provided in the conversation as background context and always prioritize the user's most recent question when generating search queries and responses.
 
 In your first reply, surface the most relevant and up-to-date online sources, citing each with a URL. Provide concise insights on how the information affects the market outcome. Keep responses conversational, informative, and analytically focused.`
 
@@ -176,6 +175,10 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
         {
           role: "system",
           content: systemPrompt
+        },
+        {
+          role: "assistant",
+          content: marketContext
         },
         ...historyMessages,
         {
