@@ -1,5 +1,5 @@
 import { MessageCircle, Send, Settings } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
@@ -34,8 +34,19 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
+  const [renderCount, setRenderCount] = useState(0)
+  const [lastRenderTime, setLastRenderTime] = useState(0)
+  const [streamingCompleted, setStreamingCompleted] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const { user } = useCurrentUser()
+
+  // Debug render tracking
+  const trackRender = useCallback(() => {
+    const now = performance.now()
+    setRenderCount(prev => prev + 1)
+    setLastRenderTime(now)
+    console.log(`🎨 [RENDER-${renderCount + 1}] Component rendered at ${now.toFixed(2)}ms`)
+  }, [renderCount])
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -160,6 +171,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             console.log(`   - Final reasoning length: ${accumulatedReasoning.length}`)
             console.log(`   - Remaining buffer: "${lineBuffer}"`)
             
+            setStreamingCompleted(true)
             setMessages(prev => [...prev, { 
               type: 'assistant', 
               content: accumulatedContent,
@@ -224,22 +236,30 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 
                 if (content) {
                   accumulatedContent += content
+                  const renderStart = performance.now()
                   console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Updated content total length: ${accumulatedContent.length}`)
-                  // Force immediate React render to prevent batching
+                  
+                  // Force immediate React render with debugging
                   flushSync(() => {
                     setStreamingContent(accumulatedContent)
+                    trackRender()
                   })
-                  console.log(`🔄 [STREAM-FRONTEND-${chunkCounter}] Forced immediate render`)
+                  
+                  // Force browser repaint with requestAnimationFrame
+                  requestAnimationFrame(() => {
+                    const renderEnd = performance.now()
+                    console.log(`🔄 [STREAM-FRONTEND-${chunkCounter}] Render cycle complete: ${(renderEnd - renderStart).toFixed(2)}ms`)
+                  })
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
                   console.log(`🤔 [STREAM-FRONTEND-${chunkCounter}] Updated reasoning total length: ${accumulatedReasoning.length}`)
-                  // Force immediate React render to prevent batching
+                  
                   flushSync(() => {
                     setStreamingReasoning(accumulatedReasoning)
+                    trackRender()
                   })
-                  console.log(`🔄 [STREAM-FRONTEND-${chunkCounter}] Forced immediate reasoning render`)
                 }
               } catch (e) {
                 console.error(`❌ [STREAM-FRONTEND-${chunkCounter}] Error parsing SSE data:`, e)
@@ -277,6 +297,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       setIsLoading(false)
       setStreamingContent('')
       setStreamingReasoning('')
+      setStreamingCompleted(false)
       abortControllerRef.current = null
     }
   }
@@ -332,9 +353,17 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
               )}
               {streamingContent && (
                 <div className="bg-muted/50 p-3 rounded-lg">
-                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                    {streamingContent}
-                  </ReactMarkdown>
+                  {/* Bypass ReactMarkdown during streaming for immediate rendering */}
+                  {streamingCompleted ? (
+                    <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                      {streamingContent}
+                    </ReactMarkdown>
+                  ) : (
+                    <div className="text-sm whitespace-pre-wrap [&>*]:text-foreground">
+                      {streamingContent}
+                      <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
