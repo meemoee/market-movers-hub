@@ -186,14 +186,11 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
                   console.log('REASONING:', reasoning)
-                }
-                
-                // Update React state less frequently for reasoning only
-                if (content || reasoning) {
-                  setStreamingMessage({
-                    content: accumulatedContent,
-                    reasoning: accumulatedReasoning
-                  })
+                  // Update reasoning immediately via DOM
+                  const reasoningElement = document.querySelector('[data-streaming-reasoning]')
+                  if (reasoningElement) {
+                    reasoningElement.textContent = accumulatedReasoning
+                  }
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e)
@@ -315,21 +312,15 @@ const ChatMessages = memo(function ChatMessages({
       {messages.map((message, index) => (
         <MessageBubble key={index} message={message} />
       ))}
-      {hasStreamingContent && (
+      {isLoading && (
         <div className="space-y-2">
-          {streamingMessage.reasoning && (
-            <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-              <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-              <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
-                {streamingMessage.reasoning}
-              </ReactMarkdown>
-            </div>
-          )}
-          {streamingMessage.content && (
-            <div className="bg-muted/50 p-3 rounded-lg">
-              <div ref={streamingRef} className="text-sm whitespace-pre-wrap font-mono" />
-            </div>
-          )}
+          <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+            <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+            <div data-streaming-reasoning className="text-xs text-yellow-700 whitespace-pre-wrap font-mono"></div>
+          </div>
+          <div className="bg-muted/50 p-3 rounded-lg">
+            <div ref={streamingRef} className="text-sm whitespace-pre-wrap font-mono" />
+          </div>
         </div>
       )}
       {isLoading && !hasStreamingContent && (
