@@ -39,17 +39,28 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
 
-  // DOM-based streaming content update - simplified for real-time display
+  // DOM-based streaming content update with flushSync for immediate display
   const updateStreamingContent = useCallback((content: string, isComplete: boolean = false) => {
     if (streamingContentRef.current) {
       if (isComplete) {
         // Final update: clear DOM content and let React take over
         streamingContentRef.current.innerHTML = ''
         setStreamingContent(content)
+        setIsStreaming(false)
       } else {
-        // Live update: directly manipulate DOM for immediate display
-        const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
-        streamingContentRef.current.innerHTML = `<div class="text-sm whitespace-pre-wrap">${content}${cursor}</div>`
+        // Live update: Force immediate DOM manipulation with flushSync and paint forcing
+        flushSync(() => {
+          const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
+          streamingContentRef.current!.innerHTML = `<div class="text-sm whitespace-pre-wrap">${content}${cursor}</div>`
+        })
+        
+        // Force browser paint cycle
+        requestAnimationFrame(() => {
+          // Force layout/reflow to ensure immediate visual update
+          if (streamingContentRef.current) {
+            streamingContentRef.current.offsetHeight
+          }
+        })
       }
     }
   }, [])
@@ -158,8 +169,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             break
             
           case 'REASONING_CHUNK':
-            console.log('🧠 [WORKER-MSG] Received reasoning chunk')
-            setStreamingReasoning(data.reasoning)
+            console.log('🧠 [WORKER-MSG] Received reasoning chunk - storing for final update')
+            // Don't update state during streaming to avoid React batching
             break
             
           case 'STREAM_COMPLETE':
