@@ -39,9 +39,12 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
     const fetchModels = async () => {
       setModelsLoading(true)
       try {
-        const { data, error } = await supabase.functions.invoke('get-openrouter-models')
+        const { data, error } = await supabase.functions.invoke('get-openrouter-models', {
+          body: { userId: user?.id }
+        })
         if (error) throw error
         
+        console.log('Fetched models from API:', data.models?.length || 0)
         setAvailableModels(data.models || [])
       } catch (error) {
         console.error('Failed to fetch OpenRouter models:', error)
@@ -57,7 +60,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
     }
 
     fetchModels()
-  }, [])
+  }, [user?.id])
 
   const handleChatMessage = async (userMessage: string) => {
     console.log('=== MarketChatbox: Starting chat message ===')
