@@ -6,6 +6,9 @@ import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 
 interface MarketChatboxProps {
   marketId: string
@@ -44,6 +47,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [isStreaming, setIsStreaming] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
+  const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
+  const [newAgentPrompt, setNewAgentPrompt] = useState('')
+  const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
@@ -126,15 +132,15 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (agent) {
       setSelectedAgent(agentId)
       setSelectedModel(agent.model)
-      setChatMessage(agent.prompt)
+      handleChatMessage(agent.prompt)
     }
   }
 
   const saveAgent = async () => {
-    if (!chatMessage.trim() || !user?.id) return
+    if (!newAgentPrompt.trim() || !user?.id) return
     const { data, error } = await supabase
       .from('agents')
-      .insert({ user_id: user.id, prompt: chatMessage, model: selectedModel })
+      .insert({ user_id: user.id, prompt: newAgentPrompt, model: newAgentModel })
       .select()
       .single()
     if (error) {
@@ -144,8 +150,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (data) {
       setAgents(prev => [data, ...prev])
       setSelectedAgent(data.id)
-      setChatMessage('')
+      setSelectedModel(data.model)
+      handleChatMessage(data.prompt)
     }
+    setIsAgentDialogOpen(false)
+    setNewAgentPrompt('')
+    setNewAgentModel(selectedModel)
   }
 
   // Chat functionality using Web Worker
@@ -318,11 +328,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }
 
   return (
-    <Card className="p-6 bg-card">
-      <div className="flex items-center gap-2 mb-4">
-        <MessageCircle className="w-5 h-5 text-primary" />
-        <h3 className="text-lg font-semibold">Market Chat</h3>
-      </div>
+    <>
+      <Card className="p-6 bg-card">
+        <div className="flex items-center gap-2 mb-4">
+          <MessageCircle className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-semibold">Market Chat</h3>
+        </div>
       
       {!hasStartedChat ? (
         <div className="text-center py-8">
@@ -388,9 +399,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </div>
       )}
 
-      {agents.length > 0 && (
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Saved Agent:</span>
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Saved Agent:</span>
+        {agents.length > 0 && (
           <Select value={selectedAgent} onValueChange={handleSelectAgent} disabled={isLoading}>
             <SelectTrigger className="w-[200px] h-8 text-xs">
               <SelectValue placeholder="Select agent" />
@@ -403,8 +414,15 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               ))}
             </SelectContent>
           </Select>
-        </div>
-      )}
+        )}
+        <button
+          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+          onClick={() => setIsAgentDialogOpen(true)}
+          disabled={isLoading}
+        >
+          <BookmarkPlus size={16} />
+        </button>
+      </div>
 
       {/* Model Selection */}
       <div className="mb-4 flex items-center gap-2">
@@ -444,19 +462,56 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         />
         <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
-          onClick={saveAgent}
-          disabled={isLoading || !chatMessage.trim()}
-        >
-          <BookmarkPlus size={16} />
-        </button>
-        <button
-          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
           onClick={() => handleChatMessage(chatMessage)}
           disabled={isLoading}
         >
           <Send size={16} />
         </button>
       </div>
-    </Card>
+      </Card>
+      <Dialog open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Agent</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Textarea
+              value={newAgentPrompt}
+              onChange={(e) => setNewAgentPrompt(e.target.value)}
+              placeholder="Enter agent prompt"
+              className="h-24"
+            />
+            <div className="space-y-2">
+              <span className="text-sm text-muted-foreground">Model:</span>
+              <Select value={newAgentModel} onValueChange={setNewAgentModel} disabled={modelsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={modelsLoading ? 'Loading...' : 'Select model'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableModels.map((model) => (
+                    <SelectItem key={model.id} value={model.id} className="text-xs">
+                      <div>
+                        <div className="font-medium">{model.name}</div>
+                        {model.description && (
+                          <div className="text-muted-foreground text-xs">{model.description}</div>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setIsAgentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveAgent} disabled={!newAgentPrompt.trim()}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
