@@ -28,6 +28,8 @@ interface ExecutionContext {
 }
 
 async function callModel(prompt: string, model: string, context: ExecutionContext): Promise<string> {
+  console.log('🧠 [callModel] Invoking model', model)
+  console.log('🧠 [callModel] Prompt:', prompt)
   const res = await fetch(
     "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
     {
@@ -51,6 +53,7 @@ async function callModel(prompt: string, model: string, context: ExecutionContex
   )
 
   if (!res.body) {
+    console.log('⚠️ [callModel] No response body received')
     return ""
   }
 
@@ -63,6 +66,7 @@ async function callModel(prompt: string, model: string, context: ExecutionContex
     result += decoder.decode(value, { stream: true })
   }
 
+  console.log('📨 [callModel] Raw response:', result)
   const lines = result.split("\n")
   let content = ""
   for (const line of lines) {
@@ -78,6 +82,7 @@ async function callModel(prompt: string, model: string, context: ExecutionContex
     }
   }
 
+  console.log('✍️ [callModel] Parsed content:', content.trim())
   return content.trim()
 }
 
@@ -87,6 +92,9 @@ export async function executeAgentChain(
   initialInput: string,
   context: ExecutionContext
 ): Promise<{ prompt: string; model: string }> {
+  console.log('🚀 [executeAgentChain] Starting chain execution')
+  console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
+  console.log('🚀 [executeAgentChain] Initial input:', initialInput)
   if (!chainConfig.layers || chainConfig.layers.length === 0) {
     throw new Error("Chain has no layers")
   }
@@ -98,6 +106,9 @@ export async function executeAgentChain(
     const nextLayer = chainConfig.layers[i + 1]
     const nextInputs: string[] = nextLayer.agents.map(() => "")
 
+    console.log(`🔷 [executeAgentChain] Processing layer ${i + 1}`)
+    console.log('🔷 [executeAgentChain] Current inputs:', currentInputs)
+
     for (let agentIndex = 0; agentIndex < layer.agents.length; agentIndex++) {
       const block = layer.agents[agentIndex]
       const agent = agents.find((a) => a.id === block.agentId)
@@ -106,8 +117,15 @@ export async function executeAgentChain(
       const basePrompt = block.prompt || agent.prompt
       const input = currentInputs[agentIndex] || ""
 
+      console.log(`🤖 [executeAgentChain] Agent ${agent.id} (copy x${block.copies || 1})`)
+      console.log('🤖 [executeAgentChain] Base prompt:', basePrompt)
+      console.log('🤖 [executeAgentChain] Input:', input)
+      console.log('🤖 [executeAgentChain] Routes:', block.routes)
+
       for (let c = 0; c < (block.copies || 1); c++) {
+        console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(`${basePrompt}\n\n${input}`, agent.model, context)
+        console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         if (block.routes && block.routes.length > 0) {
           for (const target of block.routes) {
             nextInputs[target] = [nextInputs[target], output].filter(Boolean).join("\n")
@@ -117,9 +135,12 @@ export async function executeAgentChain(
             nextInputs[t] = [nextInputs[t], output].filter(Boolean).join("\n")
           }
         }
+        console.log('📬 [executeAgentChain] nextInputs after routing:', nextInputs)
       }
     }
 
+    console.log(`🔁 [executeAgentChain] Completed layer ${i + 1}`)
+    console.log('🔁 [executeAgentChain] Aggregated outputs for next layer:', nextInputs)
     currentInputs = nextInputs
   }
 
@@ -132,6 +153,10 @@ export async function executeAgentChain(
 
   const finalPromptBase = finalBlock.prompt || finalAgent.prompt
   const finalInput = currentInputs[0] || currentInputs.join("\n")
+
+  console.log('🏁 [executeAgentChain] Final agent:', finalAgent.id)
+  console.log('🏁 [executeAgentChain] Final prompt base:', finalPromptBase)
+  console.log('🏁 [executeAgentChain] Final input:', finalInput)
 
   return {
     prompt: `${finalPromptBase}\n\n${finalInput}`.trim(),
