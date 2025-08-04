@@ -34,19 +34,27 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
-  const [renderCount, setRenderCount] = useState(0)
-  const [lastRenderTime, setLastRenderTime] = useState(0)
-  const [streamingCompleted, setStreamingCompleted] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
 
-  // Debug render tracking
-  const trackRender = useCallback(() => {
-    const now = performance.now()
-    setRenderCount(prev => prev + 1)
-    setLastRenderTime(now)
-    console.log(`🎨 [RENDER-${renderCount + 1}] Component rendered at ${now.toFixed(2)}ms`)
-  }, [renderCount])
+  // DOM-based streaming content update
+  const updateStreamingContent = useCallback((content: string, isComplete: boolean = false) => {
+    if (streamingContentRef.current) {
+      if (isComplete) {
+        // Final update: clear DOM content and let React take over
+        streamingContentRef.current.innerHTML = ''
+        setStreamingContent(content)
+        setIsStreaming(false)
+      } else {
+        // Live update: directly manipulate DOM for immediate display
+        const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
+        streamingContentRef.current.innerHTML = `<div class="text-sm whitespace-pre-wrap">${content}${cursor}</div>`
+        setIsStreaming(true)
+      }
+    }
+  }, [])
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -171,7 +179,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             console.log(`   - Final reasoning length: ${accumulatedReasoning.length}`)
             console.log(`   - Remaining buffer: "${lineBuffer}"`)
             
-            setStreamingCompleted(true)
+            // Complete the streaming with final update
+            updateStreamingContent(accumulatedContent, true)
             setMessages(prev => [...prev, { 
               type: 'assistant', 
               content: accumulatedContent,
@@ -236,20 +245,11 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 
                 if (content) {
                   accumulatedContent += content
-                  const renderStart = performance.now()
                   console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Updated content total length: ${accumulatedContent.length}`)
                   
-                  // Force immediate React render with debugging
-                  flushSync(() => {
-                    setStreamingContent(accumulatedContent)
-                    trackRender()
-                  })
-                  
-                  // Force browser repaint with requestAnimationFrame
-                  requestAnimationFrame(() => {
-                    const renderEnd = performance.now()
-                    console.log(`🔄 [STREAM-FRONTEND-${chunkCounter}] Render cycle complete: ${(renderEnd - renderStart).toFixed(2)}ms`)
-                  })
+                  // DOM-based streaming update for immediate display
+                  updateStreamingContent(accumulatedContent)
+                  console.log(`🚀 [STREAM-FRONTEND-${chunkCounter}] DOM updated directly`)
                 }
                 
                 if (reasoning) {
@@ -258,7 +258,6 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                   
                   flushSync(() => {
                     setStreamingReasoning(accumulatedReasoning)
-                    trackRender()
                   })
                 }
               } catch (e) {
@@ -297,7 +296,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       setIsLoading(false)
       setStreamingContent('')
       setStreamingReasoning('')
-      setStreamingCompleted(false)
+      setIsStreaming(false)
       abortControllerRef.current = null
     }
   }
@@ -351,18 +350,15 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                   </ReactMarkdown>
                 </div>
               )}
-              {streamingContent && (
+              {(streamingContent || isStreaming) && (
                 <div className="bg-muted/50 p-3 rounded-lg">
-                  {/* Bypass ReactMarkdown during streaming for immediate rendering */}
-                  {streamingCompleted ? (
+                  {/* DOM-based streaming content or React-based final content */}
+                  {isStreaming ? (
+                    <div ref={streamingContentRef} className="min-h-[1rem]" />
+                  ) : (
                     <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
                       {streamingContent}
                     </ReactMarkdown>
-                  ) : (
-                    <div className="text-sm whitespace-pre-wrap [&>*]:text-foreground">
-                      {streamingContent}
-                      <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>
-                    </div>
                   )}
                 </div>
               )}
