@@ -72,12 +72,19 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
   }, [user?.id])
 
   const handleChatMessage = async (userMessage: string) => {
-    console.log('=== MarketChatbox: Starting chat message ===')
-    console.log('User message:', userMessage)
-    console.log('Current messages count:', messages.length)
-    console.log('Is loading:', isLoading)
+    console.log('🔥 FRONTEND LOG: === MarketChatbox: Starting chat message ===')
+    console.log('🔥 FRONTEND LOG: User message:', userMessage)
+    console.log('🔥 FRONTEND LOG: Current messages count:', messages.length)
+    console.log('🔥 FRONTEND LOG: Is loading:', isLoading)
+    console.log('🔥 FRONTEND LOG: Selected model:', selectedModel)
+    console.log('🔥 FRONTEND LOG: User ID:', user?.id)
+    console.log('🔥 FRONTEND LOG: Market ID:', marketId)
+    console.log('🔥 FRONTEND LOG: Market Question:', marketQuestion)
     
-    if (!userMessage.trim() || isLoading) return
+    if (!userMessage.trim() || isLoading) {
+      console.log('🔥 FRONTEND LOG: Early return - empty message or loading')
+      return
+    }
     
     setHasStartedChat(true)
     setIsLoading(true)
@@ -91,21 +98,22 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
     
     try {
       if (abortControllerRef.current) {
-        console.log('Aborting previous request')
+        console.log('🔥 FRONTEND LOG: Aborting previous request')
         abortControllerRef.current.abort()
       }
 
       abortControllerRef.current = new AbortController()
 
-      console.log('Sending request to market-chat function with data:', {
+      console.log('🔥 FRONTEND LOG: Sending request to market-chat function with data:', {
         message: userMessage,
         chatHistoryLength: messages.length,
         userId: user?.id,
         marketId,
-        marketQuestion
+        marketQuestion,
+        selectedModel
       })
 
-      // Use EventSource for proper SSE streaming instead of fetch
+      // Get auth token
       const { data: sessionData } = await supabase.auth.getSession()
       const authToken = sessionData.session?.access_token
 
@@ -113,91 +121,135 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
         throw new Error("No authentication token available")
       }
 
-      // Create the SSE URL with auth params
-      const sseUrl = new URL("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat")
-      sseUrl.searchParams.append('message', userMessage)
-      sseUrl.searchParams.append('chatHistory', messages.map(m => `${m.type}: ${m.content}`).join('\n'))
-      sseUrl.searchParams.append('userId', user?.id || '')
-      sseUrl.searchParams.append('marketId', marketId)
-      sseUrl.searchParams.append('marketQuestion', marketQuestion)
-      sseUrl.searchParams.append('selectedModel', selectedModel)
+      console.log('🔥 FRONTEND LOG: Got auth token:', authToken.substring(0, 20) + '...')
 
-      console.log('Creating EventSource for real streaming...')
-      
-      const eventSource = new EventSource(sseUrl.toString(), {
+      // Use fetch with streaming instead of EventSource
+      const response = await fetch("https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat", {
+        method: 'POST',
         headers: {
-          "Authorization": `Bearer ${authToken}`,
-          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc"
-        }
-      } as any)
-
-      let accumulatedContent = ''
-      let accumulatedReasoning = ''
-
-      eventSource.onmessage = (event) => {
-        const timestamp = Date.now()
-        console.log(`[${timestamp}] EventSource message received:`, event.data.substring(0, 100))
-        
-        if (event.data === '[DONE]') {
-          console.log('Stream complete via EventSource')
-          eventSource.close()
-          setMessages(prev => [...prev, { 
-            type: 'assistant', 
-            content: accumulatedContent,
-            reasoning: accumulatedReasoning 
-          }])
-          setIsLoading(false)
-          return
-        }
-
-        try {
-          const parsed = JSON.parse(event.data)
-          const content = parsed.choices?.[0]?.delta?.content
-          const reasoning = parsed.choices?.[0]?.delta?.reasoning
-          
-          if (content) {
-            accumulatedContent += content
-            console.log(`[${timestamp}] INSTANT content display:`, content)
-            setStreamingContent(accumulatedContent)
-            if (!hasStreamingStarted) {
-              setHasStreamingStarted(true)
-            }
-          }
-          
-          if (reasoning) {
-            accumulatedReasoning += reasoning
-            console.log(`[${timestamp}] INSTANT reasoning display:`, reasoning)
-            setStreamingReasoning(accumulatedReasoning)
-            if (!hasStreamingStarted) {
-              setHasStreamingStarted(true)
-            }
-          }
-        } catch (e) {
-          console.error('Error parsing EventSource data:', e, event.data)
-        }
-      }
-
-      eventSource.onerror = (error) => {
-        console.error('EventSource error:', error)
-        eventSource.close()
-        throw new Error('EventSource connection failed')
-      }
-
-      // Clean up EventSource on abort
-      abortControllerRef.current?.signal.addEventListener('abort', () => {
-        eventSource.close()
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc'
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+          userId: user?.id,
+          marketId,
+          marketQuestion,
+          selectedModel
+        }),
+        signal: abortControllerRef.current.signal
       })
 
-      console.log('=== MarketChatbox: Chat message completed successfully ===')
+      console.log('🔥 FRONTEND LOG: Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+
+      const decoder = new TextDecoder()
+      let accumulatedContent = ''
+      let accumulatedReasoning = ''
+      let buffer = ''
+
+      console.log('🔥 FRONTEND LOG: Starting to read stream...')
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        console.log('🔥 FRONTEND LOG: Read chunk:', {
+          done,
+          chunkSize: value?.length,
+          timestamp: Date.now()
+        })
+
+        if (done) {
+          console.log('🔥 FRONTEND LOG: Stream complete')
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        console.log('🔥 FRONTEND LOG: Decoded chunk:', chunk.substring(0, 200))
+        
+        buffer += chunk
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          console.log('🔥 FRONTEND LOG: Processing line:', line.substring(0, 100))
+
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6)
+            console.log('🔥 FRONTEND LOG: Data string:', dataStr.substring(0, 100))
+
+            if (dataStr === '[DONE]') {
+              console.log('🔥 FRONTEND LOG: Found DONE signal')
+              setMessages(prev => [...prev, { 
+                type: 'assistant', 
+                content: accumulatedContent,
+                reasoning: accumulatedReasoning 
+              }])
+              setIsLoading(false)
+              return
+            }
+
+            try {
+              const parsed = JSON.parse(dataStr)
+              console.log('🔥 FRONTEND LOG: Parsed JSON:', JSON.stringify(parsed).substring(0, 200))
+              
+              const content = parsed.choices?.[0]?.delta?.content
+              const reasoning = parsed.choices?.[0]?.delta?.reasoning
+              
+              if (content) {
+                accumulatedContent += content
+                console.log('🔥 FRONTEND LOG: >>> UPDATING CONTENT DISPLAY <<<')
+                console.log('🔥 FRONTEND LOG: New content chunk:', content)
+                console.log('🔥 FRONTEND LOG: Total accumulated content length:', accumulatedContent.length)
+                setStreamingContent(accumulatedContent)
+                if (!hasStreamingStarted) {
+                  console.log('🔥 FRONTEND LOG: >>> STARTING STREAMING DISPLAY <<<')
+                  setHasStreamingStarted(true)
+                }
+              }
+              
+              if (reasoning) {
+                accumulatedReasoning += reasoning
+                console.log('🔥 FRONTEND LOG: >>> UPDATING REASONING DISPLAY <<<')
+                console.log('🔥 FRONTEND LOG: New reasoning chunk:', reasoning)
+                console.log('🔥 FRONTEND LOG: Total accumulated reasoning length:', accumulatedReasoning.length)
+                setStreamingReasoning(accumulatedReasoning)
+                if (!hasStreamingStarted) {
+                  console.log('🔥 FRONTEND LOG: >>> STARTING STREAMING DISPLAY <<<')
+                  setHasStreamingStarted(true)
+                }
+              }
+            } catch (e) {
+              console.error('🔥 FRONTEND LOG: Error parsing JSON:', e, 'Data:', dataStr)
+            }
+          }
+        }
+      }
+
+      console.log('🔥 FRONTEND LOG: === MarketChatbox: Chat message completed successfully ===')
 
     } catch (error) {
-      console.error('=== MarketChatbox: Error in chat ===', error)
+      console.error('🔥 FRONTEND LOG: === MarketChatbox: Error in chat ===', error)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: 'Sorry, I encountered an error processing your request.' 
       }])
     } finally {
-      console.log('Cleaning up: setting loading to false and clearing streaming content')
+      console.log('🔥 FRONTEND LOG: Cleaning up: setting loading to false and clearing streaming content')
       setTimeout(() => {
         setIsLoading(false)
         setStreamingContent('')

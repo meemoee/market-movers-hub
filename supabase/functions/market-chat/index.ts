@@ -9,7 +9,13 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  console.log('🚀 EDGE FUNCTION LOG: === Market Chat Function Started ===')
+  console.log('🚀 EDGE FUNCTION LOG: Request method:', req.method)
+  console.log('🚀 EDGE FUNCTION LOG: Request URL:', req.url)
+  console.log('🚀 EDGE FUNCTION LOG: Request headers:', Object.fromEntries(req.headers.entries()))
+
   if (req.method === 'OPTIONS') {
+    console.log('🚀 EDGE FUNCTION LOG: Handling OPTIONS request')
     return new Response(null, { headers: corsHeaders })
   }
 
@@ -18,6 +24,7 @@ serve(async (req) => {
     
     // Handle both GET (EventSource) and POST requests
     if (req.method === 'GET') {
+      console.log('🚀 EDGE FUNCTION LOG: Processing GET request')
       const url = new URL(req.url)
       message = url.searchParams.get('message') || ''
       chatHistory = url.searchParams.get('chatHistory') || ''
@@ -26,7 +33,9 @@ serve(async (req) => {
       marketQuestion = url.searchParams.get('marketQuestion') || ''
       selectedModel = url.searchParams.get('selectedModel') || 'perplexity/sonar'
     } else {
+      console.log('🚀 EDGE FUNCTION LOG: Processing POST request')
       const body = await req.json()
+      console.log('🚀 EDGE FUNCTION LOG: Request body received:', JSON.stringify(body).substring(0, 200))
       message = body.message
       chatHistory = body.chatHistory
       userId = body.userId
@@ -35,12 +44,13 @@ serve(async (req) => {
       selectedModel = body.selectedModel
     }
     
-    console.log('Received market chat request:', { 
-      message, 
-      chatHistory, 
+    console.log('🚀 EDGE FUNCTION LOG: Parsed request data:', { 
+      message: message?.substring(0, 100),
+      chatHistoryLength: chatHistory?.length || 0,
       userId: userId ? 'provided' : 'not provided',
       marketId,
-      marketQuestion 
+      marketQuestion: marketQuestion?.substring(0, 100),
+      selectedModel
     })
 
     // Determine which API key to use
@@ -150,40 +160,48 @@ When discussing price movements, consider the 24-hour changes and current market
 
 Keep responses conversational and accessible while maintaining analytical depth.`
 
-    console.log('Making request to OpenRouter API...')
+    console.log('🚀 EDGE FUNCTION LOG: Making request to OpenRouter API...')
+    const requestBody = {
+      model: selectedModel || "perplexity/sonar",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt
+        },
+        {
+          role: "user",
+          content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
+        }
+      ],
+      stream: true,
+      reasoning: {
+        maxTokens: 8000
+      }
+    }
+    
+    console.log('🚀 EDGE FUNCTION LOG: OpenRouter request body:', JSON.stringify(requestBody).substring(0, 300))
+    
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${apiKey.substring(0, 20)}...`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Chat App',
       },
-      body: JSON.stringify({
-        model: selectedModel || "perplexity/sonar",
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
-          }
-        ],
-        stream: true,
-        reasoning: {
-          maxTokens: 8000
-        }
-      })
+      body: JSON.stringify(requestBody)
     })
 
+    console.log('🚀 EDGE FUNCTION LOG: OpenRouter response status:', openRouterResponse.status)
+    console.log('🚀 EDGE FUNCTION LOG: OpenRouter response headers:', Object.fromEntries(openRouterResponse.headers.entries()))
+
     if (!openRouterResponse.ok) {
-      console.error('OpenRouter API error:', openRouterResponse.status, await openRouterResponse.text())
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
+      const errorText = await openRouterResponse.text()
+      console.error('🚀 EDGE FUNCTION LOG: OpenRouter API error:', openRouterResponse.status, errorText)
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${errorText}`)
     }
 
-    console.log('Starting to process OpenRouter stream...')
+    console.log('🚀 EDGE FUNCTION LOG: Starting to process OpenRouter stream...')
     
     // Transform the OpenRouter stream to SSE format expected by frontend
     const reader = openRouterResponse.body?.getReader()
@@ -194,35 +212,49 @@ Keep responses conversational and accessible while maintaining analytical depth.
 
     const stream = new ReadableStream({
       start(controller) {
-        console.log('Stream started, beginning pump function')
+        console.log('🚀 EDGE FUNCTION LOG: Stream started, beginning pump function')
+        let chunkCount = 0
+        let totalBytes = 0
         
         function pump(): Promise<void> {
           return reader!.read().then(({ done, value }) => {
-            console.log('Read chunk:', { done, chunkSize: value?.length })
+            chunkCount++
+            const chunkSize = value?.length || 0
+            totalBytes += chunkSize
+            const timestamp = Date.now()
+            
+            console.log(`🚀 EDGE FUNCTION LOG: [Chunk ${chunkCount}][${timestamp}] Read chunk:`, { 
+              done, 
+              chunkSize,
+              totalBytes
+            })
             
             if (done) {
-              console.log('Stream finished, closing controller')
+              console.log('🚀 EDGE FUNCTION LOG: >>> STREAM FINISHED <<<')
+              console.log('🚀 EDGE FUNCTION LOG: Total chunks processed:', chunkCount)
+              console.log('🚀 EDGE FUNCTION LOG: Total bytes received:', totalBytes)
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'))
               controller.close()
               return
             }
 
             const chunk = decoder.decode(value)
-            console.log('Decoded chunk:', chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''))
+            console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Decoded chunk:`, chunk.substring(0, 300) + (chunk.length > 300 ? '...' : ''))
             
             const lines = chunk.split('\n')
-            console.log('Split into lines:', lines.length)
+            console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Split into ${lines.length} lines`)
 
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i]
-              console.log(`Processing line ${i}:`, line.substring(0, 100))
+              console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Processing line ${i}:`, line.substring(0, 150))
               
               if (line.startsWith('data: ') && line !== 'data: [DONE]') {
                 try {
                   const jsonStr = line.slice(6) // Remove 'data: ' prefix
-                  console.log('Parsing JSON:', jsonStr.substring(0, 150))
+                  console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Parsing JSON:`, jsonStr.substring(0, 200))
                   
                   const data = JSON.parse(jsonStr)
-                  console.log('Parsed data:', JSON.stringify(data).substring(0, 200))
+                  console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Parsed data:`, JSON.stringify(data))
                   
                   // Transform OpenRouter format to expected frontend format
                   if (data.choices && data.choices[0]?.delta) {
@@ -231,10 +263,12 @@ Keep responses conversational and accessible while maintaining analytical depth.
                     const reasoning = delta.reasoning
                     
                     if (content) {
-                      console.log('Found content to stream:', content)
+                      console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] >>> FOUND CONTENT TO STREAM <<<`)
+                      console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Content:`, content)
                     }
                     if (reasoning) {
-                      console.log('Found reasoning to stream:', reasoning)
+                      console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] >>> FOUND REASONING TO STREAM <<<`)
+                      console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Reasoning:`, reasoning)
                     }
                     
                     const transformedData = {
@@ -246,34 +280,35 @@ Keep responses conversational and accessible while maintaining analytical depth.
                       }]
                     }
                     
-                    console.log('Transformed data:', JSON.stringify(transformedData))
+                    console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Transformed data:`, JSON.stringify(transformedData))
                     
                     // Send as SSE format expected by frontend
                     const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
-                    console.log('Sending SSE data:', sseData.substring(0, 200))
+                    console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] >>> SENDING SSE DATA <<<`)
+                    console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] SSE data:`, sseData.substring(0, 300))
                     
                     controller.enqueue(encoder.encode(sseData))
-                    console.log('Enqueued chunk successfully')
+                    console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] >>> ENQUEUED CHUNK SUCCESSFULLY <<<`)
                   } else {
-                    console.log('No content or reasoning found in chunk, skipping')
+                    console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] No content or reasoning found in chunk, skipping`)
                   }
                 } catch (e) {
-                  console.error('Error parsing stream chunk:', e, 'Line:', line)
+                  console.error(`🚀 EDGE FUNCTION LOG: [${timestamp}] Error parsing stream chunk:`, e, 'Line:', line)
                 }
               } else if (line === 'data: [DONE]') {
-                console.log('Found DONE signal, sending to frontend')
+                console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] >>> FOUND DONE SIGNAL <<<`)
                 controller.enqueue(encoder.encode('data: [DONE]\n\n'))
               } else if (line.trim() === '') {
-                console.log('Empty line, skipping')
+                console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Empty line, skipping`)
               } else {
-                console.log('Non-data line:', line)
+                console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Non-data line:`, line)
               }
             }
 
-            console.log('Finished processing chunk, continuing pump...')
+            console.log(`🚀 EDGE FUNCTION LOG: [${timestamp}] Finished processing chunk, continuing pump...`)
             return pump()
           }).catch(error => {
-            console.error('Error in pump function:', error)
+            console.error('🚀 EDGE FUNCTION LOG: >>> ERROR IN PUMP FUNCTION <<<', error)
             controller.error(error)
           })
         }
@@ -281,7 +316,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
       }
     })
 
-    console.log('Returning transformed stream response')
+    console.log('🚀 EDGE FUNCTION LOG: >>> RETURNING TRANSFORMED STREAM RESPONSE <<<')
     return new Response(stream, {
       headers: {
         ...corsHeaders,
@@ -294,7 +329,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
     })
 
   } catch (error) {
-    console.error('Error in market-chat function:', error)
+    console.error('🚀 EDGE FUNCTION LOG: >>> ERROR IN MARKET-CHAT FUNCTION <<<', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
