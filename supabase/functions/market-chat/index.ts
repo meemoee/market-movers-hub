@@ -382,15 +382,13 @@ Keep responses conversational and accessible while maintaining analytical depth.
 
             edgeChunkCount++
             return pump()
-          }).catch(error => {
-            console.error(`[EDGE-ERROR] Error in pump function:`, error)
-            controller.error(error)
           })
         }
-        
-        // Start pumping immediately without waiting for completion
-        console.log('[STREAM-DEBUG] Starting pump without waiting for completion')
-        pump().catch(error => {
+
+        // Start pumping and return the promise so the runtime
+        // keeps the function alive until streaming completes
+        console.log('[STREAM-DEBUG] Starting pump and returning promise')
+        return pump().catch(error => {
           console.error('[STREAM-DEBUG] Pump error:', error)
           controller.error(error)
         })
