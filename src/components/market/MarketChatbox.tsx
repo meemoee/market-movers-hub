@@ -1,5 +1,6 @@
 import { MessageCircle, Send, Settings } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
@@ -224,14 +225,21 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                 if (content) {
                   accumulatedContent += content
                   console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Updated content total length: ${accumulatedContent.length}`)
-                  // Update UI immediately when content arrives
-                  setStreamingContent(accumulatedContent)
+                  // Force immediate React render to prevent batching
+                  flushSync(() => {
+                    setStreamingContent(accumulatedContent)
+                  })
+                  console.log(`🔄 [STREAM-FRONTEND-${chunkCounter}] Forced immediate render`)
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
                   console.log(`🤔 [STREAM-FRONTEND-${chunkCounter}] Updated reasoning total length: ${accumulatedReasoning.length}`)
-                  setStreamingReasoning(accumulatedReasoning)
+                  // Force immediate React render to prevent batching
+                  flushSync(() => {
+                    setStreamingReasoning(accumulatedReasoning)
+                  })
+                  console.log(`🔄 [STREAM-FRONTEND-${chunkCounter}] Forced immediate reasoning render`)
                 }
               } catch (e) {
                 console.error(`❌ [STREAM-FRONTEND-${chunkCounter}] Error parsing SSE data:`, e)
