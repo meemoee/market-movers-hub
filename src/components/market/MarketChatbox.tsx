@@ -139,27 +139,13 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       const decoder = new TextDecoder()
       let accumulatedContent = ''
       let accumulatedReasoning = ''
+      let updateCounter = 0
       
       try {
-        let chunkCount = 0
-        let totalBytesReceived = 0
-        
         while (true) {
-          console.log(`[CHUNK-${chunkCount}] Starting read...`)
-          const startTime = performance.now()
           const { done, value } = await reader.read()
-          const readTime = performance.now() - startTime
-          
-          console.log(`[CHUNK-${chunkCount}] Read completed in ${readTime.toFixed(2)}ms:`, { 
-            done, 
-            chunkSize: value?.length,
-            totalBytesReceived: totalBytesReceived + (value?.length || 0)
-          })
           
           if (done) {
-            console.log(`[STREAM-COMPLETE] Total chunks processed: ${chunkCount}, Total bytes: ${totalBytesReceived}`)
-            console.log(`[STREAM-COMPLETE] Final accumulated content length: ${accumulatedContent.length}`)
-            console.log(`[STREAM-COMPLETE] Final accumulated reasoning length: ${accumulatedReasoning.length}`)
             setMessages(prev => [...prev, { 
               type: 'assistant', 
               content: accumulatedContent,
@@ -168,130 +154,44 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             break
           }
           
-          totalBytesReceived += value?.length || 0
-          const decodeStartTime = performance.now()
           const chunk = decoder.decode(value, { stream: true })
-          const decodeTime = performance.now() - decodeStartTime
-          
-          console.log(`[CHUNK-${chunkCount}] Decoded in ${decodeTime.toFixed(2)}ms:`, {
-            rawChunk: chunk.substring(0, 100) + (chunk.length > 100 ? '...' : ''),
-            chunkLength: chunk.length,
-            hasNewlines: chunk.includes('\n'),
-            lineCount: chunk.split('\n').length
-          })
-          
           const lines = chunk.split('\n')
-          console.log(`[CHUNK-${chunkCount}] Processing ${lines.length} lines`)
           
-          let lineIndex = 0
           for (const line of lines) {
-            console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Processing line:`, {
-              line: line.substring(0, 150) + (line.length > 150 ? '...' : ''),
-              lineLength: line.length,
-              trimmedLength: line.trim().length,
-              startsWithData: line.startsWith('data: ')
-            })
-            
             if (line.trim() && line.startsWith('data: ')) {
               const jsonStr = line.slice(6).trim()
-              console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Found data line, JSON:`, {
-                jsonStr: jsonStr.substring(0, 200) + (jsonStr.length > 200 ? '...' : ''),
-                jsonLength: jsonStr.length,
-                isDone: jsonStr === '[DONE]'
-              })
               
               if (jsonStr === '[DONE]') {
-                console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Found DONE signal`)
-                lineIndex++
                 continue
               }
               
               try {
-                const parseStartTime = performance.now()
                 const parsed = JSON.parse(jsonStr)
-                const parseTime = performance.now() - parseStartTime
-                
-                console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Parsed JSON in ${parseTime.toFixed(2)}ms:`, {
-                  hasChoices: !!parsed.choices,
-                  choicesLength: parsed.choices?.length || 0,
-                  hasDelta: !!parsed.choices?.[0]?.delta
-                })
-                
                 const content = parsed.choices?.[0]?.delta?.content
                 const reasoning = parsed.choices?.[0]?.delta?.reasoning
                 
-                console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Extracted data:`, {
-                  hasContent: !!content,
-                  contentLength: content?.length || 0,
-                  contentPreview: content ? content.substring(0, 50) + (content.length > 50 ? '...' : '') : null,
-                  hasReasoning: !!reasoning,
-                  reasoningLength: reasoning?.length || 0,
-                  reasoningPreview: reasoning ? reasoning.substring(0, 50) + (reasoning.length > 50 ? '...' : '') : null
-                })
-                
                 if (content) {
-                  const previousContentLength = accumulatedContent.length
                   accumulatedContent += content
-                  console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Content accumulated:`, {
-                    previousLength: previousContentLength,
-                    addedLength: content.length,
-                    newTotalLength: accumulatedContent.length,
-                    contentAdded: content
-                  })
+                  updateCounter++
                   
-                  const setStreamStartTime = performance.now()
-                  setStreamingContent(accumulatedContent)
-                  const setStreamTime = performance.now() - setStreamStartTime
-                  console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] setStreamingContent called in ${setStreamTime.toFixed(2)}ms`)
+                  // Update UI every 5 tokens or after 50ms delay for smoother streaming
+                  if (updateCounter % 5 === 0) {
+                    setStreamingContent(accumulatedContent)
+                  }
                 }
                 
                 if (reasoning) {
-                  const previousReasoningLength = accumulatedReasoning.length
                   accumulatedReasoning += reasoning
-                  console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Reasoning accumulated:`, {
-                    previousLength: previousReasoningLength,
-                    addedLength: reasoning.length,
-                    newTotalLength: accumulatedReasoning.length,
-                    reasoningAdded: reasoning
-                  })
-                  
-                  const setReasoningStartTime = performance.now()
                   setStreamingReasoning(accumulatedReasoning)
-                  const setReasoningTime = performance.now() - setReasoningStartTime
-                  console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] setStreamingReasoning called in ${setReasoningTime.toFixed(2)}ms`)
-                }
-                
-                if (content || reasoning) {
-                  console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Yielding control for React re-render...`)
-                  const yieldStartTime = performance.now()
-                  await new Promise(resolve => setTimeout(resolve, 0))
-                  const yieldTime = performance.now() - yieldStartTime
-                  console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Yield completed in ${yieldTime.toFixed(2)}ms`)
                 }
               } catch (e) {
-                console.error(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Error parsing SSE data:`, {
-                  error: e,
-                  line: line,
-                  jsonStr: jsonStr
-                })
+                console.error('Error parsing SSE data:', e)
               }
-            } else {
-              console.log(`[CHUNK-${chunkCount}][LINE-${lineIndex}] Skipping line:`, {
-                isEmpty: !line.trim(),
-                startsWithData: line.startsWith('data: '),
-                linePreview: line.substring(0, 50)
-              })
             }
-            lineIndex++
           }
           
-          console.log(`[CHUNK-${chunkCount}] Chunk processing complete. Current totals:`, {
-            contentLength: accumulatedContent.length,
-            reasoningLength: accumulatedReasoning.length,
-            linesProcessed: lines.length
-          })
-          
-          chunkCount++
+          // Final update to ensure latest content is displayed
+          setStreamingContent(accumulatedContent)
         }
       } catch (error: any) {
         if (error.name !== 'AbortError') {
