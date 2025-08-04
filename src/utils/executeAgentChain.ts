@@ -19,6 +19,12 @@ export interface ChainConfig {
   layers: Layer[]
 }
 
+export interface AgentOutput {
+  layer: number
+  agentId: string
+  output: string
+}
+
 interface ExecutionContext {
   userId?: string
   marketId: string
@@ -59,25 +65,31 @@ async function callModel(prompt: string, model: string, context: ExecutionContex
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
-  let result = ""
+  let buffer = ""
+  let content = ""
+
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
-    result += decoder.decode(value, { stream: true })
-  }
+    buffer += decoder.decode(value, { stream: true })
 
-  console.log('📨 [callModel] Raw response:', result)
-  const lines = result.split("\n")
-  let content = ""
-  for (const line of lines) {
-    if (line.startsWith("data:")) {
-      const jsonStr = line.replace(/^data:\s*/, "").trim()
-      if (jsonStr === "[DONE]") break
-      try {
-        const parsed = JSON.parse(jsonStr)
-        content += parsed.choices?.[0]?.delta?.content || ""
-      } catch {
-        // ignore parsing errors
+    const lines = buffer.split("\n")
+    buffer = lines.pop() || ""
+
+    for (const line of lines) {
+      if (line.startsWith("data:")) {
+        const jsonStr = line.replace(/^data:\s*/, "").trim()
+        if (jsonStr === "[DONE]") continue
+        try {
+          const parsed = JSON.parse(jsonStr)
+          const chunk = parsed.choices?.[0]?.delta?.content || ""
+          if (chunk) {
+            content += chunk
+            console.log('✂️ [callModel] Received chunk:', chunk)
+          }
+        } catch {
+          // ignore parsing errors
+        }
       }
     }
   }
@@ -91,7 +103,7 @@ export async function executeAgentChain(
   agents: Agent[],
   initialInput: string,
   context: ExecutionContext
-): Promise<{ prompt: string; model: string }> {
+): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
   console.log('🚀 [executeAgentChain] Initial input:', initialInput)
@@ -100,6 +112,7 @@ export async function executeAgentChain(
   }
 
   let currentInputs: string[] = chainConfig.layers[0].agents.map(() => initialInput)
+  const agentOutputs: AgentOutput[] = []
 
   for (let i = 0; i < chainConfig.layers.length - 1; i++) {
     const layer = chainConfig.layers[i]
@@ -126,6 +139,7 @@ export async function executeAgentChain(
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(`${basePrompt}\n\n${input}`, agent.model, context)
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
+        agentOutputs.push({ layer: i + 1, agentId: agent.id, output })
         if (block.routes && block.routes.length > 0) {
           for (const target of block.routes) {
             nextInputs[target] = [nextInputs[target], output].filter(Boolean).join("\n")
@@ -161,6 +175,7 @@ export async function executeAgentChain(
   return {
     prompt: `${finalPromptBase}\n\n${finalInput}`.trim(),
     model: finalAgent.model,
+    outputs: agentOutputs,
   }
 }
 
