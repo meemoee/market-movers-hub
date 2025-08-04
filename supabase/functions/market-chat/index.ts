@@ -77,9 +77,8 @@ serve(async (req) => {
       console.log('Connected to Redis for market data lookup')
 
       // Get latest key for 1440 minute interval (24h)
-      const latestKeys = await redisClient.zrevrange('topMovers:1440:keys', 0, 0)
-      if (latestKeys.length > 0) {
-        const latestKey = latestKeys[0]
+      const latestKey = await redisClient.get('topMovers:1440:latest')
+      if (latestKey) {
         console.log('Latest key lookup result:', latestKey)
 
         // Look for manifest
@@ -88,10 +87,10 @@ serve(async (req) => {
 
         if (manifestData) {
           const manifest = JSON.parse(manifestData)
-          console.log('Found manifest with', manifest.chunks.length, 'chunks')
+          console.log('Found manifest with', manifest.chunks, 'chunks')
 
           // Search through chunks for our specific marketId
-          for (let i = 0; i < manifest.chunks.length; i++) {
+          for (let i = 0; i < manifest.chunks; i++) {
             const chunkKey = `topMovers:1440:${latestKey}:chunk:${i}`
             const chunkData = await redisClient.get(chunkKey)
 
@@ -106,6 +105,36 @@ serve(async (req) => {
               }
             }
           }
+        }
+      }
+
+      // If not found in 24h dataset, try other intervals
+      if (!marketData) {
+        const intervals = ['5', '10', '30', '60', '240', '480', '10080']
+        for (const currentInterval of intervals) {
+          const altLatest = await redisClient.get(`topMovers:${currentInterval}:latest`)
+          if (!altLatest) continue
+
+          const altManifestKey = `topMovers:${currentInterval}:${altLatest}:manifest`
+          const altManifestData = await redisClient.get(altManifestKey)
+          if (!altManifestData) continue
+
+          const altManifest = JSON.parse(altManifestData)
+          for (let i = 0; i < altManifest.chunks; i++) {
+            const chunkKey = `topMovers:${currentInterval}:${altLatest}:chunk:${i}`
+            const chunkData = await redisClient.get(chunkKey)
+            if (chunkData) {
+              const markets = JSON.parse(chunkData)
+              const foundMarket = markets.find((m: any) => m.market_id === marketId)
+              if (foundMarket) {
+                marketData = foundMarket
+                console.log('Found market data for', marketId, 'in interval', currentInterval)
+                break
+              }
+            }
+          }
+
+          if (marketData) break
         }
       }
 
