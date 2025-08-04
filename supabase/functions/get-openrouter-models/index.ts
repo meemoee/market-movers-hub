@@ -16,12 +16,13 @@ class OpenRouter {
    * @param filterSupportedParams Optional array of parameters to filter models by support
    * @returns List of available models
    */
-  async getModels(filterSupportedParams: string[] = []) {
+  async getModels() {
     if (!this.apiKey) {
       throw new Error("OpenRouter API key is required");
     }
     
     try {
+      console.log('Fetching models from OpenRouter...')
       const response = await fetch(`${this.baseUrl}/models`, {
         method: 'GET',
         headers: {
@@ -31,23 +32,16 @@ class OpenRouter {
         }
       });
       
+      console.log('OpenRouter response status:', response.status)
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('OpenRouter API error:', response.status, errorData)
         throw new Error(`OpenRouter API error: ${response.status} - ${JSON.stringify(errorData)}`);
       }
       
       const modelData = await response.json();
-      
-      // If we have filter parameters, only return models that support all specified parameters
-      if (filterSupportedParams.length > 0) {
-        modelData.data = modelData.data.filter(model => {
-          if (!model.supported_parameters) return false;
-          
-          return filterSupportedParams.every(param => 
-            model.supported_parameters.includes(param)
-          );
-        });
-      }
+      console.log('Received models count:', modelData.data?.length || 0)
       
       return modelData;
     } catch (error) {
@@ -99,38 +93,56 @@ serve(async (req) => {
 
     const openRouter = new OpenRouter(apiKey)
     
-    // Get models that support streaming for chat completions
-    const models = await openRouter.getModels(['stream'])
+    // Get ALL models from OpenRouter
+    console.log('Calling OpenRouter.getModels()...')
+    const models = await openRouter.getModels()
     
-    // Show ALL streaming models, just sort by popularity/capability
-    const streamingModels = models.data
+    console.log('Raw models received:', models.data?.length || 0)
+    
+    // Only filter for models that likely support streaming (most modern models do)
+    // and are suitable for chat completions
+    const chatModels = models.data
+      .filter(model => {
+        // Only exclude models that are clearly not for chat (embedding models, etc.)
+        const isEmbedding = model.id.includes('embedding') || model.name.toLowerCase().includes('embedding')
+        const isWhisper = model.id.includes('whisper') || model.name.toLowerCase().includes('whisper')
+        const isDalle = model.id.includes('dall-e') || model.name.toLowerCase().includes('dall-e')
+        
+        return !isEmbedding && !isWhisper && !isDalle
+      })
       .sort((a, b) => {
         // Prioritize popular models at the top
         const priorityModels = [
-          'openai/gpt-4o-mini',
-          'openai/gpt-4o', 
-          'anthropic/claude-3-haiku',
-          'anthropic/claude-3-sonnet',
-          'perplexity/sonar',
-          'meta-llama/llama-3.1-8b-instruct',
-          'google/gemini-pro',
-          'mistral/mistral-large'
+          'gpt-4o-mini',
+          'gpt-4o',
+          'claude-3-haiku',
+          'claude-3-sonnet', 
+          'sonar',
+          'llama-3.1-8b-instruct',
+          'gemini-pro',
+          'mistral-large'
         ]
         
-        const aIndex = priorityModels.findIndex(p => a.id.includes(p.split('/')[1] || p))
-        const bIndex = priorityModels.findIndex(p => b.id.includes(p.split('/')[1] || p))
+        const aMatches = priorityModels.some(p => a.id.includes(p))
+        const bMatches = priorityModels.some(p => b.id.includes(p))
         
-        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
-        if (aIndex !== -1) return -1
-        if (bIndex !== -1) return 1
+        if (aMatches && bMatches) {
+          const aIndex = priorityModels.findIndex(p => a.id.includes(p))
+          const bIndex = priorityModels.findIndex(p => b.id.includes(p))
+          return aIndex - bIndex
+        }
+        if (aMatches) return -1
+        if (bMatches) return 1
         
         // Secondary sort by name for non-priority models
         return a.name.localeCompare(b.name)
       })
+      
+    console.log('Filtered chat models:', chatModels.length)
 
     return new Response(
       JSON.stringify({ 
-        models: streamingModels.map(model => ({
+        models: chatModels.map(model => ({
           id: model.id,
           name: model.name,
           description: model.description,
