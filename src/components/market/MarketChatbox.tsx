@@ -1,9 +1,10 @@
-import { MessageCircle, Send } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { MessageCircle, Send, Settings } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface MarketChatboxProps {
   marketId: string
@@ -15,14 +16,48 @@ interface Message {
   content?: string
 }
 
+interface OpenRouterModel {
+  id: string
+  name: string
+  description?: string
+}
+
 export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
+  const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const { user } = useCurrentUser()
+
+  // Fetch available models on component mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      setModelsLoading(true)
+      try {
+        const { data, error } = await supabase.functions.invoke('get-openrouter-models')
+        if (error) throw error
+        
+        setAvailableModels(data.models || [])
+      } catch (error) {
+        console.error('Failed to fetch OpenRouter models:', error)
+        // Set fallback models if API fails
+        setAvailableModels([
+          { id: 'perplexity/sonar', name: 'Perplexity Sonar', description: 'Fast and accurate' },
+          { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'OpenAI fast model' },
+          { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', description: 'Anthropic fast model' }
+        ])
+      } finally {
+        setModelsLoading(false)
+      }
+    }
+
+    fetchModels()
+  }, [])
 
   const handleChatMessage = async (userMessage: string) => {
     console.log('=== MarketChatbox: Starting chat message ===')
@@ -76,7 +111,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
             userId: user?.id,
             marketId,
-            marketQuestion
+            marketQuestion,
+            selectedModel
           }),
           signal: abortControllerRef.current?.signal
         }
@@ -203,6 +239,29 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
           )}
         </div>
       )}
+
+      {/* Model Selection */}
+      <div className="mb-4 flex items-center gap-2">
+        <Settings className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">Model:</span>
+        <Select value={selectedModel} onValueChange={setSelectedModel} disabled={modelsLoading || isLoading}>
+          <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectValue placeholder={modelsLoading ? "Loading..." : "Select model"} />
+          </SelectTrigger>
+          <SelectContent>
+            {availableModels.map((model) => (
+              <SelectItem key={model.id} value={model.id} className="text-xs">
+                <div>
+                  <div className="font-medium">{model.name}</div>
+                  {model.description && (
+                    <div className="text-muted-foreground text-xs">{model.description}</div>
+                  )}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       
       <div className="flex items-center gap-2">
         <input
