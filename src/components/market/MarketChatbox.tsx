@@ -323,7 +323,7 @@ const ChatMessages = memo(function ChatMessages({
           </div>
         </div>
       )}
-      {isLoading && !hasStreamingContent && (
+      {isLoading && (streamingRef.current?.textContent || '').length === 0 && (
         <div className="bg-muted/50 p-3 rounded-lg">
           <p className="text-sm text-muted-foreground">Thinking...</p>
         </div>
