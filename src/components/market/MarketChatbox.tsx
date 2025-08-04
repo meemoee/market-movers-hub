@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import AgentChainDialog from './AgentChainDialog'
 
 interface MarketChatboxProps {
   marketId: string
@@ -50,6 +51,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
+  const [isChainDialogOpen, setIsChainDialogOpen] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
@@ -72,10 +74,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         // Force browser paint cycle
         requestAnimationFrame(() => {
           // Force layout/reflow to ensure immediate visual update
-          if (streamingContentRef.current) {
-            streamingContentRef.current.offsetHeight
-          }
-        })
+            if (streamingContentRef.current) {
+              void streamingContentRef.current.offsetHeight
+            }
+          })
       }
     }
   }, [])
@@ -184,10 +186,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             updateStreamingContent(data.content)
             break
             
-          case 'STREAM_COMPLETE':
+          case 'STREAM_COMPLETE': {
             console.log('✅ [MAIN] Test sequence completed')
             updateStreamingContent(data.content, true)
-            
+
             const finalMessage: Message = {
               type: 'assistant',
               content: data.content,
@@ -199,6 +201,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setStreamingContent('')
             worker.terminate()
             break
+          }
         }
       }
       
@@ -238,36 +241,38 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setStreamingReasoning(data.reasoning)
             break
             
-          case 'STREAM_COMPLETE':
-            console.log('✅ [WORKER-MSG] Stream completed')
-            updateStreamingContent(data.content, true)
-            
-            const finalMessage: Message = {
-              type: 'assistant',
-              content: data.content,
-              reasoning: data.reasoning
+            case 'STREAM_COMPLETE': {
+              console.log('✅ [WORKER-MSG] Stream completed')
+              updateStreamingContent(data.content, true)
+
+              const finalMessage: Message = {
+                type: 'assistant',
+                content: data.content,
+                reasoning: data.reasoning
+              }
+              setMessages(prev => [...prev, finalMessage])
+              setIsLoading(false)
+              setIsStreaming(false)
+              setStreamingContent('')
+              setStreamingReasoning('')
+              worker.terminate()
+              break
             }
-            setMessages(prev => [...prev, finalMessage])
-            setIsLoading(false)
-            setIsStreaming(false)
-            setStreamingContent('')
-            setStreamingReasoning('')
-            worker.terminate()
-            break
             
-          case 'ERROR':
-            console.error('🚨 [WORKER-MSG] Error:', data.error)
-            const errorMessage: Message = {
-              type: 'assistant',
-              content: `Sorry, I encountered an error: ${data.error}`
+            case 'ERROR': {
+              console.error('🚨 [WORKER-MSG] Error:', data.error)
+              const errorMessage: Message = {
+                type: 'assistant',
+                content: `Sorry, I encountered an error: ${data.error}`
+              }
+              setMessages(prev => [...prev, errorMessage])
+              setIsLoading(false)
+              setIsStreaming(false)
+              setStreamingContent('')
+              setStreamingReasoning('')
+              worker.terminate()
+              break
             }
-            setMessages(prev => [...prev, errorMessage])
-            setIsLoading(false)
-            setIsStreaming(false)
-            setStreamingContent('')
-            setStreamingReasoning('')
-            worker.terminate()
-            break
         }
       }
       
@@ -320,17 +325,18 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       
       setIsStreaming(true)
       
-    } catch (error: any) {
-      console.error('🚨 [CHAT] Error setting up worker:', error)
-      const errorMessage: Message = {
-        type: 'assistant',
-        content: `Sorry, I encountered an error: ${error.message}`
-      }
-      setMessages(prev => [...prev, errorMessage])
-      setIsLoading(false)
-      setIsStreaming(false)
-      setStreamingContent('')
-      setStreamingReasoning('')
+      } catch (error: unknown) {
+        console.error('🚨 [CHAT] Error setting up worker:', error)
+        const message = error instanceof Error ? error.message : String(error)
+        const errorMessage: Message = {
+          type: 'assistant',
+          content: `Sorry, I encountered an error: ${message}`
+        }
+        setMessages(prev => [...prev, errorMessage])
+        setIsLoading(false)
+        setIsStreaming(false)
+        setStreamingContent('')
+        setStreamingReasoning('')
     }
   }
 
@@ -429,6 +435,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         >
           <BookmarkPlus size={16} />
         </button>
+        <button
+          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+          onClick={() => setIsChainDialogOpen(true)}
+          disabled={isLoading}
+        >
+          <MessageCircle size={16} />
+        </button>
       </div>
 
       {/* Model Selection */}
@@ -519,6 +532,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AgentChainDialog
+        open={isChainDialogOpen}
+        onOpenChange={setIsChainDialogOpen}
+        agents={agents}
+        userId={user?.id}
+      />
     </>
   )
 }
