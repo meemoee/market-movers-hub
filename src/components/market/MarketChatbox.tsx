@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import AgentChainBuilder, { AgentChain } from "./AgentChainBuilder"
 
 interface MarketChatboxProps {
   marketId: string
@@ -50,6 +51,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
+  const [isChainBuilderOpen, setIsChainBuilderOpen] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
@@ -156,6 +158,16 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setIsAgentDialogOpen(false)
     setNewAgentPrompt('')
     setNewAgentModel(selectedModel)
+  }
+
+  const saveAgentChain = async (chain: AgentChain) => {
+    if (!user?.id) return
+    const { error } = await supabase
+      .from('agent_chains')
+      .insert({ user_id: user.id, name: chain.name, chain: chain.layers })
+    if (error) {
+      console.error('Failed to save agent chain:', error)
+    }
   }
 
   // Chat functionality using Web Worker
@@ -429,6 +441,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         >
           <BookmarkPlus size={16} />
         </button>
+        <Button variant="outline" size="sm" onClick={() => setIsChainBuilderOpen(true)} disabled={isLoading}>
+          New Chain
+        </Button>
       </div>
 
       {/* Model Selection */}
@@ -519,6 +534,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AgentChainBuilder
+        open={isChainBuilderOpen}
+        onOpenChange={setIsChainBuilderOpen}
+        agents={agents}
+        onSave={saveAgentChain}
+      />
     </>
   )
 }
