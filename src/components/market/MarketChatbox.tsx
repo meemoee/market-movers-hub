@@ -13,7 +13,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -425,20 +424,19 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             </SelectContent>
           )}
         </Select>
-        <Dialog
-          open={isAgentDialogOpen}
-          onOpenChange={(open) => {
-            setIsAgentDialogOpen(open)
-            if (open) {
+        <Dialog open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => {
               setNewAgentModel(selectedModel)
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs">
-              <BookmarkPlus className="w-4 h-4 mr-1" /> Add
-            </Button>
-          </DialogTrigger>
+              setIsAgentDialogOpen(true)
+            }}
+          >
+            <BookmarkPlus className="w-4 h-4 mr-1" /> Add
+          </Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Save New Agent</DialogTitle>
