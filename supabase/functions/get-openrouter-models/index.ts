@@ -102,40 +102,35 @@ serve(async (req) => {
     // Get models that support streaming for chat completions
     const models = await openRouter.getModels(['stream'])
     
-    // Filter for chat completion models and sort by popularity/capability
-    const chatModels = models.data
-      .filter(model => 
-        model.id.includes('chat') || 
-        model.id.includes('gpt') || 
-        model.id.includes('claude') || 
-        model.id.includes('sonar') ||
-        model.id.includes('llama') ||
-        model.architecture?.output_modalities?.includes('text')
-      )
+    // Show ALL streaming models, just sort by popularity/capability
+    const streamingModels = models.data
       .sort((a, b) => {
-        // Prioritize popular models
+        // Prioritize popular models at the top
         const priorityModels = [
           'openai/gpt-4o-mini',
           'openai/gpt-4o', 
           'anthropic/claude-3-haiku',
           'anthropic/claude-3-sonnet',
           'perplexity/sonar',
-          'meta-llama/llama-3.1-8b-instruct'
+          'meta-llama/llama-3.1-8b-instruct',
+          'google/gemini-pro',
+          'mistral/mistral-large'
         ]
         
-        const aIndex = priorityModels.findIndex(p => a.id.includes(p))
-        const bIndex = priorityModels.findIndex(p => b.id.includes(p))
+        const aIndex = priorityModels.findIndex(p => a.id.includes(p.split('/')[1] || p))
+        const bIndex = priorityModels.findIndex(p => b.id.includes(p.split('/')[1] || p))
         
         if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
         if (aIndex !== -1) return -1
         if (bIndex !== -1) return 1
         
+        // Secondary sort by name for non-priority models
         return a.name.localeCompare(b.name)
       })
 
     return new Response(
       JSON.stringify({ 
-        models: chatModels.map(model => ({
+        models: streamingModels.map(model => ({
           id: model.id,
           name: model.name,
           description: model.description,
