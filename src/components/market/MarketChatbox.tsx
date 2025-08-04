@@ -103,6 +103,54 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
     
+    // TEST MODE: If message starts with "test", run test chunks
+    if (userMessage.toLowerCase().startsWith('test')) {
+      setHasStartedChat(true)
+      setIsLoading(true)
+      setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+      setChatMessage('')
+      
+      console.log('🧪 [CHAT] Starting TEST MODE with custom chunks')
+      
+      const worker = new Worker('/streaming-worker.js')
+      
+      worker.onmessage = (e) => {
+        const { type, data } = e.data
+        console.log('📨 [MAIN] Received worker message:', type, data)
+        
+        switch (type) {
+          case 'CONTENT_CHUNK':
+            console.log('📝 [MAIN] Processing content chunk:', data.newChunk)
+            console.log('📝 [MAIN] Total accumulated:', data.content)
+            updateStreamingContent(data.content)
+            break
+            
+          case 'STREAM_COMPLETE':
+            console.log('✅ [MAIN] Test sequence completed')
+            updateStreamingContent(data.content, true)
+            
+            const finalMessage: Message = {
+              type: 'assistant',
+              content: data.content,
+              reasoning: data.reasoning
+            }
+            setMessages(prev => [...prev, finalMessage])
+            setIsLoading(false)
+            setIsStreaming(false)
+            setStreamingContent('')
+            worker.terminate()
+            break
+        }
+      }
+      
+      worker.postMessage({
+        type: 'TEST_CHUNKS',
+        data: {}
+      })
+      
+      return
+    }
+    
     setHasStartedChat(true)
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
