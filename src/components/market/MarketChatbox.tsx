@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import AgentChainDialog from './AgentChainDialog'
+import { executeAgentChain } from "@/utils/executeAgentChain"
 
 interface MarketChatboxProps {
   marketId: string
@@ -244,32 +245,60 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
-    
+
     try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const authToken = sessionData.session?.access_token
+      if (!authToken) {
+        throw new Error("No authentication token available")
+      }
+
+      let finalPrompt = userMessage
+      let finalModel = selectedModel
+
+      if (selectedChain) {
+        const chain = chains.find(c => c.id === selectedChain)
+        if (!chain) {
+          throw new Error('Selected chain not found')
+        }
+        const result = await executeAgentChain(
+          chain.config,
+          agents,
+          userMessage,
+          {
+            userId: user?.id,
+            marketId,
+            marketQuestion,
+            marketDescription,
+            authToken
+          }
+        )
+        finalPrompt = result.prompt
+        finalModel = result.model
+      }
+
       console.log('📤 [CHAT] Starting web worker for streaming')
-      
-      // Create web worker
+
       const worker = new Worker('/streaming-worker.js')
-      
-      // Set up worker message handling
+
       worker.onmessage = (e) => {
         const { type, data } = e.data
-        
+
         switch (type) {
           case 'CONTENT_CHUNK':
             console.log('📝 [WORKER-MSG] Received content chunk')
             updateStreamingContent(data.content)
             break
-            
+
           case 'REASONING_CHUNK':
             console.log('🧠 [WORKER-MSG] Received reasoning chunk')
             setStreamingReasoning(data.reasoning)
             break
-            
+
           case 'STREAM_COMPLETE':
             console.log('✅ [WORKER-MSG] Stream completed')
             updateStreamingContent(data.content, true)
-            
+
             const finalMessage: Message = {
               type: 'assistant',
               content: data.content,
@@ -282,7 +311,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setStreamingReasoning('')
             worker.terminate()
             break
-            
+
           case 'ERROR':
             console.error('🚨 [WORKER-MSG] Error:', data.error)
             const errorMessage: Message = {
@@ -298,7 +327,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             break
         }
       }
-      
+
       worker.onerror = (error) => {
         console.error('🚨 [WORKER] Worker error:', error)
         setIsLoading(false)
@@ -306,15 +335,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         setStreamingContent('')
         setStreamingReasoning('')
       }
-      
-      // Start the stream in the worker
-      const { data: sessionData } = await supabase.auth.getSession()
-      const authToken = sessionData.session?.access_token
-      
-      if (!authToken) {
-        throw new Error("No authentication token available")
-      }
-      
+
       const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
       const marketContextMessage = {
         role: 'assistant' as const,
@@ -334,20 +355,20 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              message: userMessage,
+              message: finalPrompt,
               chatHistory: chatHistoryWithContext,
               userId: user?.id,
               marketId,
               marketQuestion,
               marketDescription,
-              selectedModel
+              selectedModel: finalModel
             })
           }
         }
       })
-      
+
       setIsStreaming(true)
-      
+
     } catch (error: any) {
       console.error('🚨 [CHAT] Error setting up worker:', error)
       const errorMessage: Message = {
