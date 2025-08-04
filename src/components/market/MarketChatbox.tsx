@@ -1,4 +1,4 @@
-import { BookmarkPlus, MessageCircle, Send, Settings } from 'lucide-react'
+import { BookmarkPlus, GitBranch, MessageCircle, Send, Settings } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { AgentChainDialog } from "@/components/market/AgentChainDialog"
 
 interface MarketChatboxProps {
   marketId: string
@@ -48,6 +49,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [agents, setAgents] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
+  const [isChainDialogOpen, setIsChainDialogOpen] = useState(false)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -429,6 +431,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         >
           <BookmarkPlus size={16} />
         </button>
+        <button
+          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+          onClick={() => setIsChainDialogOpen(true)}
+          disabled={isLoading}
+        >
+          <GitBranch size={16} />
+        </button>
       </div>
 
       {/* Model Selection */}
@@ -519,6 +528,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AgentChainDialog
+        open={isChainDialogOpen}
+        onOpenChange={setIsChainDialogOpen}
+        savedAgents={agents}
+        onSave={(chain) => {
+          console.log('Saved chain', chain)
+        }}
+      />
     </>
   )
 }
