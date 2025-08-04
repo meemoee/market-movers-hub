@@ -198,9 +198,6 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
                       setHasStreamingStarted(true)
                     }
                   })
-                  
-                  // Small delay to ensure smooth streaming
-                  await new Promise(resolve => setTimeout(resolve, 5))
                 }
                 
                 if (reasoning) {
@@ -214,9 +211,6 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
                       setHasStreamingStarted(true)
                     }
                   })
-                  
-                  // Small delay to ensure smooth streaming
-                  await new Promise(resolve => setTimeout(resolve, 5))
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e)
