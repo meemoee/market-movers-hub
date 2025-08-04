@@ -1,4 +1,4 @@
-import { MessageCircle, Send, Settings } from 'lucide-react'
+import { BookmarkPlus, MessageCircle, Send, Settings } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
@@ -25,6 +25,12 @@ interface OpenRouterModel {
   description?: string
 }
 
+interface Agent {
+  id: string
+  prompt: string
+  model: string
+}
+
 export function MarketChatbox({ marketId, marketQuestion, marketDescription }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -36,6 +42,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [selectedAgent, setSelectedAgent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
@@ -93,6 +101,52 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
     fetchModels()
   }, [user?.id])
+
+  useEffect(() => {
+    const fetchAgents = async () => {
+      if (!user?.id) return
+      const { data, error } = await supabase
+        .from('agents')
+        .select('id, prompt, model')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Failed to fetch agents:', error)
+        return
+      }
+      setAgents(data || [])
+    }
+
+    fetchAgents()
+  }, [user?.id])
+
+  const handleSelectAgent = (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    if (agent) {
+      setSelectedAgent(agentId)
+      setSelectedModel(agent.model)
+      setChatMessage(agent.prompt)
+    }
+  }
+
+  const saveAgent = async () => {
+    if (!chatMessage.trim() || !user?.id) return
+    const { data, error } = await supabase
+      .from('agents')
+      .insert({ user_id: user.id, prompt: chatMessage, model: selectedModel })
+      .select()
+      .single()
+    if (error) {
+      console.error('Failed to save agent:', error)
+      return
+    }
+    if (data) {
+      setAgents(prev => [data, ...prev])
+      setSelectedAgent(data.id)
+      setChatMessage('')
+    }
+  }
 
   // Chat functionality using Web Worker
   const handleChatMessage = async (userMessage: string) => {
@@ -334,6 +388,24 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </div>
       )}
 
+      {agents.length > 0 && (
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Saved Agent:</span>
+          <Select value={selectedAgent} onValueChange={handleSelectAgent} disabled={isLoading}>
+            <SelectTrigger className="w-[200px] h-8 text-xs">
+              <SelectValue placeholder="Select agent" />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id} className="text-xs">
+                  {agent.prompt.slice(0, 30)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Model Selection */}
       <div className="mb-4 flex items-center gap-2">
         <Settings className="w-4 h-4 text-muted-foreground" />
@@ -370,7 +442,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           placeholder="Ask about this market..."
           className="flex-grow p-2 bg-background border border-border rounded-lg text-sm"
         />
-        <button 
+        <button
+          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+          onClick={saveAgent}
+          disabled={isLoading || !chatMessage.trim()}
+        >
+          <BookmarkPlus size={16} />
+        </button>
+        <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
           onClick={() => handleChatMessage(chatMessage)}
           disabled={isLoading}
