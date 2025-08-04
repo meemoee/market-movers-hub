@@ -99,12 +99,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
     fetchModels()
   }, [user?.id])
 
+  // Chat functionality using Web Worker
   const handleChatMessage = async (userMessage: string) => {
-    console.log('=== MarketChatbox: Starting chat message ===')
-    console.log('User message:', userMessage)
-    console.log('Current messages count:', messages.length)
-    console.log('Is loading:', isLoading)
-    
     if (!userMessage.trim() || isLoading) return
     
     setHasStartedChat(true)
@@ -113,208 +109,111 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
     setChatMessage('')
     
     try {
-      if (abortControllerRef.current) {
-        console.log('Aborting previous request')
-        abortControllerRef.current.abort()
+      console.log('📤 [CHAT] Starting web worker for streaming')
+      
+      // Create web worker
+      const worker = new Worker('/streaming-worker.js')
+      
+      // Set up worker message handling
+      worker.onmessage = (e) => {
+        const { type, data } = e.data
+        
+        switch (type) {
+          case 'CONTENT_CHUNK':
+            console.log('📝 [WORKER-MSG] Received content chunk')
+            updateStreamingContent(data.content)
+            break
+            
+          case 'REASONING_CHUNK':
+            console.log('🧠 [WORKER-MSG] Received reasoning chunk')
+            setStreamingReasoning(data.reasoning)
+            break
+            
+          case 'STREAM_COMPLETE':
+            console.log('✅ [WORKER-MSG] Stream completed')
+            updateStreamingContent(data.content, true)
+            
+            const finalMessage: Message = {
+              type: 'assistant',
+              content: data.content,
+              reasoning: data.reasoning
+            }
+            setMessages(prev => [...prev, finalMessage])
+            setIsLoading(false)
+            setIsStreaming(false)
+            setStreamingContent('')
+            setStreamingReasoning('')
+            worker.terminate()
+            break
+            
+          case 'ERROR':
+            console.error('🚨 [WORKER-MSG] Error:', data.error)
+            const errorMessage: Message = {
+              type: 'assistant',
+              content: `Sorry, I encountered an error: ${data.error}`
+            }
+            setMessages(prev => [...prev, errorMessage])
+            setIsLoading(false)
+            setIsStreaming(false)
+            setStreamingContent('')
+            setStreamingReasoning('')
+            worker.terminate()
+            break
+        }
       }
-
-      abortControllerRef.current = new AbortController()
-
-      console.log('Sending request to market-chat function with data:', {
-        message: userMessage,
-        chatHistoryLength: messages.length,
-        userId: user?.id,
-        marketId,
-        marketQuestion
-      })
-
-      // Get auth token for direct fetch call
+      
+      worker.onerror = (error) => {
+        console.error('🚨 [WORKER] Worker error:', error)
+        setIsLoading(false)
+        setIsStreaming(false)
+        setStreamingContent('')
+        setStreamingReasoning('')
+      }
+      
+      // Start the stream in the worker
       const { data: sessionData } = await supabase.auth.getSession()
       const authToken = sessionData.session?.access_token
-
+      
       if (!authToken) {
         throw new Error("No authentication token available")
       }
-
-      // Make direct fetch call to edge function with streaming
-      const response = await fetch(
-        "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: userMessage,
-            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
-            userId: user?.id,
-            marketId,
-            marketQuestion,
-            selectedModel
-          }),
-          signal: abortControllerRef.current?.signal
-        }
-      )
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Edge function error: ${response.status} - ${errorText}`)
-      }
-
-      console.log('Got streaming response from market-chat')
       
-      // Process the streaming response
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('Failed to get response reader')
-      }
-
-      const decoder = new TextDecoder()
-      let accumulatedContent = ''
-      let accumulatedReasoning = ''
-      let lineBuffer = '' // Buffer for incomplete SSE lines
-      let chunkCounter = 0
-      let linesProcessed = 0
-      let dataLinesProcessed = 0
-      
-      console.log('🔄 [STREAM-FRONTEND] Starting stream processing')
-      
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log(`🏁 [STREAM-FRONTEND] Stream complete. Final stats:`)
-            console.log(`   - Chunks processed: ${chunkCounter}`)
-            console.log(`   - Lines processed: ${linesProcessed}`)
-            console.log(`   - Data lines processed: ${dataLinesProcessed}`)
-            console.log(`   - Final content length: ${accumulatedContent.length}`)
-            console.log(`   - Final reasoning length: ${accumulatedReasoning.length}`)
-            console.log(`   - Remaining buffer: "${lineBuffer}"`)
-            
-            // Complete the streaming with final update
-            updateStreamingContent(accumulatedContent, true)
-            setMessages(prev => [...prev, { 
-              type: 'assistant', 
-              content: accumulatedContent,
-              reasoning: accumulatedReasoning 
-            }])
-            break
+      worker.postMessage({
+        type: 'START_STREAM',
+        data: {
+          url: "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
+          options: {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: userMessage,
+              chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+              userId: user?.id,
+              marketId,
+              marketQuestion,
+              selectedModel
+            })
           }
-          
-          chunkCounter++
-          const rawChunk = decoder.decode(value, { stream: true })
-          console.log(`📦 [STREAM-FRONTEND-${chunkCounter}] Received chunk:`)
-          console.log(`   - Byte length: ${value.length}`)
-          console.log(`   - Text length: ${rawChunk.length}`)
-          console.log(`   - Current buffer length: ${lineBuffer.length}`)
-          console.log(`   - Raw chunk preview: "${rawChunk.substring(0, 200)}${rawChunk.length > 200 ? '...' : ''}"`)
-          
-          // Concatenate with any buffered incomplete line from previous chunks
-          const fullText = lineBuffer + rawChunk
-          console.log(`🔗 [STREAM-FRONTEND-${chunkCounter}] After concatenation:`)
-          console.log(`   - Full text length: ${fullText.length}`)
-          console.log(`   - Full text preview: "${fullText.substring(0, 200)}${fullText.length > 200 ? '...' : ''}"`)
-          
-          // Split into lines
-          const lines = fullText.split('\n')
-          console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Split into ${lines.length} lines`)
-          
-          // Process all complete lines (all but the last, unless it ends with \n)
-          const completeLines = fullText.endsWith('\n') ? lines : lines.slice(0, -1)
-          lineBuffer = fullText.endsWith('\n') ? '' : lines[lines.length - 1]
-          
-          console.log(`✅ [STREAM-FRONTEND-${chunkCounter}] Processing ${completeLines.length} complete lines`)
-          console.log(`💾 [STREAM-FRONTEND-${chunkCounter}] Buffering incomplete line: "${lineBuffer}"`)
-          
-          for (let i = 0; i < completeLines.length; i++) {
-            const line = completeLines[i]
-            linesProcessed++
-            
-            console.log(`📋 [STREAM-FRONTEND-${chunkCounter}] Line ${i + 1}/${completeLines.length}: "${line}"`)
-            
-            if (line.trim() && line.startsWith('data: ')) {
-              dataLinesProcessed++
-              const jsonStr = line.slice(6).trim()
-              
-              console.log(`🎯 [STREAM-FRONTEND-${chunkCounter}] Found data line #${dataLinesProcessed}:`)
-              console.log(`   - JSON string: "${jsonStr}"`)
-              
-              if (jsonStr === '[DONE]') {
-                console.log(`🏁 [STREAM-FRONTEND-${chunkCounter}] Found [DONE] marker`)
-                continue
-              }
-              
-              try {
-                const parsed = JSON.parse(jsonStr)
-                console.log(`🎨 [STREAM-FRONTEND-${chunkCounter}] Parsed JSON:`, parsed)
-                
-                const content = parsed.choices?.[0]?.delta?.content
-                const reasoning = parsed.choices?.[0]?.delta?.reasoning
-                
-                console.log(`📊 [STREAM-FRONTEND-${chunkCounter}] Extracted data:`)
-                console.log(`   - Content: "${content || 'none'}"`)
-                console.log(`   - Reasoning: "${reasoning || 'none'}"`)
-                
-                if (content) {
-                  accumulatedContent += content
-                  console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Updated content total length: ${accumulatedContent.length}`)
-                  
-                  // DOM-based streaming update for immediate display with browser yield
-                  setTimeout(() => {
-                    updateStreamingContent(accumulatedContent)
-                    console.log(`🚀 [STREAM-FRONTEND-${chunkCounter}] DOM updated directly`)
-                  }, 0)
-                }
-                
-                if (reasoning) {
-                  accumulatedReasoning += reasoning
-                  console.log(`🤔 [STREAM-FRONTEND-${chunkCounter}] Updated reasoning total length: ${accumulatedReasoning.length}`)
-                  
-                  flushSync(() => {
-                    setStreamingReasoning(accumulatedReasoning)
-                  })
-                }
-              } catch (e) {
-                console.error(`❌ [STREAM-FRONTEND-${chunkCounter}] Error parsing SSE data:`, e)
-                console.error(`   - Failed JSON string: "${jsonStr}"`)
-                console.error(`   - Error details:`, e)
-              }
-            } else if (line.trim()) {
-              console.log(`⚠️ [STREAM-FRONTEND-${chunkCounter}] Non-data line: "${line}"`)
-            }
-          }
-          
-          console.log(`📈 [STREAM-FRONTEND-${chunkCounter}] Chunk summary:`)
-          console.log(`   - Lines processed in this chunk: ${completeLines.length}`)
-          console.log(`   - Data lines found: ${completeLines.filter(l => l.startsWith('data: ')).length}`)
-          console.log(`   - Current content length: ${accumulatedContent.length}`)
-          console.log(`   - Current reasoning length: ${accumulatedReasoning.length}`)
-          console.log(`   - Buffer status: "${lineBuffer}"`)
         }
-      } catch (error: any) {
-        if (error.name !== 'AbortError') {
-          throw error
-        }
+      })
+      
+      setIsStreaming(true)
+      
+    } catch (error: any) {
+      console.error('🚨 [CHAT] Error setting up worker:', error)
+      const errorMessage: Message = {
+        type: 'assistant',
+        content: `Sorry, I encountered an error: ${error.message}`
       }
-
-      console.log('=== MarketChatbox: Chat message completed successfully ===')
-
-    } catch (error) {
-      console.error('=== MarketChatbox: Error in chat ===', error)
-      setMessages(prev => [...prev, { 
-        type: 'assistant', 
-        content: 'Sorry, I encountered an error processing your request.' 
-      }])
-    } finally {
-      console.log('Cleaning up: setting loading to false and clearing streaming content')
+      setMessages(prev => [...prev, errorMessage])
       setIsLoading(false)
+      setIsStreaming(false)
       setStreamingContent('')
       setStreamingReasoning('')
-      setIsStreaming(false)
-      abortControllerRef.current = null
     }
   }
 
