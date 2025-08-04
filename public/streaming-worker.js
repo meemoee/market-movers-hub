@@ -32,8 +32,9 @@ self.onmessage = async function(e) {
       const decoder = new TextDecoder();
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      let lineBuffer = ''; // Buffer for incomplete SSE lines
       
-      // Process each chunk as it arrives
+      // Process each chunk as it arrives - IMMEDIATELY
       while (true) {
         const { done, value } = await reader.read();
         
@@ -49,20 +50,26 @@ self.onmessage = async function(e) {
           break;
         }
 
-        const chunk = decoder.decode(value, { stream: true });
-        console.log('📦 [WORKER] Received chunk:', chunk.substring(0, 100) + '...');
+        const rawChunk = decoder.decode(value, { stream: true });
+        console.log('📦 [WORKER] Raw chunk received:', rawChunk.substring(0, 100));
         
-        // Parse the SSE format - split by lines and look for data: lines
-        const lines = chunk.split('\n');
+        // Handle incomplete SSE lines across chunks
+        const fullText = lineBuffer + rawChunk;
+        const lines = fullText.split('\n');
         
-        for (const line of lines) {
+        // Process all complete lines (all but the last, unless it ends with \n)
+        const completeLines = fullText.endsWith('\n') ? lines : lines.slice(0, -1);
+        lineBuffer = fullText.endsWith('\n') ? '' : lines[lines.length - 1];
+        
+        console.log('📝 [WORKER] Processing', completeLines.length, 'complete lines');
+        
+        for (const line of completeLines) {
           if (line.startsWith('data: ')) {
             try {
-              const jsonStr = line.slice(6);
-              if (jsonStr.trim() === '[DONE]') continue;
+              const jsonStr = line.slice(6).trim();
+              if (jsonStr === '[DONE]') continue;
               
               const parsed = JSON.parse(jsonStr);
-              console.log('🎨 [WORKER] Parsed JSON:', parsed);
               
               // Handle different response formats
               let content = null;
@@ -79,12 +86,13 @@ self.onmessage = async function(e) {
                 reasoning = parsed.reasoning;
               }
               
-              console.log('📊 [WORKER] Extracted - content:', content, 'reasoning:', reasoning);
+              console.log('📊 [WORKER] Found content:', content, 'reasoning:', reasoning);
               
               if (content) {
                 accumulatedContent += content;
+                console.log('🚀 [WORKER] Sending content chunk immediately, total length:', accumulatedContent.length);
                 
-                // Send immediate update to main thread
+                // Send IMMEDIATELY to main thread
                 self.postMessage({
                   type: 'CONTENT_CHUNK',
                   data: { 
@@ -96,6 +104,7 @@ self.onmessage = async function(e) {
               
               if (reasoning) {
                 accumulatedReasoning += reasoning;
+                console.log('🧠 [WORKER] Sending reasoning chunk immediately');
                 
                 self.postMessage({
                   type: 'REASONING_CHUNK', 
@@ -106,7 +115,7 @@ self.onmessage = async function(e) {
                 });
               }
             } catch (parseError) {
-              console.warn('🚨 [WORKER] Parse error:', parseError);
+              console.warn('🚨 [WORKER] Parse error:', parseError, 'for line:', line);
             }
           }
         }
