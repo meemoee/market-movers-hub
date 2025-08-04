@@ -39,7 +39,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const streamingContentRef = useRef<HTMLDivElement>(null)
   const { user } = useCurrentUser()
 
-  // DOM-based streaming content update
+  // DOM-based streaming content update with browser repaint forcing
   const updateStreamingContent = useCallback((content: string, isComplete: boolean = false) => {
     if (streamingContentRef.current) {
       if (isComplete) {
@@ -52,6 +52,21 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
         const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
         streamingContentRef.current.innerHTML = `<div class="text-sm whitespace-pre-wrap">${content}${cursor}</div>`
         setIsStreaming(true)
+        
+        // Force browser repaint using multiple techniques
+        // 1. Force layout/reflow by accessing offsetHeight
+        streamingContentRef.current.offsetHeight
+        
+        // 2. Trigger a CSS transform change to force repaint
+        streamingContentRef.current.style.transform = 'translateZ(0)'
+        
+        // 3. Use requestAnimationFrame to ensure paint cycle
+        requestAnimationFrame(() => {
+          if (streamingContentRef.current) {
+            // Reset transform after repaint
+            streamingContentRef.current.style.transform = ''
+          }
+        })
       }
     }
   }, [])
@@ -247,9 +262,11 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
                   accumulatedContent += content
                   console.log(`📝 [STREAM-FRONTEND-${chunkCounter}] Updated content total length: ${accumulatedContent.length}`)
                   
-                  // DOM-based streaming update for immediate display
-                  updateStreamingContent(accumulatedContent)
-                  console.log(`🚀 [STREAM-FRONTEND-${chunkCounter}] DOM updated directly`)
+                  // DOM-based streaming update for immediate display with browser yield
+                  setTimeout(() => {
+                    updateStreamingContent(accumulatedContent)
+                    console.log(`🚀 [STREAM-FRONTEND-${chunkCounter}] DOM updated directly`)
+                  }, 0)
                 }
                 
                 if (reasoning) {
