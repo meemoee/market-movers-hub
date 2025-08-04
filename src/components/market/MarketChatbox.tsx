@@ -142,7 +142,7 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
 
       console.log('Got streaming response from market-chat')
       
-      // Process the streaming response
+      // Process the streaming response immediately with detailed logging
       const reader = response.body?.getReader()
       if (!reader) {
         throw new Error('Failed to get response reader')
@@ -151,16 +151,20 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
       const decoder = new TextDecoder()
       let accumulatedContent = ''
       let accumulatedReasoning = ''
+      let buffer = ''
+      
+      console.log('Starting stream processing at:', Date.now())
       
       try {
         while (true) {
+          const startTime = Date.now()
           const { done, value } = await reader.read()
+          const readTime = Date.now() - startTime
+          
+          console.log(`[${Date.now()}] Read chunk - done: ${done}, size: ${value?.length}, readTime: ${readTime}ms`)
           
           if (done) {
             console.log('Stream complete, adding final message')
-            // Small delay before adding final message to ensure streaming is visible
-            await new Promise(resolve => setTimeout(resolve, 100))
-            
             flushSync(() => {
               setMessages(prev => [...prev, { 
                 type: 'assistant', 
@@ -172,48 +176,56 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
           }
           
           const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split('\n')
+          buffer += chunk
           
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              
-              if (jsonStr === '[DONE]') {
-                continue
-              }
-              
-              try {
-                const parsed = JSON.parse(jsonStr)
-                const content = parsed.choices?.[0]?.delta?.content
-                const reasoning = parsed.choices?.[0]?.delta?.reasoning
+          console.log(`[${Date.now()}] Processing chunk:`, chunk.substring(0, 100))
+          
+          // Process complete SSE events immediately
+          const events = buffer.split('\n\n')
+          buffer = events.pop() || '' // Keep incomplete event in buffer
+          
+          for (const event of events) {
+            if (!event.trim()) continue
+            
+            const lines = event.split('\n')
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6).trim()
                 
-                if (content) {
-                  accumulatedContent += content
-                  console.log('Streaming content chunk:', content)
+                if (jsonStr === '[DONE]') {
+                  console.log('Received DONE signal')
+                  continue
+                }
+                
+                try {
+                  const parsed = JSON.parse(jsonStr)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  const reasoning = parsed.choices?.[0]?.delta?.reasoning
                   
-                  // Force immediate render with flushSync
-                  flushSync(() => {
+                  if (content) {
+                    accumulatedContent += content
+                    console.log(`[${Date.now()}] IMMEDIATE content update:`, content.substring(0, 50))
+                    
+                    // Update state immediately without delay
                     setStreamingContent(accumulatedContent)
                     if (!hasStreamingStarted) {
                       setHasStreamingStarted(true)
                     }
-                  })
-                }
-                
-                if (reasoning) {
-                  accumulatedReasoning += reasoning
-                  console.log('Streaming reasoning chunk:', reasoning)
+                  }
                   
-                  // Force immediate render with flushSync
-                  flushSync(() => {
+                  if (reasoning) {
+                    accumulatedReasoning += reasoning
+                    console.log(`[${Date.now()}] IMMEDIATE reasoning update:`, reasoning.substring(0, 50))
+                    
+                    // Update state immediately without delay
                     setStreamingReasoning(accumulatedReasoning)
                     if (!hasStreamingStarted) {
                       setHasStreamingStarted(true)
                     }
-                  })
+                  }
+                } catch (e) {
+                  console.error('Error parsing SSE data:', e, 'Line:', line)
                 }
-              } catch (e) {
-                console.error('Error parsing SSE data:', e)
               }
             }
           }
