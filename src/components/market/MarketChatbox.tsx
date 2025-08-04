@@ -165,6 +165,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     }
   }
 
+  const handleSelectChain = (chainId: string) => {
+    setSelectedChain(chainId)
+    handleChatMessage('', chainId)
+  }
+
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
     const { data, error } = await supabase
@@ -188,8 +193,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }
 
   // Chat functionality using Web Worker
-  const handleChatMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || isLoading) return
+  const handleChatMessage = async (userMessage: string, chainId?: string) => {
+    if ((!userMessage.trim() && !chainId) || isLoading) return
     
     // TEST MODE: If message starts with "test", run test chunks
     if (userMessage.toLowerCase().startsWith('test')) {
@@ -243,7 +248,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     
     setHasStartedChat(true)
     setIsLoading(true)
-    setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    if (userMessage.trim()) {
+      setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    }
     setChatMessage('')
 
     try {
@@ -256,8 +263,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalPrompt = userMessage
       let finalModel = selectedModel
 
-      if (selectedChain) {
-        const chain = chains.find(c => c.id === selectedChain)
+      const chainToUse = chainId || selectedChain
+      if (chainToUse) {
+        const chain = chains.find(c => c.id === chainToUse)
         if (!chain) {
           throw new Error('Selected chain not found')
         }
@@ -480,7 +488,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </button>
         <span className="text-sm text-muted-foreground">Saved Chain:</span>
         {chains.length > 0 && (
-          <Select value={selectedChain} onValueChange={setSelectedChain} disabled={isLoading}>
+          <Select value={selectedChain} onValueChange={handleSelectChain} disabled={isLoading}>
             <SelectTrigger className="w-[200px] h-8 text-xs">
               <SelectValue placeholder="Select chain" />
             </SelectTrigger>
@@ -532,7 +540,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           onChange={(e) => setChatMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              handleChatMessage(chatMessage)
+              handleChatMessage(chatMessage, selectedChain)
             }
           }}
           placeholder="Ask about this market..."
@@ -540,7 +548,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         />
         <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
-          onClick={() => handleChatMessage(chatMessage)}
+          onClick={() => handleChatMessage(chatMessage, selectedChain)}
           disabled={isLoading}
         >
           <Send size={16} />
