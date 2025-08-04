@@ -1,5 +1,6 @@
 import { MessageCircle, Send, Settings } from 'lucide-react'
 import { useState, useRef, useEffect, useMemo, memo } from 'react'
+import { flushSync } from 'react-dom'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
@@ -157,11 +158,16 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
           
           if (done) {
             console.log('Stream complete, adding final message')
-            setMessages(prev => [...prev, { 
-              type: 'assistant', 
-              content: accumulatedContent,
-              reasoning: accumulatedReasoning 
-            }])
+            // Small delay before adding final message to ensure streaming is visible
+            await new Promise(resolve => setTimeout(resolve, 100))
+            
+            flushSync(() => {
+              setMessages(prev => [...prev, { 
+                type: 'assistant', 
+                content: accumulatedContent,
+                reasoning: accumulatedReasoning 
+              }])
+            })
             break
           }
           
@@ -183,23 +189,34 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
                 
                 if (content) {
                   accumulatedContent += content
+                  console.log('Streaming content chunk:', content)
                   
-                  // Immediate state updates for streaming
-                  setStreamingContent(accumulatedContent)
-                  if (!hasStreamingStarted) {
-                    setHasStreamingStarted(true)
-                  }
+                  // Force immediate render with flushSync
+                  flushSync(() => {
+                    setStreamingContent(accumulatedContent)
+                    if (!hasStreamingStarted) {
+                      setHasStreamingStarted(true)
+                    }
+                  })
+                  
+                  // Small delay to ensure smooth streaming
+                  await new Promise(resolve => setTimeout(resolve, 5))
                 }
                 
                 if (reasoning) {
                   accumulatedReasoning += reasoning
-                  console.log('REASONING:', reasoning)
+                  console.log('Streaming reasoning chunk:', reasoning)
                   
-                  // Immediate state updates for reasoning
-                  setStreamingReasoning(accumulatedReasoning)
-                  if (!hasStreamingStarted) {
-                    setHasStreamingStarted(true)
-                  }
+                  // Force immediate render with flushSync
+                  flushSync(() => {
+                    setStreamingReasoning(accumulatedReasoning)
+                    if (!hasStreamingStarted) {
+                      setHasStreamingStarted(true)
+                    }
+                  })
+                  
+                  // Small delay to ensure smooth streaming
+                  await new Promise(resolve => setTimeout(resolve, 5))
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e)
@@ -223,10 +240,15 @@ const MarketChatbox = memo(function MarketChatbox({ marketId, marketQuestion }: 
       }])
     } finally {
       console.log('Cleaning up: setting loading to false and clearing streaming content')
-      setIsLoading(false)
-      setStreamingContent('')
-      setStreamingReasoning('')
-      setHasStreamingStarted(false)
+      // Delay cleanup to ensure final render is complete
+      setTimeout(() => {
+        flushSync(() => {
+          setIsLoading(false)
+          setStreamingContent('')
+          setStreamingReasoning('')
+          setHasStreamingStarted(false)
+        })
+      }, 200)
       abortControllerRef.current = null
     }
   }
