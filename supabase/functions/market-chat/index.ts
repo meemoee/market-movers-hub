@@ -15,13 +15,14 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory, userId, marketId, marketQuestion, selectedModel } = await req.json()
-    console.log('Received market chat request:', { 
-      message, 
-      chatHistory, 
+    const { message, chatHistory, userId, marketId, marketQuestion, marketDescription, selectedModel } = await req.json()
+    console.log('Received market chat request:', {
+      message,
+      chatHistory,
       userId: userId ? 'provided' : 'not provided',
       marketId,
-      marketQuestion 
+      marketQuestion,
+      marketDescription: marketDescription ? 'provided' : 'not provided'
     })
 
     // Determine which API key to use
@@ -125,10 +126,11 @@ Current Market Data:
 - Best Bid: ${marketData.final_best_bid || 'N/A'}
 - Best Ask: ${marketData.final_best_ask || 'N/A'}
 - Tags: ${marketData.primary_tags ? marketData.primary_tags.join(', ') : 'N/A'}
-- Description: ${marketData.description ? marketData.description.substring(0, 300) + '...' : 'N/A'}
+- Description: ${(marketData.description || marketDescription) ? ( (marketData.description || marketDescription).substring(0, 300) + '...') : 'N/A'}
 - Outcomes: ${marketData.outcomes ? marketData.outcomes.join(' vs ') : 'N/A'}` : `
 Current Market Context:
 - Market Question: ${marketQuestion || 'Not specified'}
+- Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}
 - Market ID: ${marketId || 'Not specified'}`
 
     const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets. 
@@ -157,6 +159,11 @@ Keep responses conversational and accessible while maintaining analytical depth.
       stream: true,
       reasoning: {
         maxTokens: 8000
+      },
+      info: {
+        marketId,
+        marketQuestion,
+        marketDescription: marketData?.description || marketDescription || undefined
       }
     }
     console.log('OpenRouter request body:', requestBody)

@@ -184,7 +184,7 @@ export function MarketDetails({
       )}
 
       <div className="mt-6">
-        <MarketChatbox marketId={marketId} marketQuestion={question} />
+        <MarketChatbox marketId={marketId} marketQuestion={question} marketDescription={description} />
       </div>
 
       {description && (
