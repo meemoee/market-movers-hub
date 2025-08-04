@@ -15,10 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory, userId, marketId, marketQuestion, marketDescription, selectedModel } = await req.json()
+    const { message, chatHistory = [], userId, marketId, marketQuestion, marketDescription, selectedModel } = await req.json()
     console.log('Received market chat request:', {
       message,
-      chatHistory,
+      chatHistoryLength: Array.isArray(chatHistory) ? chatHistory.length : 'invalid',
       userId: userId ? 'provided' : 'not provided',
       marketId,
       marketQuestion,
@@ -173,6 +173,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
 
     console.log('Making request to OpenRouter API...')
     const fetchStart = performance.now()
+    const historyMessages = Array.isArray(chatHistory) ? chatHistory : []
     const requestBody = {
       model: selectedModel || "perplexity/sonar",
       messages: [
@@ -180,9 +181,10 @@ Keep responses conversational and accessible while maintaining analytical depth.
           role: "system",
           content: systemPrompt
         },
+        ...historyMessages,
         {
           role: "user",
-          content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
+          content: message
         }
       ],
       stream: true,

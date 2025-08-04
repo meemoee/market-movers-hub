@@ -300,7 +300,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             },
             body: JSON.stringify({
               message: userMessage,
-              chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+              chatHistory: messages.map(m => ({ role: m.type, content: m.content })),
               userId: user?.id,
               marketId,
               marketQuestion,
