@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import AgentChainDialog from './AgentChainDialog'
-import { executeAgentChain } from "@/utils/executeAgentChain"
+import { executeAgentChain, ChainConfig } from "@/utils/executeAgentChain"
 
 interface MarketChatboxProps {
   marketId: string
@@ -39,7 +39,7 @@ interface Agent {
 interface AgentChain {
   id: string
   name: string
-  config: any
+  config: ChainConfig
 }
 
 export function MarketChatbox({ marketId, marketQuestion, marketDescription }: MarketChatboxProps) {
@@ -81,12 +81,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
         
         // Force browser paint cycle
-        requestAnimationFrame(() => {
-          // Force layout/reflow to ensure immediate visual update
-          if (streamingContentRef.current) {
-            streamingContentRef.current.offsetHeight
-          }
-        })
+          requestAnimationFrame(() => {
+            // Force layout/reflow to ensure immediate visual update
+            if (streamingContentRef.current) {
+              void streamingContentRef.current.offsetHeight
+            }
+          })
       }
     }
   }, [])
@@ -165,6 +165,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     }
   }
 
+  const handleSelectChain = (chainId: string) => {
+    setSelectedChain(chainId)
+    // Immediately execute the chain to mimic regular agent behavior
+    handleChatMessage('', chainId)
+  }
+
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
     const { data, error } = await supabase
@@ -188,8 +194,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }
 
   // Chat functionality using Web Worker
-  const handleChatMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || isLoading) return
+  const handleChatMessage = async (userMessage: string, chainId?: string) => {
+    const activeChainId = chainId || selectedChain
+    if ((!userMessage.trim() && !activeChainId) || isLoading) return
     
     // TEST MODE: If message starts with "test", run test chunks
     if (userMessage.toLowerCase().startsWith('test')) {
@@ -206,29 +213,31 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         const { type, data } = e.data
         console.log('📨 [MAIN] Received worker message:', type, data)
         
-        switch (type) {
-          case 'CONTENT_CHUNK':
-            console.log('📝 [MAIN] Processing content chunk:', data.newChunk)
-            console.log('📝 [MAIN] Total accumulated:', data.content)
-            updateStreamingContent(data.content)
-            break
-            
-          case 'STREAM_COMPLETE':
-            console.log('✅ [MAIN] Test sequence completed')
-            updateStreamingContent(data.content, true)
-            
-            const finalMessage: Message = {
-              type: 'assistant',
-              content: data.content,
-              reasoning: data.reasoning
+          switch (type) {
+            case 'CONTENT_CHUNK': {
+              console.log('📝 [MAIN] Processing content chunk:', data.newChunk)
+              console.log('📝 [MAIN] Total accumulated:', data.content)
+              updateStreamingContent(data.content)
+              break
             }
-            setMessages(prev => [...prev, finalMessage])
-            setIsLoading(false)
-            setIsStreaming(false)
-            setStreamingContent('')
-            worker.terminate()
-            break
-        }
+
+            case 'STREAM_COMPLETE': {
+              console.log('✅ [MAIN] Test sequence completed')
+              updateStreamingContent(data.content, true)
+
+              const finalMessage: Message = {
+                type: 'assistant',
+                content: data.content,
+                reasoning: data.reasoning
+              }
+              setMessages(prev => [...prev, finalMessage])
+              setIsLoading(false)
+              setIsStreaming(false)
+              setStreamingContent('')
+              worker.terminate()
+              break
+            }
+          }
       }
       
       setIsStreaming(true)
@@ -243,7 +252,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     
     setHasStartedChat(true)
     setIsLoading(true)
-    setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    if (userMessage.trim()) {
+      setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    } else if (activeChainId) {
+      const chain = chains.find(c => c.id === activeChainId)
+      setMessages(prev => [...prev, { type: 'user', content: `Running chain: ${chain?.name || ''}`.trim() }])
+    }
     setChatMessage('')
 
     try {
@@ -256,8 +270,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalPrompt = userMessage
       let finalModel = selectedModel
 
-      if (selectedChain) {
-        const chain = chains.find(c => c.id === selectedChain)
+      if (activeChainId) {
+        const chain = chains.find(c => c.id === activeChainId)
         if (!chain) {
           throw new Error('Selected chain not found')
         }
@@ -285,17 +299,19 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         const { type, data } = e.data
 
         switch (type) {
-          case 'CONTENT_CHUNK':
+          case 'CONTENT_CHUNK': {
             console.log('📝 [WORKER-MSG] Received content chunk')
             updateStreamingContent(data.content)
             break
+          }
 
-          case 'REASONING_CHUNK':
+          case 'REASONING_CHUNK': {
             console.log('🧠 [WORKER-MSG] Received reasoning chunk')
             setStreamingReasoning(data.reasoning)
             break
+          }
 
-          case 'STREAM_COMPLETE':
+          case 'STREAM_COMPLETE': {
             console.log('✅ [WORKER-MSG] Stream completed')
             updateStreamingContent(data.content, true)
 
@@ -311,8 +327,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setStreamingReasoning('')
             worker.terminate()
             break
+          }
 
-          case 'ERROR':
+          case 'ERROR': {
             console.error('🚨 [WORKER-MSG] Error:', data.error)
             const errorMessage: Message = {
               type: 'assistant',
@@ -325,6 +342,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setStreamingReasoning('')
             worker.terminate()
             break
+          }
         }
       }
 
@@ -369,11 +387,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       setIsStreaming(true)
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('🚨 [CHAT] Error setting up worker:', error)
+      const err = error as Error
       const errorMessage: Message = {
         type: 'assistant',
-        content: `Sorry, I encountered an error: ${error.message}`
+        content: `Sorry, I encountered an error: ${err.message}`
       }
       setMessages(prev => [...prev, errorMessage])
       setIsLoading(false)
@@ -480,7 +499,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </button>
         <span className="text-sm text-muted-foreground">Saved Chain:</span>
         {chains.length > 0 && (
-          <Select value={selectedChain} onValueChange={setSelectedChain} disabled={isLoading}>
+          <Select value={selectedChain} onValueChange={handleSelectChain} disabled={isLoading}>
             <SelectTrigger className="w-[200px] h-8 text-xs">
               <SelectValue placeholder="Select chain" />
             </SelectTrigger>
