@@ -151,7 +151,10 @@ Keep responses conversational and accessible while maintaining analytical depth.
             content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
           }
         ],
-        stream: true
+        stream: true,
+        reasoning: {
+          maxTokens: 8000
+        }
       })
     })
 
@@ -202,14 +205,23 @@ Keep responses conversational and accessible while maintaining analytical depth.
                   console.log('Parsed data:', JSON.stringify(data).substring(0, 200))
                   
                   // Transform OpenRouter format to expected frontend format
-                  if (data.choices && data.choices[0]?.delta?.content) {
-                    const content = data.choices[0].delta.content
-                    console.log('Found content to stream:', content)
+                  if (data.choices && data.choices[0]?.delta) {
+                    const delta = data.choices[0].delta
+                    const content = delta.content
+                    const reasoning = delta.reasoning
+                    
+                    if (content) {
+                      console.log('Found content to stream:', content)
+                    }
+                    if (reasoning) {
+                      console.log('Found reasoning to stream:', reasoning)
+                    }
                     
                     const transformedData = {
                       choices: [{
                         delta: {
-                          content: content
+                          content: content,
+                          reasoning: reasoning
                         }
                       }]
                     }
@@ -223,7 +235,7 @@ Keep responses conversational and accessible while maintaining analytical depth.
                     controller.enqueue(encoder.encode(sseData))
                     console.log('Enqueued chunk successfully')
                   } else {
-                    console.log('No content found in chunk, skipping')
+                    console.log('No content or reasoning found in chunk, skipping')
                   }
                 } catch (e) {
                   console.error('Error parsing stream chunk:', e, 'Line:', line)

@@ -14,6 +14,7 @@ interface MarketChatboxProps {
 interface Message {
   type: 'user' | 'assistant'
   content?: string
+  reasoning?: string
 }
 
 interface OpenRouterModel {
@@ -28,6 +29,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [streamingReasoning, setStreamingReasoning] = useState('')
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -136,6 +138,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
 
       const decoder = new TextDecoder()
       let accumulatedContent = ''
+      let accumulatedReasoning = ''
       
       try {
         while (true) {
@@ -145,7 +148,8 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
             console.log('Stream complete, adding final message')
             setMessages(prev => [...prev, { 
               type: 'assistant', 
-              content: accumulatedContent 
+              content: accumulatedContent,
+              reasoning: accumulatedReasoning 
             }])
             break
           }
@@ -164,10 +168,20 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
               try {
                 const parsed = JSON.parse(jsonStr)
                 const content = parsed.choices?.[0]?.delta?.content
+                const reasoning = parsed.choices?.[0]?.delta?.reasoning
                 
                 if (content) {
                   accumulatedContent += content
                   setStreamingContent(accumulatedContent)
+                }
+                
+                if (reasoning) {
+                  accumulatedReasoning += reasoning
+                  setStreamingReasoning(accumulatedReasoning)
+                  console.log('REASONING:', reasoning)
+                }
+                
+                if (content || reasoning) {
                   // Yield control to allow React to re-render
                   await new Promise(resolve => setTimeout(resolve, 0))
                 }
@@ -195,6 +209,7 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       console.log('Cleaning up: setting loading to false and clearing streaming content')
       setIsLoading(false)
       setStreamingContent('')
+      setStreamingReasoning('')
       abortControllerRef.current = null
     }
   }
@@ -218,24 +233,46 @@ export function MarketChatbox({ marketId, marketQuestion }: MarketChatboxProps) 
       ) : (
         <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
           {messages.map((message, index) => (
-            <div key={index} className="bg-muted/50 p-3 rounded-lg">
-              {message.type === 'user' ? (
-                <p className="text-sm font-medium">{message.content}</p>
-              ) : (
-                <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                  {message.content || ''}
-                </ReactMarkdown>
+            <div key={index} className="space-y-2">
+              {message.reasoning && (
+                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                    {message.reasoning}
+                  </ReactMarkdown>
+                </div>
               )}
+              <div className="bg-muted/50 p-3 rounded-lg">
+                {message.type === 'user' ? (
+                  <p className="text-sm font-medium">{message.content}</p>
+                ) : (
+                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                    {message.content || ''}
+                  </ReactMarkdown>
+                )}
+              </div>
             </div>
           ))}
-          {streamingContent && (
-            <div className="bg-muted/50 p-3 rounded-lg">
-              <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                {streamingContent}
-              </ReactMarkdown>
+          {(streamingReasoning || streamingContent) && (
+            <div className="space-y-2">
+              {streamingReasoning && (
+                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                    {streamingReasoning}
+                  </ReactMarkdown>
+                </div>
+              )}
+              {streamingContent && (
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                    {streamingContent}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           )}
-          {isLoading && !streamingContent && (
+          {isLoading && !streamingContent && !streamingReasoning && (
             <div className="bg-muted/50 p-3 rounded-lg">
               <p className="text-sm text-muted-foreground">Thinking...</p>
             </div>
