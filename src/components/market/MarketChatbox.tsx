@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import AgentChainDialog from './AgentChainDialog'
+import { executeAgentChain } from "@/utils/executeAgentChain"
 
 interface MarketChatboxProps {
   marketId: string
@@ -164,6 +165,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     }
   }
 
+  const handleSelectChain = (chainId: string) => {
+    setSelectedChain(chainId)
+    handleChatMessage('', chainId)
+  }
+
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
     const { data, error } = await supabase
@@ -187,8 +193,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }
 
   // Chat functionality using Web Worker
-  const handleChatMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || isLoading) return
+  const handleChatMessage = async (userMessage: string, chainId?: string) => {
+    const activeChain = chainId || selectedChain
+    if ((!userMessage.trim() && !activeChain) || isLoading) return
     
     // TEST MODE: If message starts with "test", run test chunks
     if (userMessage.toLowerCase().startsWith('test')) {
@@ -242,34 +249,64 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     
     setHasStartedChat(true)
     setIsLoading(true)
-    setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    if (userMessage.trim()) {
+      setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    }
     setChatMessage('')
-    
+
     try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const authToken = sessionData.session?.access_token
+      if (!authToken) {
+        throw new Error("No authentication token available")
+      }
+
+      let finalPrompt = userMessage
+      let finalModel = selectedModel
+
+      if (activeChain) {
+        const chain = chains.find(c => c.id === activeChain)
+        if (!chain) {
+          throw new Error('Selected chain not found')
+        }
+        const result = await executeAgentChain(
+          chain.config,
+          agents,
+          userMessage,
+          {
+            userId: user?.id,
+            marketId,
+            marketQuestion,
+            marketDescription,
+            authToken
+          }
+        )
+        finalPrompt = result.prompt
+        finalModel = result.model
+      }
+
       console.log('📤 [CHAT] Starting web worker for streaming')
-      
-      // Create web worker
+
       const worker = new Worker('/streaming-worker.js')
-      
-      // Set up worker message handling
+
       worker.onmessage = (e) => {
         const { type, data } = e.data
-        
+
         switch (type) {
           case 'CONTENT_CHUNK':
             console.log('📝 [WORKER-MSG] Received content chunk')
             updateStreamingContent(data.content)
             break
-            
+
           case 'REASONING_CHUNK':
             console.log('🧠 [WORKER-MSG] Received reasoning chunk')
             setStreamingReasoning(data.reasoning)
             break
-            
+
           case 'STREAM_COMPLETE':
             console.log('✅ [WORKER-MSG] Stream completed')
             updateStreamingContent(data.content, true)
-            
+
             const finalMessage: Message = {
               type: 'assistant',
               content: data.content,
@@ -282,7 +319,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             setStreamingReasoning('')
             worker.terminate()
             break
-            
+
           case 'ERROR':
             console.error('🚨 [WORKER-MSG] Error:', data.error)
             const errorMessage: Message = {
@@ -298,7 +335,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             break
         }
       }
-      
+
       worker.onerror = (error) => {
         console.error('🚨 [WORKER] Worker error:', error)
         setIsLoading(false)
@@ -306,15 +343,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         setStreamingContent('')
         setStreamingReasoning('')
       }
-      
-      // Start the stream in the worker
-      const { data: sessionData } = await supabase.auth.getSession()
-      const authToken = sessionData.session?.access_token
-      
-      if (!authToken) {
-        throw new Error("No authentication token available")
-      }
-      
+
       const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
       const marketContextMessage = {
         role: 'assistant' as const,
@@ -334,20 +363,20 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              message: userMessage,
+              message: finalPrompt,
               chatHistory: chatHistoryWithContext,
               userId: user?.id,
               marketId,
               marketQuestion,
               marketDescription,
-              selectedModel
+              selectedModel: finalModel
             })
           }
         }
       })
-      
+
       setIsStreaming(true)
-      
+
     } catch (error: any) {
       console.error('🚨 [CHAT] Error setting up worker:', error)
       const errorMessage: Message = {
@@ -459,7 +488,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </button>
         <span className="text-sm text-muted-foreground">Saved Chain:</span>
         {chains.length > 0 && (
-          <Select value={selectedChain} onValueChange={setSelectedChain} disabled={isLoading}>
+          <Select value={selectedChain} onValueChange={handleSelectChain} disabled={isLoading}>
             <SelectTrigger className="w-[200px] h-8 text-xs">
               <SelectValue placeholder="Select chain" />
             </SelectTrigger>
