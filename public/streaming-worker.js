@@ -3,43 +3,7 @@
 
 self.onmessage = async function(e) {
   const { type, data } = e.data;
-  
-  if (type === 'TEST_CHUNKS') {
-    console.log('🧪 [WORKER] Starting test chunk sequence');
-    
-    // Send test chunks to verify real-time updates
-    const testChunks = ['Hello', ' there!', ' This', ' is', ' a', ' test', ' of', ' real-time', ' streaming.'];
-    
-    for (let i = 0; i < testChunks.length; i++) {
-      const chunk = testChunks[i];
-      const accumulated = testChunks.slice(0, i + 1).join('');
-      
-      console.log(`📦 [WORKER] Test chunk ${i + 1}/${testChunks.length}: "${chunk}"`);
-      console.log(`📝 [WORKER] Accumulated so far: "${accumulated}"`);
-      
-      self.postMessage({
-        type: 'CONTENT_CHUNK',
-        data: { 
-          content: accumulated,
-          newChunk: chunk
-        }
-      });
-      
-      // Wait 500ms between chunks to simulate real streaming
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    console.log('🏁 [WORKER] Test sequence complete');
-    self.postMessage({
-      type: 'STREAM_COMPLETE',
-      data: { 
-        content: testChunks.join(''),
-        reasoning: '' 
-      }
-    });
-    return;
-  }
-  
+
   if (type === 'START_STREAM') {
     const { url, options } = data;
     
