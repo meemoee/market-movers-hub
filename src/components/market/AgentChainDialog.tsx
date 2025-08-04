@@ -32,9 +32,10 @@ interface AgentChainDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   agents: Agent[]
+  onSaved?: () => void
 }
 
-export function AgentChainDialog({ open, onOpenChange, agents }: AgentChainDialogProps) {
+export function AgentChainDialog({ open, onOpenChange, agents, onSaved }: AgentChainDialogProps) {
   const { user } = useCurrentUser()
   const [chainName, setChainName] = useState('')
   const [layers, setLayers] = useState<Layer[]>([
@@ -87,6 +88,13 @@ export function AgentChainDialog({ open, onOpenChange, agents }: AgentChainDialo
     }))
   }
 
+  const getIncomingAgents = (layerIndex: number, agentIndex: number) => {
+    if (layerIndex === 0) return []
+    return layers[layerIndex - 1].agents
+      .map((agent, idx) => agent.routes?.includes(agentIndex) ? idx + 1 : null)
+      .filter((idx): idx is number => idx !== null)
+  }
+
   const reset = () => {
     setChainName('')
     setLayers([{ agents: [{ agentId: '', prompt: '', copies: 1 }] }])
@@ -107,6 +115,7 @@ export function AgentChainDialog({ open, onOpenChange, agents }: AgentChainDialo
     }
     reset()
     onOpenChange(false)
+    onSaved?.()
   }
 
   return (
@@ -133,46 +142,54 @@ export function AgentChainDialog({ open, onOpenChange, agents }: AgentChainDialo
                 )}
               </div>
 
-              {layer.agents.map((agent, agentIndex) => (
-                <div key={agentIndex} className="border p-3 rounded-md space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={agent.agentId}
-                      onValueChange={(val) => updateAgentBlock(layerIndex, agentIndex, 'agentId', val)}
-                    >
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Select agent" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {agents.map(a => (
-                          <SelectItem key={a.id} value={a.id} className="text-xs">
-                            {a.prompt.slice(0, 30)}...
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={agent.copies}
-                      onChange={(e) => updateAgentBlock(layerIndex, agentIndex, 'copies', parseInt(e.target.value))}
-                      className="w-16"
+              {layer.agents.map((agent, agentIndex) => {
+                const incoming = getIncomingAgents(layerIndex, agentIndex)
+                return (
+                  <div key={agentIndex} className="border p-3 rounded-md space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={agent.agentId}
+                        onValueChange={(val) => updateAgentBlock(layerIndex, agentIndex, 'agentId', val)}
+                      >
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue placeholder="Select agent" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {agents.map(a => (
+                            <SelectItem key={a.id} value={a.id} className="text-xs">
+                              {a.prompt.slice(0, 30)}...
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={agent.copies}
+                        onChange={(e) => updateAgentBlock(layerIndex, agentIndex, 'copies', parseInt(e.target.value))}
+                        className="w-16"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeAgentFromLayer(layerIndex, agentIndex)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {incoming.length > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Receives output from agent(s): {incoming.join(', ')}
+                      </div>
+                    )}
+                    <Textarea
+                      placeholder="Custom prompt (optional)"
+                      value={agent.prompt}
+                      onChange={(e) => updateAgentBlock(layerIndex, agentIndex, 'prompt', e.target.value)}
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeAgentFromLayer(layerIndex, agentIndex)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </div>
-                  <Textarea
-                    placeholder="Custom prompt (optional)"
-                    value={agent.prompt}
-                    onChange={(e) => updateAgentBlock(layerIndex, agentIndex, 'prompt', e.target.value)}
-                  />
-                </div>
-              ))}
+                )
+              })}
 
               <Button variant="secondary" size="sm" onClick={() => addAgentToLayer(layerIndex)}>
                 <Plus className="w-4 h-4 mr-1" /> Add agent
