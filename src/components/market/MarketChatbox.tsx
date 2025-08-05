@@ -22,6 +22,12 @@ interface Message {
   type: 'user' | 'assistant'
   content?: string
   reasoning?: string
+  /**
+   * Optional key used for DOM-based streaming. When present,
+   * the message's content will be streamed directly into a
+   * referenced DOM node rather than through React state updates.
+   */
+  streamKey?: string
 }
 
 interface OpenRouterModel {
@@ -64,6 +70,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [selectedChain, setSelectedChain] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
+  // Hold DOM refs for each agent's streaming output
+  const agentStreamingRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const agentStreamIndices = useRef<Record<string, number>>({})
   const { user } = useCurrentUser()
 
@@ -159,19 +167,52 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }, [fetchChains])
 
   const handleAgentStream = useCallback(
-    ({ agentId, layer, copy, content }: { agentId: string; layer: number; copy: number; content: string; isFinal: boolean }) => {
+    (
+      { agentId, layer, copy, content, isFinal }: { agentId: string; layer: number; copy: number; content: string; isFinal: boolean }
+    ) => {
       const key = `${layer}-${agentId}-${copy}`
-      setMessages(prev => {
-        const msgs = [...prev]
-        const idx = agentStreamIndices.current[key]
-        if (idx === undefined) {
-          agentStreamIndices.current[key] = msgs.length
-          msgs.push({ type: 'assistant', content: `Agent ${agentId}: ${content}` })
-        } else {
-          msgs[idx] = { ...msgs[idx], content: `Agent ${agentId}: ${content}` }
-        }
-        return msgs
-      })
+
+      if (agentStreamIndices.current[key] === undefined) {
+        flushSync(() => {
+          setMessages(prev => {
+            const msgs = [...prev]
+            agentStreamIndices.current[key] = msgs.length
+            msgs.push({ type: 'assistant', streamKey: key })
+            return msgs
+          })
+        })
+      }
+
+      const container = agentStreamingRefs.current[key]
+
+      if (isFinal) {
+        flushSync(() => {
+          setMessages(prev => {
+            const msgs = [...prev]
+            const idx = agentStreamIndices.current[key]
+            if (idx !== undefined) {
+              msgs[idx] = { type: 'assistant', content: `Agent ${agentId}: ${content}` }
+            }
+            return msgs
+          })
+        })
+        if (container) container.innerHTML = ''
+        delete agentStreamingRefs.current[key]
+        delete agentStreamIndices.current[key]
+        return
+      }
+
+      if (container) {
+        flushSync(() => {
+          const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
+          container.innerHTML = `<div class="text-sm whitespace-pre-wrap">Agent ${agentId}: ${content}${cursor}</div>`
+        })
+        requestAnimationFrame(() => {
+          if (agentStreamingRefs.current[key]) {
+            void agentStreamingRefs.current[key]!.offsetHeight
+          }
+        })
+      }
     },
     []
   )
@@ -482,6 +523,15 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               <div className="bg-muted/50 p-3 rounded-lg">
                 {message.type === 'user' ? (
                   <p className="text-sm font-medium">{message.content}</p>
+                ) : message.streamKey ? (
+                  <div
+                    ref={el => {
+                      if (el) {
+                        agentStreamingRefs.current[message.streamKey!] = el
+                      }
+                    }}
+                    className="min-h-[1rem]"
+                  />
                 ) : (
                   <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
                     {message.content || ''}
