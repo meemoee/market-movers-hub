@@ -92,6 +92,8 @@ async function callModel(
             content += chunk
             console.log('✂️ [callModel] Received chunk:', chunk)
             await onToken?.(chunk)
+            // Yield to the event loop so the UI can paint between chunks
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
           }
         } catch {
           // ignore parsing errors
@@ -162,6 +164,7 @@ export async function executeAgentChain(
         // subsequent chunks can visibly stream in. Without this small
         // pause, the first agent's output could be buffered and rendered
         // only after completion.
+
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
