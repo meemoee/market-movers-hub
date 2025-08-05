@@ -96,7 +96,7 @@ serve(async (req) => {
 
             if (chunkData) {
               const markets = JSON.parse(chunkData)
-              const foundMarket = markets.find((m: any) => m.market_id === marketId)
+              const foundMarket = markets.find((m) => m.market_id === marketId)
 
               if (foundMarket) {
                 marketData = foundMarket
@@ -125,7 +125,7 @@ serve(async (req) => {
             const chunkData = await redisClient.get(chunkKey)
             if (chunkData) {
               const markets = JSON.parse(chunkData)
-              const foundMarket = markets.find((m: any) => m.market_id === marketId)
+              const foundMarket = markets.find((m) => m.market_id === marketId)
               if (foundMarket) {
                 marketData = foundMarket
                 console.log('Found market data for', marketId, 'in interval', currentInterval)
@@ -186,7 +186,6 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
           content: message
         }
       ],
-      stream: true,
       reasoning: {
         maxTokens: 8000
       },
@@ -226,185 +225,26 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    console.log('Starting to process OpenRouter stream...')
-    
-    // Transform the OpenRouter stream to SSE format expected by frontend
-    const reader = openRouterResponse.body?.getReader()
-    const encoder = new TextEncoder()
-    const decoder = new TextDecoder()
+    interface OpenRouterChoice {
+      message?: { content?: string; reasoning?: string }
+    }
+    interface OpenRouterResponse {
+      choices?: OpenRouterChoice[]
+    }
+    const responseData: OpenRouterResponse = await openRouterResponse.json()
+    console.log('OpenRouter response received in', performance.now() - fetchStart)
+    const content = responseData.choices?.[0]?.message?.content || ''
+    const reasoning = responseData.choices?.[0]?.message?.reasoning || ''
 
-    console.log('Created reader and encoders')
-
-    const stream = new ReadableStream({
-      start(controller) {
-        console.log('[STREAM-DEBUG] Stream started, beginning pump function')
-
-        let edgeChunkCount = 0
-        let totalOpenRouterBytes = 0
-        let totalOutputBytes = 0
-        let lineBuffer = '' // Buffer for incomplete lines
-        let firstChunkLogged = false
-
-        function pump(): Promise<void> {
-          return reader!.read().then(({ done, value }) => {
-            if (!firstChunkLogged && value) {
-              console.log('time to first token', performance.now() - fetchStart)
-              firstChunkLogged = true
-            }
-            console.log(`[EDGE-CHUNK-${edgeChunkCount}] OpenRouter read:`, { 
-              done, 
-              chunkSize: value?.length,
-              totalBytesFromOpenRouter: totalOpenRouterBytes + (value?.length || 0),
-              bufferLength: lineBuffer.length
-            })
-            
-            if (done) {
-              console.log('[STREAM-DEBUG] OpenRouter stream done, processing final buffer')
-              // Process any remaining data in buffer
-              if (lineBuffer.trim()) {
-                console.log('[STREAM-DEBUG] Processing final buffered line:', lineBuffer.substring(0, 100))
-                const lines = [lineBuffer]
-                
-                for (const line of lines) {
-                  if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                    try {
-                      const jsonStr = line.slice(6)
-                      const data = JSON.parse(jsonStr)
-                      
-                      if (data.choices && data.choices[0]?.delta) {
-                        const delta = data.choices[0].delta
-                        const transformedData = {
-                          choices: [{
-                            delta: {
-                              content: delta.content,
-                              reasoning: delta.reasoning
-                            }
-                          }]
-                        }
-                        
-                        const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
-                        const encoded = encoder.encode(sseData)
-                        controller.enqueue(encoded)
-                        totalOutputBytes += encoded.length
-                        console.log('[STREAM-DEBUG] Sent final buffered data to frontend')
-                      }
-                    } catch (e) {
-                      console.error('[STREAM-DEBUG] Final buffer JSON parse error:', e)
-                    }
-                  }
-                }
-              }
-              
-              console.log(`[EDGE-STREAM-COMPLETE] Processed ${edgeChunkCount} chunks from OpenRouter`)
-              console.log(`[EDGE-STREAM-COMPLETE] Total bytes from OpenRouter: ${totalOpenRouterBytes}`)
-              console.log(`[EDGE-STREAM-COMPLETE] Total bytes sent to frontend: ${totalOutputBytes}`)
-              controller.close()
-              return
-            }
-
-            totalOpenRouterBytes += value?.length || 0
-            const chunk = decoder.decode(value)
-            console.log(`[STREAM-DEBUG] Raw chunk preview:`, chunk.substring(0, 200))
-            
-            // Combine with any buffered incomplete line from previous chunk
-            const fullChunk = lineBuffer + chunk
-            const lines = fullChunk.split('\n')
-            
-            // Keep the last line in buffer if it doesn't end with newline
-            // (meaning it might be incomplete)
-            if (!chunk.endsWith('\n')) {
-              lineBuffer = lines.pop() || ''
-              console.log(`[STREAM-DEBUG] Buffering incomplete line:`, lineBuffer.substring(0, 100))
-            } else {
-              lineBuffer = ''
-              console.log('[STREAM-DEBUG] No incomplete line to buffer')
-            }
-            
-            console.log(`[EDGE-CHUNK-${edgeChunkCount}] Processing ${lines.length} complete lines, buffer size: ${lineBuffer.length}`)
-
-            let processedLines = 0
-            let sentDataLines = 0
-            
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i]
-              processedLines++
-              
-              console.log(`[STREAM-DEBUG] Line ${i}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`)
-              
-              if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                try {
-                  const jsonStr = line.slice(6) // Remove 'data: ' prefix
-                  console.log(`[STREAM-DEBUG] Parsing JSON:`, jsonStr.substring(0, 200))
-                  const data = JSON.parse(jsonStr)
-                  
-                  // Transform OpenRouter format to expected frontend format
-                  if (data.choices && data.choices[0]?.delta) {
-                    const delta = data.choices[0].delta
-                    const content = delta.content
-                    const reasoning = delta.reasoning
-                    
-                    console.log(`[STREAM-DEBUG] Found delta - content: "${content}", reasoning: "${reasoning ? reasoning.substring(0, 50) : 'none'}"`)
-                    
-                    const transformedData = {
-                      choices: [{
-                        delta: {
-                          content: content,
-                          reasoning: reasoning
-                        }
-                      }]
-                    }
-                    
-                    const sseData = `data: ${JSON.stringify(transformedData)}\n\n`
-                    const encoded = encoder.encode(sseData)
-                    controller.enqueue(encoded)
-                    totalOutputBytes += encoded.length
-                    sentDataLines++
-                    console.log(`[STREAM-DEBUG] Sent data to frontend, size: ${encoded.length} bytes`)
-                  } else {
-                    console.log(`[STREAM-DEBUG] No delta found in data:`, data)
-                  }
-                } catch (e) {
-                  console.error(`[EDGE-CHUNK-${edgeChunkCount}][EDGE-LINE-${i}] JSON parse error:`, e)
-                  console.error(`[STREAM-DEBUG] Failed line:`, line)
-                }
-              } else if (line === 'data: [DONE]') {
-                const doneData = 'data: [DONE]\n\n'
-                const encoded = encoder.encode(doneData)
-                controller.enqueue(encoded)
-                totalOutputBytes += encoded.length
-                sentDataLines++
-                console.log('[STREAM-DEBUG] Sent [DONE] to frontend')
-              } else if (line.trim()) {
-                console.log(`[STREAM-DEBUG] Ignored non-data line:`, line)
-              }
-            }
-            
-            console.log(`[STREAM-DEBUG] Chunk ${edgeChunkCount} summary: processed ${processedLines} lines, sent ${sentDataLines} data chunks`)
-
-            edgeChunkCount++
-            return pump()
-          })
+    return new Response(
+      JSON.stringify({ content, reasoning }),
+      {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
-
-        // Start pumping and return the promise so the runtime
-        // keeps the function alive until streaming completes
-        console.log('[STREAM-DEBUG] Starting pump and returning promise')
-        return pump().catch(error => {
-          console.error('[STREAM-DEBUG] Pump error:', error)
-          controller.error(error)
-        })
       }
-    })
-
-    console.log('Returning transformed stream response')
-    return new Response(stream, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    })
+    )
 
   } catch (error) {
     console.error('Error in market-chat function:', error)

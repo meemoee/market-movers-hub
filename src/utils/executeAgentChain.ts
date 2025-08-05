@@ -36,8 +36,7 @@ interface ExecutionContext {
 async function callModel(
   prompt: string,
   model: string,
-  context: ExecutionContext,
-  onToken?: (chunk: string) => void | Promise<void>
+  context: ExecutionContext
 ): Promise<string> {
   console.log('🧠 [callModel] Invoking model', model)
   console.log('🧠 [callModel] Prompt:', prompt)
@@ -63,43 +62,14 @@ async function callModel(
     }
   )
 
-  if (!res.body) {
-    console.log('⚠️ [callModel] No response body received')
+  if (!res.ok) {
+    console.log('⚠️ [callModel] Request failed:', res.status)
     return ""
   }
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ""
-  let content = ""
-
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-
-    const lines = buffer.split("\n")
-    buffer = lines.pop() || ""
-
-    for (const line of lines) {
-      if (line.startsWith("data:")) {
-        const jsonStr = line.replace(/^data:\s*/, "").trim()
-        if (jsonStr === "[DONE]") continue
-        try {
-          const parsed = JSON.parse(jsonStr)
-          const chunk = parsed.choices?.[0]?.delta?.content || ""
-          if (chunk) {
-            content += chunk
-            console.log('✂️ [callModel] Received chunk:', chunk)
-            await onToken?.(chunk)
-          }
-        } catch {
-          // ignore parsing errors
-        }
-      }
-    }
-  }
-
+  type MarketChatResponse = { content?: string }
+  const data: MarketChatResponse = await res.json().catch(() => ({} as MarketChatResponse))
+  const content = data.content || ""
   console.log('✍️ [callModel] Parsed content:', content.trim())
   return content.trim()
 }
@@ -108,14 +78,7 @@ export async function executeAgentChain(
   chainConfig: ChainConfig,
   agents: Agent[],
   initialInput: string,
-  context: ExecutionContext,
-  onAgentStream?: (update: {
-    layer: number
-    agentId: string
-    copy: number
-    content: string
-    isFinal: boolean
-  }) => void | Promise<void>
+  context: ExecutionContext
 ): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
@@ -150,44 +113,13 @@ export async function executeAgentChain(
 
       for (let c = 0; c < (block.copies || 1); c++) {
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
-        let streamed = ""
-        await onAgentStream?.({
-          layer: i,
-          agentId: agent.id,
-          copy: c + 1,
-          content: "",
-          isFinal: false,
-        })
-        // Give the browser a moment to render the placeholder so that
-        // subsequent chunks can visibly stream in. Without this small
-        // pause, the first agent's output could be buffered and rendered
-        // only after completion.
-        await new Promise(resolve => setTimeout(resolve, 0))
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
           agent.model,
-          context,
-          async (chunk) => {
-            streamed += chunk
-            await onAgentStream?.({
-              layer: i,
-              agentId: agent.id,
-              copy: c + 1,
-              content: streamed,
-              isFinal: false,
-            })
-          }
+          context
         )
-        streamed = output
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         agentOutputs.push({ layer: i, agentId: agent.id, output })
-        await onAgentStream?.({
-          layer: i,
-          agentId: agent.id,
-          copy: c + 1,
-          content: output,
-          isFinal: true,
-        })
         if (block.routes && block.routes.length > 0) {
           for (const target of block.routes) {
             nextInputs[target] = [nextInputs[target], output].filter(Boolean).join("\n")
@@ -226,4 +158,3 @@ export async function executeAgentChain(
     outputs: agentOutputs,
   }
 }
-

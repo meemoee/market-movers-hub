@@ -1,6 +1,5 @@
 import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch } from 'lucide-react'
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { flushSync } from 'react-dom'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
@@ -10,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import AgentChainDialog from './AgentChainDialog'
-import { executeAgentChain, ChainConfig } from "@/utils/executeAgentChain"
+import { executeAgentChain, ChainConfig, AgentOutput } from "@/utils/executeAgentChain"
 
 interface MarketChatboxProps {
   marketId: string
@@ -22,12 +21,6 @@ interface Message {
   type: 'user' | 'assistant'
   content?: string
   reasoning?: string
-  /**
-   * Optional key used for DOM-based streaming. When present,
-   * the message's content will be streamed directly into a
-   * referenced DOM node rather than through React state updates.
-   */
-  streamKey?: string
 }
 
 interface OpenRouterModel {
@@ -53,12 +46,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
-  const [streamingReasoning, setStreamingReasoning] = useState('')
   const [selectedModel, setSelectedModel] = useState('perplexity/sonar')
   const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
-  const [isStreaming, setIsStreaming] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
@@ -68,38 +58,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
-  const abortControllerRef = useRef<AbortController | null>(null)
-  const streamingContentRef = useRef<HTMLDivElement>(null)
-  // Hold DOM refs for each agent's streaming output
-  const agentStreamingRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const agentStreamIndices = useRef<Record<string, number>>({})
   const { user } = useCurrentUser()
-
-  // DOM-based streaming content update with flushSync for immediate display
-  const updateStreamingContent = useCallback((content: string, isComplete: boolean = false) => {
-    if (streamingContentRef.current) {
-      if (isComplete) {
-        // Final update: clear DOM content and let React take over
-        streamingContentRef.current.innerHTML = ''
-        setStreamingContent(content)
-        setIsStreaming(false)
-      } else {
-        // Live update: Force immediate DOM manipulation with flushSync and paint forcing
-        flushSync(() => {
-          const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
-          streamingContentRef.current!.innerHTML = `<div class="text-sm whitespace-pre-wrap">${content}${cursor}</div>`
-        })
-        
-        // Force browser paint cycle
-          requestAnimationFrame(() => {
-            // Force layout/reflow to ensure immediate visual update
-            if (streamingContentRef.current) {
-              void streamingContentRef.current.offsetHeight
-            }
-          })
-      }
-    }
-  }, [])
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -166,65 +125,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     fetchChains()
   }, [fetchChains])
 
-  const handleAgentStream = useCallback(
-    async (
-      { agentId, layer, copy, content, isFinal }: { agentId: string; layer: number; copy: number; content: string; isFinal: boolean }
-    ) => {
-      const key = `${layer}-${agentId}-${copy}`
-
-      if (agentStreamIndices.current[key] === undefined) {
-        flushSync(() => {
-          setMessages(prev => {
-            const msgs = [...prev]
-            agentStreamIndices.current[key] = msgs.length
-            msgs.push({ type: 'assistant', streamKey: key })
-            return msgs
-          })
-        })
-      }
-
-      const waitForContainer = async () => {
-        while (!agentStreamingRefs.current[key]) {
-          await new Promise(requestAnimationFrame)
-        }
-        return agentStreamingRefs.current[key]!
-      }
-
-      if (isFinal) {
-        const container = await waitForContainer()
-        flushSync(() => {
-          setMessages(prev => {
-            const msgs = [...prev]
-            const idx = agentStreamIndices.current[key]
-            if (idx !== undefined) {
-              msgs[idx] = { type: 'assistant', content: `Agent ${agentId}: ${content}` }
-            }
-            return msgs
-          })
-        })
-        container.innerHTML = ''
-        delete agentStreamingRefs.current[key]
-        delete agentStreamIndices.current[key]
-        return
-      }
-
-      if (!content) {
-        return
-      }
-
-      const container = await waitForContainer()
-      flushSync(() => {
-        const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
-        container.innerHTML = `<div class="text-sm whitespace-pre-wrap">Agent ${agentId}: ${content}${cursor}</div>`
-      })
-      requestAnimationFrame(() => {
-        if (agentStreamingRefs.current[key]) {
-          void agentStreamingRefs.current[key]!.offsetHeight
-        }
-      })
-    },
-    []
-  )
 
   const handleSelectAgent = (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -291,59 +191,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const handleChatMessage = async (userMessage: string, chainId?: string) => {
     const activeChainId = chainId || selectedChain
     if ((!userMessage.trim() && !activeChainId) || isLoading) return
-    
-    // TEST MODE: If message starts with "test", run test chunks
-    if (userMessage.toLowerCase().startsWith('test')) {
-      setHasStartedChat(true)
-      setIsLoading(true)
-      setMessages(prev => [...prev, { type: 'user', content: userMessage }])
-      setChatMessage('')
-      
-      console.log('🧪 [CHAT] Starting TEST MODE with custom chunks')
-      
-      const worker = new Worker('/streaming-worker.js')
-      
-      worker.onmessage = (e) => {
-        const { type, data } = e.data
-        console.log('📨 [MAIN] Received worker message:', type, data)
-        
-          switch (type) {
-            case 'CONTENT_CHUNK': {
-              console.log('📝 [MAIN] Processing content chunk:', data.newChunk)
-              console.log('📝 [MAIN] Total accumulated:', data.content)
-              updateStreamingContent(data.content)
-              break
-            }
 
-            case 'STREAM_COMPLETE': {
-              console.log('✅ [MAIN] Test sequence completed')
-              updateStreamingContent(data.content, true)
-
-              const finalMessage: Message = {
-                type: 'assistant',
-                content: data.content,
-                reasoning: data.reasoning
-              }
-              setMessages(prev => [...prev, finalMessage])
-              setIsLoading(false)
-              setIsStreaming(false)
-              setStreamingContent('')
-              worker.terminate()
-              break
-            }
-          }
-      }
-      
-      setIsStreaming(true)
-      
-      worker.postMessage({
-        type: 'TEST_CHUNKS',
-        data: {}
-      })
-      
-      return
-    }
-    
     setHasStartedChat(true)
     setIsLoading(true)
     if (userMessage.trim()) {
@@ -364,6 +212,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalPrompt = userMessage
       let finalModel = selectedModel
       let finalAgentId: string | undefined
+      let agentOutputs: AgentOutput[] = []
 
       if (activeChainId) {
         const chain = chains.find(c => c.id === activeChainId)
@@ -380,76 +229,20 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             marketQuestion,
             marketDescription,
             authToken
-          },
-          handleAgentStream
+          }
         )
 
         finalAgentId = chain.config.layers.at(-1)?.agents[0]?.agentId
         finalPrompt = result.prompt
         finalModel = result.model
+        agentOutputs = result.outputs
       }
 
-      console.log('📤 [CHAT] Starting web worker for streaming')
-
-      const worker = new Worker('/streaming-worker.js')
-
-      worker.onmessage = (e) => {
-        const { type, data } = e.data
-
-        switch (type) {
-          case 'CONTENT_CHUNK': {
-            console.log('📝 [WORKER-MSG] Received content chunk')
-            updateStreamingContent(data.content)
-            break
-          }
-
-          case 'REASONING_CHUNK': {
-            console.log('🧠 [WORKER-MSG] Received reasoning chunk')
-            setStreamingReasoning(data.reasoning)
-            break
-          }
-
-          case 'STREAM_COMPLETE': {
-            console.log('✅ [WORKER-MSG] Stream completed')
-            updateStreamingContent(data.content, true)
-
-            const finalMessage: Message = {
-              type: 'assistant',
-              content: finalAgentId ? `Agent ${finalAgentId}: ${data.content}` : data.content,
-              reasoning: data.reasoning
-            }
-            setMessages(prev => [...prev, finalMessage])
-            setIsLoading(false)
-            setIsStreaming(false)
-            setStreamingContent('')
-            setStreamingReasoning('')
-            worker.terminate()
-            break
-          }
-
-          case 'ERROR': {
-            console.error('🚨 [WORKER-MSG] Error:', data.error)
-            const errorMessage: Message = {
-              type: 'assistant',
-              content: `Sorry, I encountered an error: ${data.error}`
-            }
-            setMessages(prev => [...prev, errorMessage])
-            setIsLoading(false)
-            setIsStreaming(false)
-            setStreamingContent('')
-            setStreamingReasoning('')
-            worker.terminate()
-            break
-          }
-        }
-      }
-
-      worker.onerror = (error) => {
-        console.error('🚨 [WORKER] Worker error:', error)
-        setIsLoading(false)
-        setIsStreaming(false)
-        setStreamingContent('')
-        setStreamingReasoning('')
+      if (agentOutputs.length > 0) {
+        setMessages(prev => [
+          ...prev,
+          ...agentOutputs.map(o => ({ type: 'assistant', content: `Agent ${o.agentId}: ${o.output}` }))
+        ])
       }
 
       const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
@@ -459,44 +252,36 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       }
       const chatHistoryWithContext = baseHistory.length === 0 ? [marketContextMessage] : baseHistory
 
-      worker.postMessage({
-        type: 'START_STREAM',
-        data: {
-          url: "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
-          options: {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              message: finalPrompt,
-              chatHistory: chatHistoryWithContext,
-              userId: user?.id,
-              marketId,
-              marketQuestion,
-              marketDescription,
-              selectedModel: finalModel
-            })
-          }
+      const { data, error } = await supabase.functions.invoke('market-chat', {
+        body: {
+          message: finalPrompt,
+          chatHistory: chatHistoryWithContext,
+          userId: user?.id,
+          marketId,
+          marketQuestion,
+          marketDescription,
+          selectedModel: finalModel
         }
       })
 
-      setIsStreaming(true)
+      if (error) throw error
 
+      const finalMessage: Message = {
+        type: 'assistant',
+        content: finalAgentId ? `Agent ${finalAgentId}: ${data.content}` : data.content,
+        reasoning: data.reasoning
+      }
+      setMessages(prev => [...prev, finalMessage])
     } catch (error) {
-      console.error('🚨 [CHAT] Error setting up worker:', error)
+      console.error('🚨 [CHAT] Error:', error)
       const err = error as Error
       const errorMessage: Message = {
         type: 'assistant',
         content: `Sorry, I encountered an error: ${err.message}`
       }
       setMessages(prev => [...prev, errorMessage])
+    } finally {
       setIsLoading(false)
-      setIsStreaming(false)
-      setStreamingContent('')
-      setStreamingReasoning('')
     }
   }
 
@@ -532,15 +317,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               <div className="bg-muted/50 p-3 rounded-lg">
                 {message.type === 'user' ? (
                   <p className="text-sm font-medium">{message.content}</p>
-                ) : message.streamKey ? (
-                  <div
-                    ref={el => {
-                      if (el) {
-                        agentStreamingRefs.current[message.streamKey!] = el
-                      }
-                    }}
-                    className="min-h-[1rem]"
-                  />
                 ) : (
                   <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
                     {message.content || ''}
@@ -549,31 +325,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               </div>
             </div>
           ))}
-          {(streamingReasoning || streamingContent || isStreaming) && (
-            <div className="space-y-2">
-              {streamingReasoning && (
-                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
-                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
-                    {streamingReasoning}
-                  </ReactMarkdown>
-                </div>
-              )}
-              {(streamingContent || isStreaming) && (
-                <div className="bg-muted/50 p-3 rounded-lg">
-                  {/* DOM-based streaming content or React-based final content */}
-                  {isStreaming ? (
-                    <div ref={streamingContentRef} className="min-h-[1rem]" />
-                  ) : (
-                    <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                      {streamingContent}
-                    </ReactMarkdown>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          {isLoading && !streamingContent && !streamingReasoning && (
+          {isLoading && (
             <div className="bg-muted/50 p-3 rounded-lg">
               <p className="text-sm text-muted-foreground">Thinking...</p>
             </div>
