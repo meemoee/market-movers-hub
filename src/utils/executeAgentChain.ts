@@ -37,7 +37,7 @@ async function callModel(
   prompt: string,
   model: string,
   context: ExecutionContext,
-  onToken?: (chunk: string) => void
+  onToken?: (chunk: string) => void | Promise<void>
 ): Promise<string> {
   console.log('🧠 [callModel] Invoking model', model)
   console.log('🧠 [callModel] Prompt:', prompt)
@@ -91,7 +91,7 @@ async function callModel(
           if (chunk) {
             content += chunk
             console.log('✂️ [callModel] Received chunk:', chunk)
-            onToken?.(chunk)
+            await onToken?.(chunk)
           }
         } catch {
           // ignore parsing errors
@@ -115,7 +115,7 @@ export async function executeAgentChain(
     copy: number
     content: string
     isFinal: boolean
-  }) => void
+  }) => void | Promise<void>
 ): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
@@ -151,13 +151,20 @@ export async function executeAgentChain(
       for (let c = 0; c < (block.copies || 1); c++) {
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         let streamed = ""
+        await onAgentStream?.({
+          layer: i,
+          agentId: agent.id,
+          copy: c + 1,
+          content: "",
+          isFinal: false,
+        })
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
           agent.model,
           context,
-          (chunk) => {
+          async (chunk) => {
             streamed += chunk
-            onAgentStream?.({
+            await onAgentStream?.({
               layer: i,
               agentId: agent.id,
               copy: c + 1,
@@ -169,7 +176,7 @@ export async function executeAgentChain(
         streamed = output
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         agentOutputs.push({ layer: i, agentId: agent.id, output })
-        onAgentStream?.({
+        await onAgentStream?.({
           layer: i,
           agentId: agent.id,
           copy: c + 1,
