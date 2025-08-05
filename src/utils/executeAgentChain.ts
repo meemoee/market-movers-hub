@@ -158,7 +158,7 @@ export async function executeAgentChain(
           (chunk) => {
             streamed += chunk
             onAgentStream?.({
-              layer: i + 1,
+              layer: i,
               agentId: agent.id,
               copy: c + 1,
               content: streamed,
@@ -168,9 +168,9 @@ export async function executeAgentChain(
         )
         streamed = output
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
-        agentOutputs.push({ layer: i + 1, agentId: agent.id, output })
+        agentOutputs.push({ layer: i, agentId: agent.id, output })
         onAgentStream?.({
-          layer: i + 1,
+          layer: i,
           agentId: agent.id,
           copy: c + 1,
           content: output,
