@@ -167,7 +167,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }, [fetchChains])
 
   const handleAgentStream = useCallback(
-    (
+    async (
       { agentId, layer, copy, content, isFinal }: { agentId: string; layer: number; copy: number; content: string; isFinal: boolean }
     ) => {
       const key = `${layer}-${agentId}-${copy}`
@@ -183,9 +183,15 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
       }
 
-      const container = agentStreamingRefs.current[key]
+      const waitForContainer = async () => {
+        while (!agentStreamingRefs.current[key]) {
+          await new Promise(requestAnimationFrame)
+        }
+        return agentStreamingRefs.current[key]!
+      }
 
       if (isFinal) {
+        const container = await waitForContainer()
         flushSync(() => {
           setMessages(prev => {
             const msgs = [...prev]
@@ -196,23 +202,26 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             return msgs
           })
         })
-        if (container) container.innerHTML = ''
+        container.innerHTML = ''
         delete agentStreamingRefs.current[key]
         delete agentStreamIndices.current[key]
         return
       }
 
-      if (container) {
-        flushSync(() => {
-          const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
-          container.innerHTML = `<div class="text-sm whitespace-pre-wrap">Agent ${agentId}: ${content}${cursor}</div>`
-        })
-        requestAnimationFrame(() => {
-          if (agentStreamingRefs.current[key]) {
-            void agentStreamingRefs.current[key]!.offsetHeight
-          }
-        })
+      if (!content) {
+        return
       }
+
+      const container = await waitForContainer()
+      flushSync(() => {
+        const cursor = '<span class="inline-block w-2 h-4 bg-primary ml-1 animate-pulse">|</span>'
+        container.innerHTML = `<div class="text-sm whitespace-pre-wrap">Agent ${agentId}: ${content}${cursor}</div>`
+      })
+      requestAnimationFrame(() => {
+        if (agentStreamingRefs.current[key]) {
+          void agentStreamingRefs.current[key]!.offsetHeight
+        }
+      })
     },
     []
   )
