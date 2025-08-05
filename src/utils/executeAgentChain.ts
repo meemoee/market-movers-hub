@@ -158,6 +158,11 @@ export async function executeAgentChain(
           content: "",
           isFinal: false,
         })
+        // Give the browser a moment to render the placeholder so that
+        // subsequent chunks can visibly stream in. Without this small
+        // pause, the first agent's output could be buffered and rendered
+        // only after completion.
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
           agent.model,
