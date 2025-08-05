@@ -33,7 +33,12 @@ interface ExecutionContext {
   authToken: string
 }
 
-async function callModel(prompt: string, model: string, context: ExecutionContext): Promise<string> {
+async function callModel(
+  prompt: string,
+  model: string,
+  context: ExecutionContext,
+  onToken?: (chunk: string) => void
+): Promise<string> {
   console.log('🧠 [callModel] Invoking model', model)
   console.log('🧠 [callModel] Prompt:', prompt)
   const res = await fetch(
@@ -86,6 +91,7 @@ async function callModel(prompt: string, model: string, context: ExecutionContex
           if (chunk) {
             content += chunk
             console.log('✂️ [callModel] Received chunk:', chunk)
+            onToken?.(chunk)
           }
         } catch {
           // ignore parsing errors
@@ -102,7 +108,14 @@ export async function executeAgentChain(
   chainConfig: ChainConfig,
   agents: Agent[],
   initialInput: string,
-  context: ExecutionContext
+  context: ExecutionContext,
+  onAgentStream?: (update: {
+    layer: number
+    agentId: string
+    copy: number
+    content: string
+    isFinal: boolean
+  }) => void
 ): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
@@ -137,9 +150,32 @@ export async function executeAgentChain(
 
       for (let c = 0; c < (block.copies || 1); c++) {
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
-        const output = await callModel(`${basePrompt}\n\n${input}`, agent.model, context)
+        let streamed = ""
+        const output = await callModel(
+          `${basePrompt}\n\n${input}`,
+          agent.model,
+          context,
+          (chunk) => {
+            streamed += chunk
+            onAgentStream?.({
+              layer: i + 1,
+              agentId: agent.id,
+              copy: c + 1,
+              content: streamed,
+              isFinal: false,
+            })
+          }
+        )
+        streamed = output
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         agentOutputs.push({ layer: i + 1, agentId: agent.id, output })
+        onAgentStream?.({
+          layer: i + 1,
+          agentId: agent.id,
+          copy: c + 1,
+          content: output,
+          isFinal: true,
+        })
         if (block.routes && block.routes.length > 0) {
           for (const target of block.routes) {
             nextInputs[target] = [nextInputs[target], output].filter(Boolean).join("\n")
