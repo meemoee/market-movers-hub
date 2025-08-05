@@ -64,6 +64,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [selectedChain, setSelectedChain] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingContentRef = useRef<HTMLDivElement>(null)
+  const agentStreamIndices = useRef<Record<string, number>>({})
   const { user } = useCurrentUser()
 
   // DOM-based streaming content update with flushSync for immediate display
@@ -156,6 +157,24 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   useEffect(() => {
     fetchChains()
   }, [fetchChains])
+
+  const handleAgentStream = useCallback(
+    ({ agentId, layer, copy, content }: { agentId: string; layer: number; copy: number; content: string; isFinal: boolean }) => {
+      const key = `${layer}-${agentId}-${copy}`
+      setMessages(prev => {
+        const msgs = [...prev]
+        const idx = agentStreamIndices.current[key]
+        if (idx === undefined) {
+          agentStreamIndices.current[key] = msgs.length
+          msgs.push({ type: 'assistant', content: `Agent ${agentId}: ${content}` })
+        } else {
+          msgs[idx] = { ...msgs[idx], content: `Agent ${agentId}: ${content}` }
+        }
+        return msgs
+      })
+    },
+    []
+  )
 
   const handleSelectAgent = (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -311,25 +330,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             marketQuestion,
             marketDescription,
             authToken
-          }
+          },
+          handleAgentStream
         )
 
         finalAgentId = chain.config.layers.at(-1)?.agents[0]?.agentId
-
-        if (result.outputs && result.outputs.length > 0) {
-          const finalLayerIdx = chain.config.layers.length - 1
-          // Filter out outputs from the final layer rather than by agent ID
-          // so intermediate results are preserved even if agent IDs repeat
-          const chainMessages = result.outputs
-            .filter(o => o.layer !== finalLayerIdx)
-            .map(o => ({
-              type: 'assistant' as const,
-              content: `Agent ${o.agentId}: ${o.output}`
-            }))
-          if (chainMessages.length > 0) {
-            setMessages(prev => [...prev, ...chainMessages])
-          }
-        }
         finalPrompt = result.prompt
         finalModel = result.model
       }
