@@ -25,6 +25,11 @@ export interface AgentOutput {
   output: string
 }
 
+export interface AgentStart {
+  layer: number
+  agentId: string
+}
+
 interface ExecutionContext {
   userId?: string
   marketId: string
@@ -79,7 +84,8 @@ export async function executeAgentChain(
   agents: Agent[],
   initialInput: string,
   context: ExecutionContext,
-  onAgentOutput?: (output: AgentOutput) => void
+  onAgentOutput?: (output: AgentOutput) => void,
+  onAgentStart?: (info: AgentStart) => void
 ): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
@@ -113,6 +119,7 @@ export async function executeAgentChain(
       console.log('🤖 [executeAgentChain] Routes:', block.routes)
 
       for (let c = 0; c < (block.copies || 1); c++) {
+        onAgentStart?.({ layer: i, agentId: agent.id })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
@@ -159,6 +166,7 @@ export async function executeAgentChain(
       console.log('🤖 [executeAgentChain] Input:', input)
 
       for (let c = 0; c < (block.copies || 1); c++) {
+        onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
