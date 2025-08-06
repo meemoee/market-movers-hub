@@ -259,8 +259,14 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
                     let schemaFields: string[] = []
                     if (agentObj?.json_mode && agentObj.json_schema) {
                       try {
-                        const schema = typeof agentObj.json_schema === 'string' ? JSON.parse(agentObj.json_schema) : agentObj.json_schema
-                        schemaFields = Object.keys(schema?.properties || {})
+                        const schema =
+                          typeof agentObj.json_schema === 'string'
+                            ? JSON.parse(agentObj.json_schema)
+                            : agentObj.json_schema
+                        schemaFields = Object.keys(
+                          // json_schema follows the structure { schema: { properties: { ... } } }
+                          (schema as { schema?: { properties?: Record<string, unknown> } })?.schema?.properties || {}
+                        )
                       } catch {
                         schemaFields = []
                       }
