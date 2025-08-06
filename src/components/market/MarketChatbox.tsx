@@ -24,6 +24,7 @@ interface Message {
   reasoning?: string
   agentId?: string
   layer?: number
+  isTyping?: boolean
 }
 
 interface OpenRouterModel {
@@ -202,7 +203,21 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalModel = selectedModel
       let finalAgentId: string | undefined
       let finalLayerIndex: number | undefined
-      let agentOutputs: AgentOutput[] = []
+
+      const agentPlaceholders: Message[] = []
+      const handleAgentOutput = (output: AgentOutput) => {
+        setMessages(prev => {
+          const index = prev.findIndex(
+            m => m.agentId === output.agentId && m.layer === output.layer && m.isTyping
+          )
+          if (index !== -1) {
+            const newMessages = [...prev]
+            newMessages[index] = { ...newMessages[index], content: output.output, isTyping: false }
+            return newMessages
+          }
+          return [...prev, { type: 'assistant', content: output.output, agentId: output.agentId, layer: output.layer }]
+        })
+      }
 
       if (activeChainId) {
         const chain = chains.find(c => c.id === activeChainId)
@@ -210,6 +225,27 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           throw new Error('Selected chain not found')
         }
         finalLayerIndex = chain.config.layers.length - 1
+        chain.config.layers.forEach((layer, layerIdx) => {
+          layer.agents.forEach((block, agentIdx) => {
+            const isFinalAgent = layerIdx === chain.config.layers.length - 1 && agentIdx === 0
+            if (isFinalAgent) {
+              finalAgentId = block.agentId
+              return
+            }
+            const copies = block.copies || 1
+            for (let c = 0; c < copies; c++) {
+              agentPlaceholders.push({
+                type: 'assistant',
+                agentId: block.agentId,
+                layer: layerIdx,
+                isTyping: true
+              })
+            }
+          })
+        })
+        if (agentPlaceholders.length > 0) {
+          setMessages(prev => [...prev, ...agentPlaceholders])
+        }
         const result = await executeAgentChain(
           chain.config,
           agents,
@@ -220,20 +256,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             marketQuestion,
             marketDescription,
             authToken
-          }
+          },
+          handleAgentOutput
         )
-
-        finalAgentId = chain.config.layers.at(-1)?.agents[0]?.agentId
         finalPrompt = result.prompt
         finalModel = result.model
-        agentOutputs = result.outputs
-      }
-
-      if (agentOutputs.length > 0) {
-        setMessages(prev => [
-          ...prev,
-          ...agentOutputs.map(o => ({ type: 'assistant', content: o.output, agentId: o.agentId, layer: o.layer }))
-        ])
       }
 
       const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
@@ -242,6 +269,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         content: `Current Market Context:\n- Market Question: ${marketQuestion || 'Not specified'}\n- Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}\n- Market ID: ${marketId || 'Not specified'}`
       }
       const chatHistoryWithContext = baseHistory.length === 0 ? [marketContextMessage] : baseHistory
+
+      const finalPlaceholder: Message = {
+        type: 'assistant',
+        agentId: finalAgentId,
+        layer: finalLayerIndex,
+        isTyping: true
+      }
+      setMessages(prev => [...prev, finalPlaceholder])
 
       const { data, error } = await supabase.functions.invoke('market-chat', {
         body: {
@@ -257,14 +292,24 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       if (error) throw error
 
-      const finalMessage: Message = {
-        type: 'assistant',
-        content: data.content,
-        reasoning: data.reasoning,
-        agentId: finalAgentId,
-        layer: finalLayerIndex
-      }
-      setMessages(prev => [...prev, finalMessage])
+      setMessages(prev => {
+        const index = prev.findIndex(
+          m => m.agentId === finalAgentId && m.layer === finalLayerIndex && m.isTyping
+        )
+        const newMessages = [...prev]
+        const updated: Message = {
+          type: 'assistant',
+          content: data.content,
+          reasoning: data.reasoning,
+          agentId: finalAgentId,
+          layer: finalLayerIndex
+        }
+        if (index !== -1) {
+          newMessages[index] = updated
+          return newMessages
+        }
+        return [...newMessages, updated]
+      })
     } catch (error) {
       console.error('🚨 [CHAT] Error:', error)
       const err = error as Error
@@ -319,7 +364,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                     Layer {message.layer + 1} · Agent {message.agentId}
                   </p>
                 )}
-                {message.type === 'user' ? (
+                {message.isTyping ? (
+                  <p className="text-sm text-muted-foreground">Thinking...</p>
+                ) : message.type === 'user' ? (
                   <p className="text-sm font-medium">{message.content}</p>
                 ) : (
                   <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
@@ -329,11 +376,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               </div>
             </div>
           ))}
-          {isLoading && (
-            <div className="bg-muted p-3 rounded-lg">
-              <p className="text-sm text-muted-foreground">Thinking...</p>
-            </div>
-          )}
         </div>
       )}
 
