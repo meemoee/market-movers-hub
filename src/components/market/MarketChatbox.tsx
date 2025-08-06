@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { JsonSchemaEditor, DEFAULT_JSON_SCHEMA } from "@/components/ui/json-schema-editor"
 import AgentChainDialog from './AgentChainDialog'
 import AgentChainVisualizer from './AgentChainVisualizer'
 import { executeAgentChain, ChainConfig, AgentOutput } from "@/utils/executeAgentChain"
@@ -41,7 +42,7 @@ interface Agent {
   prompt: string
   model: string
   json_mode?: boolean
-  json_schema?: any
+  json_schema?: unknown
 }
 
 interface AgentChain {
@@ -94,9 +95,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         console.error('Failed to fetch OpenRouter models:', error)
         // Set fallback models if API fails
         setAvailableModels([
-          { id: 'perplexity/sonar', name: 'Perplexity Sonar', description: 'Fast and accurate' },
-          { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'OpenAI fast model' },
-          { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', description: 'Anthropic fast model' }
+          { id: 'perplexity/sonar', name: 'Perplexity Sonar', description: 'Fast and accurate', supports_response_format: true },
+          { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'OpenAI fast model', supports_response_format: true },
+          { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', description: 'Anthropic fast model', supports_response_format: true }
         ])
       } finally {
         setModelsLoading(false)
@@ -175,7 +176,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         setSelectedModel(jsonModels[0]?.id || '')
       }
     }
-  }, [selectedAgentObj, availableModels])
+    }, [selectedAgentObj, availableModels, selectedModel])
 
   useEffect(() => {
     const models = newAgentJsonMode
@@ -184,7 +185,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (!models.some(m => m.id === newAgentModel)) {
       setNewAgentModel(models[0]?.id || '')
     }
-  }, [newAgentJsonMode, availableModels])
+    }, [newAgentJsonMode, availableModels, newAgentModel])
+
+  useEffect(() => {
+    if (newAgentJsonMode && !newAgentJsonSchema.trim()) {
+      setNewAgentJsonSchema(DEFAULT_JSON_SCHEMA)
+    }
+  }, [newAgentJsonMode, newAgentJsonSchema])
 
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
@@ -251,7 +258,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalAgentId: string | undefined = agentId
       let finalLayerIndex: number | undefined
       let finalJsonMode: boolean | undefined
-      let finalJsonSchema: any
+        let finalJsonSchema: unknown
 
       const handleAgentOutput = (output: AgentOutput) => {
         setMessages(prev => {
@@ -582,11 +589,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               <Label htmlFor="json-mode" className="text-sm">Enable JSON mode</Label>
             </div>
             {newAgentJsonMode && (
-              <Textarea
+              <JsonSchemaEditor
                 value={newAgentJsonSchema}
-                onChange={(e) => setNewAgentJsonSchema(e.target.value)}
-                placeholder="Enter JSON schema"
-                className="h-24"
+                onChange={setNewAgentJsonSchema}
               />
             )}
             <div className="space-y-2">
