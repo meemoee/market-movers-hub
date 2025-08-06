@@ -1,4 +1,4 @@
-import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch, Loader2 } from 'lucide-react'
+import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch, Loader2, Play } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
@@ -148,8 +148,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
   const handleSelectChain = (chainId: string) => {
     setSelectedChain(chainId)
-    // Immediately execute the chain to mimic regular agent behavior
-    handleChatMessage('', chainId)
   }
 
   const handleEditChain = () => {
@@ -186,7 +184,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
   // Chat functionality using Web Worker
   const handleChatMessage = async (userMessage: string, chainId?: string) => {
-    const activeChainId = chainId || selectedChain
+    const activeChainId = chainId
     if ((!userMessage.trim() && !activeChainId) || isLoading) return
 
     setHasStartedChat(true)
@@ -490,6 +488,17 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           placeholder="Ask about this market..."
           className="flex-grow p-2 bg-background border border-border rounded-lg text-sm"
         />
+        <button
+          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary disabled:opacity-50"
+          onClick={() => {
+            if (selectedChain) {
+              handleChatMessage('', selectedChain)
+            }
+          }}
+          disabled={isLoading || !selectedChain}
+        >
+          <Play size={16} />
+        </button>
         <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
           onClick={() => handleChatMessage(chatMessage)}
