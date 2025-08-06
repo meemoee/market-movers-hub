@@ -1,4 +1,4 @@
-import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch } from 'lucide-react'
+import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch, Loader2 } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
@@ -63,6 +63,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
   const { user } = useCurrentUser()
+
+  const layerStyles = [
+    { border: 'border-blue-500', text: 'text-blue-500' },
+    { border: 'border-green-500', text: 'text-green-500' },
+    { border: 'border-purple-500', text: 'text-purple-500' },
+    { border: 'border-pink-500', text: 'text-pink-500' }
+  ] as const
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -204,7 +211,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalAgentId: string | undefined
       let finalLayerIndex: number | undefined
 
-      const agentPlaceholders: Message[] = []
       const handleAgentOutput = (output: AgentOutput) => {
         setMessages(prev => {
           const index = prev.findIndex(
@@ -219,6 +225,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
       }
 
+      const handleAgentStart = ({ layer, agentId }: { layer: number; agentId: string }) => {
+        setMessages(prev => [...prev, { type: 'assistant', agentId, layer, isTyping: true }])
+      }
+
       if (activeChainId) {
         const chain = chains.find(c => c.id === activeChainId)
         if (!chain) {
@@ -230,22 +240,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             const isFinalAgent = layerIdx === chain.config.layers.length - 1 && agentIdx === 0
             if (isFinalAgent) {
               finalAgentId = block.agentId
-              return
-            }
-            const copies = block.copies || 1
-            for (let c = 0; c < copies; c++) {
-              agentPlaceholders.push({
-                type: 'assistant',
-                agentId: block.agentId,
-                layer: layerIdx,
-                isTyping: true
-              })
             }
           })
         })
-        if (agentPlaceholders.length > 0) {
-          setMessages(prev => [...prev, ...agentPlaceholders])
-        }
         const result = await executeAgentChain(
           chain.config,
           agents,
@@ -257,7 +254,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             marketDescription,
             authToken
           },
-          handleAgentOutput
+          handleAgentOutput,
+          handleAgentStart
         )
         finalPrompt = result.prompt
         finalModel = result.model
@@ -352,28 +350,39 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                   </ReactMarkdown>
                 </div>
               )}
-              <div
-                className={`p-3 rounded-lg ${
-                  message.type === 'user'
-                    ? 'bg-primary/10 border-l-4 border-primary text-primary'
-                    : 'bg-card border-l-4 border-muted text-foreground'
-                }`}
-              >
-                {message.agentId !== undefined && message.layer !== undefined && (
-                  <p className="text-xs font-medium text-primary mb-1">
-                    Layer {message.layer + 1} · Agent {message.agentId}
-                  </p>
-                )}
-                {message.isTyping ? (
-                  <p className="text-sm text-muted-foreground">Thinking...</p>
-                ) : message.type === 'user' ? (
-                  <p className="text-sm font-medium">{message.content}</p>
-                ) : (
-                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                    {message.content || ''}
-                  </ReactMarkdown>
-                )}
-              </div>
+              {(() => {
+                const style = message.layer !== undefined
+                  ? layerStyles[message.layer % layerStyles.length]
+                  : { border: 'border-muted', text: 'text-muted-foreground' }
+                return (
+                  <div
+                    className={`p-3 rounded-lg ${
+                      message.type === 'user'
+                        ? 'bg-primary/10 border-l-4 border-primary text-primary'
+                        : `bg-card border-l-4 ${style.border} text-foreground`
+                    }`}
+                  >
+                    {message.agentId !== undefined && message.layer !== undefined && (
+                      <p className={`text-xs font-medium mb-1 flex items-center ${style.text}`}>
+                        <GitBranch className="w-3 h-3 mr-1" />
+                        Layer {message.layer + 1} · Agent {message.agentId}
+                      </p>
+                    )}
+                    {message.isTyping ? (
+                      <div className="flex items-center text-sm text-muted-foreground">
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <span>Thinking...</span>
+                      </div>
+                    ) : message.type === 'user' ? (
+                      <p className="text-sm font-medium">{message.content}</p>
+                    ) : (
+                      <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                        {message.content || ''}
+                      </ReactMarkdown>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           ))}
         </div>
