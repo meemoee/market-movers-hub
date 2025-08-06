@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -39,10 +39,11 @@ export const DEFAULT_JSON_SCHEMA = JSON.stringify(
 export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
   const [schemaName, setSchemaName] = useState("response")
   const [fields, setFields] = useState<Field[]>(DEFAULT_FIELDS)
+  const lastEmitted = useRef("")
 
-  // Parse incoming value once to populate fields
+  // Parse incoming value when it originates from parent
   useEffect(() => {
-    if (!value) return
+    if (!value || value === lastEmitted.current) return
     try {
       const parsed = JSON.parse(value)
       if (parsed?.name) setSchemaName(parsed.name)
@@ -80,6 +81,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
   }, [schemaName, fields])
 
   useEffect(() => {
+    lastEmitted.current = schemaString
     onChange(schemaString)
   }, [schemaString, onChange])
 
