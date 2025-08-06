@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import AgentChainDialog from './AgentChainDialog'
+import AgentChainVisualizer from './AgentChainVisualizer'
 import { executeAgentChain, ChainConfig, AgentOutput } from "@/utils/executeAgentChain"
 
 interface MarketChatboxProps {
@@ -151,21 +152,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     }
   }
 
-  const renderChainSummary = () => {
-    const chain = chains.find(c => c.id === selectedChain)
-    if (!chain) return null
-    const getAgentLabel = (id: string) => agents.find(a => a.id === id)?.prompt.slice(0, 20) || 'Unknown'
-    return (
-      <div className="mt-2 text-xs text-muted-foreground space-y-1">
-        {chain.config.layers.map((layer, idx) => (
-          <div key={idx}>
-            <span className="font-medium">Layer {idx + 1}:</span>{' '}
-            {layer.agents.map(a => getAgentLabel(a.agentId)).join(', ')}
-          </div>
-        ))}
-      </div>
-    )
-  }
+  const selectedChainObj = chains.find(c => c.id === selectedChain)
 
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
@@ -406,7 +393,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             </button>
           )}
         </div>
-        {selectedChain && renderChainSummary()}
+        {selectedChainObj && (
+          <AgentChainVisualizer chain={selectedChainObj.config} agents={agents} />
+        )}
       </div>
 
       {/* Model Selection */}
