@@ -2,10 +2,12 @@
 import { HoverButton } from "@/components/ui/hover-button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MarketTags } from "./MarketTags";
+import { ExternalLink } from "lucide-react";
 
 interface MarketHeaderProps {
   image: string;
   question: string;
+  url?: string;
   yesSubTitle?: string;
   bestBid?: number;
   bestAsk?: number;
@@ -16,17 +18,18 @@ interface MarketHeaderProps {
   onToggleExpand: () => void;
   primaryTags?: string[];
   tagSlugs?: string[];
-  tags?: any[];
+  tags?: unknown[];
 }
 
-export function MarketHeader({ 
-  image, 
-  question, 
-  yesSubTitle, 
+export function MarketHeader({
+  image,
+  question,
+  url,
+  yesSubTitle,
   bestBid,
   bestAsk,
-  noPrice,  
-  onBuy, 
+  noPrice,
+  onBuy,
   onSell,
   outcomes = ["Yes", "No"],
   onToggleExpand,
@@ -48,23 +51,38 @@ export function MarketHeader({
           alt=""
           className={`${isMobile ? 'w-9 h-9' : 'w-12 h-12'} rounded-lg object-cover flex-shrink-0`}
         />
-        <div 
-          className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity py-1"
-          onClick={onToggleExpand}
-        >
-          <h3 className={`font-medium ${isMobile ? 'text-sm' : 'text-base'} leading-tight line-clamp-2`}>
-            {question}
-          </h3>
-          {yesSubTitle && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {yesSubTitle}
-            </p>
-          )}
+        <div className="flex-1 min-w-0 py-1">
+          <div className="flex items-start gap-2">
+            <div
+              className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={onToggleExpand}
+            >
+              <h3 className={`font-medium ${isMobile ? 'text-sm' : 'text-base'} leading-tight line-clamp-2`}>
+                {question}
+              </h3>
+              {yesSubTitle && (
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                  {yesSubTitle}
+                </p>
+              )}
+            </div>
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="mt-1 flex-shrink-0 text-muted-foreground hover:text-foreground"
+              >
+                <ExternalLink className={isMobile ? 'w-4 h-4' : 'w-5 h-5'} />
+              </a>
+            )}
+          </div>
           <div className="mt-1">
-            <MarketTags 
-              primaryTags={primaryTags} 
-              tagSlugs={tagSlugs} 
-              tags={tags} 
+            <MarketTags
+              primaryTags={primaryTags}
+              tagSlugs={tagSlugs}
+              tags={tags}
               maxTags={isMobile ? 2 : 3}
             />
           </div>
