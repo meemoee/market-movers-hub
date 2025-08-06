@@ -2,6 +2,8 @@ export interface Agent {
   id: string
   prompt: string
   model: string
+  json_mode?: boolean
+  json_schema?: unknown
 }
 
 interface AgentBlock {
@@ -41,7 +43,9 @@ interface ExecutionContext {
 async function callModel(
   prompt: string,
   model: string,
-  context: ExecutionContext
+  context: ExecutionContext,
+  json_mode?: boolean,
+  json_schema?: unknown
 ): Promise<string> {
   console.log('🧠 [callModel] Invoking model', model)
   console.log('🧠 [callModel] Prompt:', prompt)
@@ -63,6 +67,8 @@ async function callModel(
         marketQuestion: context.marketQuestion,
         marketDescription: context.marketDescription,
         selectedModel: model,
+        jsonMode: json_mode,
+        jsonSchema: json_schema,
       }),
     }
   )
@@ -124,7 +130,9 @@ export async function executeAgentChain(
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
           agent.model,
-          context
+          context,
+          agent.json_mode,
+          agent.json_schema
         )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         const agentOutput = { layer: i, agentId: agent.id, output }
@@ -171,7 +179,9 @@ export async function executeAgentChain(
         const output = await callModel(
           `${basePrompt}\n\n${input}`,
           agent.model,
-          context
+          context,
+          agent.json_mode,
+          agent.json_schema
         )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         const agentOutput = {
@@ -201,6 +211,8 @@ export async function executeAgentChain(
   return {
     prompt: `${finalPromptBase}\n\n${finalInput}`.trim(),
     model: finalAgent.model,
+    json_mode: finalAgent.json_mode,
+    json_schema: finalAgent.json_schema,
     outputs: agentOutputs,
   }
 }

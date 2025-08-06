@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import AgentChainDialog from './AgentChainDialog'
 import AgentChainVisualizer from './AgentChainVisualizer'
 import { executeAgentChain, ChainConfig, AgentOutput } from "@/utils/executeAgentChain"
@@ -31,12 +33,15 @@ interface OpenRouterModel {
   id: string
   name: string
   description?: string
+  supports_response_format?: boolean
 }
 
 interface Agent {
   id: string
   prompt: string
   model: string
+  json_mode?: boolean
+  json_schema?: any
 }
 
 interface AgentChain {
@@ -60,6 +65,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [editingChain, setEditingChain] = useState<AgentChain | null>(null)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
+  const [newAgentJsonMode, setNewAgentJsonMode] = useState(false)
+  const [newAgentJsonSchema, setNewAgentJsonSchema] = useState('')
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
   const { user } = useCurrentUser()
@@ -104,7 +111,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       if (!user?.id) return
       const { data, error } = await supabase
         .from('agents')
-        .select('id, prompt, model')
+        .select('id, prompt, model, json_mode, json_schema')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -142,7 +149,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (agent) {
       setSelectedAgent(agentId)
       setSelectedModel(agent.model)
-      handleChatMessage(agent.prompt)
+      handleChatMessage(agent.prompt, undefined, agent.id)
     }
   }
 
@@ -159,12 +166,45 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }
 
   const selectedChainObj = chains.find(c => c.id === selectedChain)
+  const selectedAgentObj = agents.find(a => a.id === selectedAgent)
+
+  useEffect(() => {
+    if (selectedAgentObj?.json_mode) {
+      const jsonModels = availableModels.filter(m => m.supports_response_format)
+      if (!jsonModels.some(m => m.id === selectedModel)) {
+        setSelectedModel(jsonModels[0]?.id || '')
+      }
+    }
+  }, [selectedAgentObj, availableModels])
+
+  useEffect(() => {
+    const models = newAgentJsonMode
+      ? availableModels.filter(m => m.supports_response_format)
+      : availableModels
+    if (!models.some(m => m.id === newAgentModel)) {
+      setNewAgentModel(models[0]?.id || '')
+    }
+  }, [newAgentJsonMode, availableModels])
 
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
+    let schemaObj = null
+    if (newAgentJsonMode && newAgentJsonSchema.trim()) {
+      try {
+        schemaObj = JSON.parse(newAgentJsonSchema)
+      } catch (e) {
+        console.error('Invalid JSON schema:', e)
+      }
+    }
     const { data, error } = await supabase
       .from('agents')
-      .insert({ user_id: user.id, prompt: newAgentPrompt, model: newAgentModel })
+      .insert({
+        user_id: user.id,
+        prompt: newAgentPrompt,
+        model: newAgentModel,
+        json_mode: newAgentJsonMode,
+        json_schema: schemaObj
+      })
       .select()
       .single()
     if (error) {
@@ -175,15 +215,17 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       setAgents(prev => [data, ...prev])
       setSelectedAgent(data.id)
       setSelectedModel(data.model)
-      handleChatMessage(data.prompt)
+      handleChatMessage(data.prompt, undefined, data.id)
     }
     setIsAgentDialogOpen(false)
     setNewAgentPrompt('')
     setNewAgentModel(selectedModel)
+    setNewAgentJsonMode(false)
+    setNewAgentJsonSchema('')
   }
 
   // Chat functionality using Web Worker
-  const handleChatMessage = async (userMessage: string, chainId?: string) => {
+  const handleChatMessage = async (userMessage: string, chainId?: string, agentId?: string) => {
     const activeChainId = chainId
     if ((!userMessage.trim() && !activeChainId) || isLoading) return
 
@@ -206,8 +248,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       let finalPrompt = userMessage
       let finalModel = selectedModel
-      let finalAgentId: string | undefined
+      let finalAgentId: string | undefined = agentId
       let finalLayerIndex: number | undefined
+      let finalJsonMode: boolean | undefined
+      let finalJsonSchema: any
 
       const handleAgentOutput = (output: AgentOutput) => {
         setMessages(prev => {
@@ -257,6 +301,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         )
         finalPrompt = result.prompt
         finalModel = result.model
+        finalJsonMode = result.json_mode
+        finalJsonSchema = result.json_schema
       }
 
       const baseHistory = messages
@@ -279,6 +325,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       }
       setMessages(prev => [...prev, finalPlaceholder])
 
+      if (!finalJsonMode && finalAgentId) {
+        const agent = agents.find(a => a.id === finalAgentId)
+        finalJsonMode = agent?.json_mode
+        finalJsonSchema = agent?.json_schema
+      }
+
       const { data, error } = await supabase.functions.invoke('market-chat', {
         body: {
           message: finalPrompt,
@@ -287,7 +339,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           marketId,
           marketQuestion,
           marketDescription,
-          selectedModel: finalModel
+          selectedModel: finalModel,
+          jsonMode: finalJsonMode,
+          jsonSchema: finalJsonSchema
         }
       })
 
@@ -461,7 +515,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             <SelectValue placeholder={modelsLoading ? "Loading..." : "Select model"} />
           </SelectTrigger>
           <SelectContent>
-            {availableModels.map((model) => (
+            {(selectedAgentObj?.json_mode
+              ? availableModels.filter(m => m.supports_response_format)
+              : availableModels
+            ).map((model) => (
               <SelectItem key={model.id} value={model.id} className="text-xs">
                 <div>
                   <div className="font-medium">{model.name}</div>
@@ -520,6 +577,18 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               placeholder="Enter agent prompt"
               className="h-24"
             />
+            <div className="flex items-center space-x-2">
+              <Switch id="json-mode" checked={newAgentJsonMode} onCheckedChange={setNewAgentJsonMode} />
+              <Label htmlFor="json-mode" className="text-sm">Enable JSON mode</Label>
+            </div>
+            {newAgentJsonMode && (
+              <Textarea
+                value={newAgentJsonSchema}
+                onChange={(e) => setNewAgentJsonSchema(e.target.value)}
+                placeholder="Enter JSON schema"
+                className="h-24"
+              />
+            )}
             <div className="space-y-2">
               <span className="text-sm text-muted-foreground">Model:</span>
               <Select value={newAgentModel} onValueChange={setNewAgentModel} disabled={modelsLoading}>
@@ -527,7 +596,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                   <SelectValue placeholder={modelsLoading ? 'Loading...' : 'Select model'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableModels.map((model) => (
+                  {(newAgentJsonMode ? availableModels.filter(m => m.supports_response_format) : availableModels).map((model) => (
                     <SelectItem key={model.id} value={model.id} className="text-xs">
                       <div>
                         <div className="font-medium">{model.name}</div>

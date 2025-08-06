@@ -141,16 +141,19 @@ serve(async (req) => {
     console.log('Filtered chat models:', chatModels.length)
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         models: chatModels.map(model => ({
           id: model.id,
           name: model.name,
           description: model.description,
           context_length: model.context_length,
-          pricing: model.pricing
+          pricing: model.pricing,
+          supports_response_format: Array.isArray(model.supported_parameters)
+            ? model.supported_parameters.includes('response_format')
+            : false
         }))
       }),
-      { 
+      {
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json'
