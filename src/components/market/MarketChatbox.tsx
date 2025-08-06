@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { JsonSchemaEditor, DEFAULT_JSON_SCHEMA } from "@/components/ui/json-schema-editor"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import AgentChainDialog from './AgentChainDialog'
 import AgentChainVisualizer from './AgentChainVisualizer'
 import { executeAgentChain, ChainConfig, AgentOutput } from "@/utils/executeAgentChain"
@@ -610,44 +611,46 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           <DialogHeader>
             <DialogTitle>Save Agent</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <Textarea
-              value={newAgentPrompt}
-              onChange={(e) => setNewAgentPrompt(e.target.value)}
-              placeholder="Enter agent prompt"
-              className="h-24"
-            />
-            <div className="flex items-center space-x-2">
-              <Switch id="json-mode" checked={newAgentJsonMode} onCheckedChange={setNewAgentJsonMode} />
-              <Label htmlFor="json-mode" className="text-sm">Enable JSON mode</Label>
-            </div>
-            {newAgentJsonMode && (
-              <JsonSchemaEditor
-                value={newAgentJsonSchema}
-                onChange={setNewAgentJsonSchema}
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-4">
+              <Textarea
+                value={newAgentPrompt}
+                onChange={(e) => setNewAgentPrompt(e.target.value)}
+                placeholder="Enter agent prompt"
+                className="h-24"
               />
-            )}
-            <div className="space-y-2">
-              <span className="text-sm text-muted-foreground">Model:</span>
-              <Select value={newAgentModel} onValueChange={setNewAgentModel} disabled={modelsLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={modelsLoading ? 'Loading...' : 'Select model'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(newAgentJsonMode ? availableModels.filter(m => m.supports_response_format) : availableModels).map((model) => (
-                    <SelectItem key={model.id} value={model.id} className="text-xs">
-                      <div>
-                        <div className="font-medium">{model.name}</div>
-                        {model.description && (
-                          <div className="text-muted-foreground text-xs">{model.description}</div>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center space-x-2">
+                <Switch id="json-mode" checked={newAgentJsonMode} onCheckedChange={setNewAgentJsonMode} />
+                <Label htmlFor="json-mode" className="text-sm">Enable JSON mode</Label>
+              </div>
+              {newAgentJsonMode && (
+                <JsonSchemaEditor
+                  value={newAgentJsonSchema}
+                  onChange={setNewAgentJsonSchema}
+                />
+              )}
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">Model:</span>
+                <Select value={newAgentModel} onValueChange={setNewAgentModel} disabled={modelsLoading}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={modelsLoading ? 'Loading...' : 'Select model'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(newAgentJsonMode ? availableModels.filter(m => m.supports_response_format) : availableModels).map((model) => (
+                      <SelectItem key={model.id} value={model.id} className="text-xs">
+                        <div>
+                          <div className="font-medium">{model.name}</div>
+                          {model.description && (
+                            <div className="text-muted-foreground text-xs">{model.description}</div>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
+          </ScrollArea>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setIsAgentDialogOpen(false)}>
               Cancel
