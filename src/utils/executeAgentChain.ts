@@ -137,8 +137,41 @@ export async function executeAgentChain(
     console.log('🔁 [executeAgentChain] Aggregated outputs for next layer:', nextInputs)
     currentInputs = nextInputs
   }
-
   const finalLayer = chainConfig.layers[chainConfig.layers.length - 1]
+
+  // execute any additional agents in the final layer (beyond the first) so their
+  // outputs are captured even though there is no subsequent layer
+  if (finalLayer.agents.length > 1) {
+    console.log('🏁 [executeAgentChain] Processing additional final layer agents')
+    for (let agentIndex = 1; agentIndex < finalLayer.agents.length; agentIndex++) {
+      const block = finalLayer.agents[agentIndex]
+      const agent = agents.find((a) => a.id === block.agentId)
+      if (!agent) continue
+
+      const basePrompt = block.prompt || agent.prompt
+      const input = currentInputs[agentIndex] || ""
+
+      console.log(`🤖 [executeAgentChain] Final layer agent ${agent.id} (copy x${block.copies || 1})`)
+      console.log('🤖 [executeAgentChain] Base prompt:', basePrompt)
+      console.log('🤖 [executeAgentChain] Input:', input)
+
+      for (let c = 0; c < (block.copies || 1); c++) {
+        console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
+        const output = await callModel(
+          `${basePrompt}\n\n${input}`,
+          agent.model,
+          context
+        )
+        console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
+        agentOutputs.push({
+          layer: chainConfig.layers.length - 1,
+          agentId: agent.id,
+          output,
+        })
+      }
+    }
+  }
+
   const finalBlock = finalLayer.agents[0]
   const finalAgent = agents.find((a) => a.id === finalBlock.agentId)
   if (!finalAgent) {
