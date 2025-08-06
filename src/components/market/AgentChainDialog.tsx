@@ -8,19 +8,14 @@ import { Card } from "@/components/ui/card"
 import { Trash2, Plus } from 'lucide-react'
 import { supabase } from "@/integrations/supabase/client"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
-import { ChainConfig } from "@/utils/executeAgentChain"
-
-interface Agent {
-  id: string
-  prompt: string
-  model: string
-}
+import { ChainConfig, Agent } from "@/utils/executeAgentChain"
 
 interface AgentBlock {
   agentId: string
   prompt: string
   copies: number
   routes: number[]
+  fieldRoutes?: Record<number, string[]>
 }
 
 interface Layer {
@@ -35,7 +30,7 @@ interface AgentChainDialogProps {
   chain?: { id: string; name: string; config: ChainConfig }
 }
 
-const initialLayer: Layer = { agents: [{ agentId: '', prompt: '', copies: 1, routes: [] }] }
+const initialLayer: Layer = { agents: [{ agentId: '', prompt: '', copies: 1, routes: [], fieldRoutes: {} }] }
 
 export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }: AgentChainDialogProps) {
   const { user } = useCurrentUser()
@@ -53,7 +48,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
   const addAgentToLayer = (layerIndex: number) => {
     setLayers(prev => prev.map((layer, i) => i === layerIndex ? {
       ...layer,
-      agents: [...layer.agents, { agentId: '', prompt: '', copies: 1, routes: [] }]
+      agents: [...layer.agents, { agentId: '', prompt: '', copies: 1, routes: [], fieldRoutes: {} }]
     } : layer))
   }
 
@@ -77,12 +72,43 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
   const handleRoutingChange = (layerIndex: number, agentIndex: number, targetIndex: number) => {
     setLayers(prev => prev.map((layer, i) => {
       if (i !== layerIndex) return layer
-      const current = layer.agents[agentIndex].routes || []
-      const exists = current.includes(targetIndex)
-      const routes = exists ? current.filter(r => r !== targetIndex) : [...current, targetIndex]
       return {
         ...layer,
-        agents: layer.agents.map((agent, j) => j === agentIndex ? { ...agent, routes } : agent)
+        agents: layer.agents.map((agent, j) => {
+          if (j !== agentIndex) return agent
+          const current = agent.routes || []
+          const exists = current.includes(targetIndex)
+          const routes = exists ? current.filter(r => r !== targetIndex) : [...current, targetIndex]
+          const fieldRoutes = { ...(agent.fieldRoutes || {}) }
+          if (exists) {
+            delete fieldRoutes[targetIndex]
+          }
+          return { ...agent, routes, fieldRoutes }
+        })
+      }
+    }))
+  }
+
+  const handleFieldRouteChange = (
+    layerIndex: number,
+    agentIndex: number,
+    targetIndex: number,
+    field: string,
+    checked: boolean
+  ) => {
+    setLayers(prev => prev.map((layer, i) => {
+      if (i !== layerIndex) return layer
+      return {
+        ...layer,
+        agents: layer.agents.map((agent, j) => {
+          if (j !== agentIndex) return agent
+          const current = agent.fieldRoutes?.[targetIndex] || []
+          const fields = checked ? [...current, field] : current.filter(f => f !== field)
+          return {
+            ...agent,
+            fieldRoutes: { ...(agent.fieldRoutes || {}), [targetIndex]: fields }
+          }
+        })
       }
     }))
   }
@@ -105,7 +131,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
         setChainName(chain.name)
         setLayers(
           chain.config.layers.map(l => ({
-            agents: l.agents.map(a => ({ ...a, routes: a.routes || [] }))
+            agents: l.agents.map(a => ({ ...a, routes: a.routes || [], fieldRoutes: a.fieldRoutes || {} }))
           })) as Layer[]
         )
       } else {
@@ -228,22 +254,54 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
 
               {layerIndex < layers.length - 1 && layers[layerIndex + 1].agents.length > 0 && (
                 <div className="pt-4 border-t space-y-2">
-                  {layer.agents.map((_, agentIdx) => (
-                    <div key={agentIdx} className="flex flex-wrap items-center gap-2 text-xs">
-                      <span>Agent {agentIdx + 1} to:</span>
-                      {layers[layerIndex + 1].agents.map((_, targetIdx) => (
-                        <label key={targetIdx} className="flex items-center gap-1">
-                          <input
-                            type="checkbox"
-                            checked={layers[layerIndex].agents[agentIdx].routes?.includes(targetIdx) || false}
-                            onChange={() => handleRoutingChange(layerIndex, agentIdx, targetIdx)}
-                            className="h-3 w-3"
-                          />
-                          Agent {targetIdx + 1}
-                        </label>
-                      ))}
-                    </div>
-                  ))}
+                  {layer.agents.map((block, agentIdx) => {
+                    const agentObj = agents.find(a => a.id === block.agentId)
+                    let schemaFields: string[] = []
+                    if (agentObj?.json_mode && agentObj.json_schema) {
+                      try {
+                        const schema = typeof agentObj.json_schema === 'string' ? JSON.parse(agentObj.json_schema) : agentObj.json_schema
+                        schemaFields = Object.keys(schema?.properties || {})
+                      } catch {
+                        schemaFields = []
+                      }
+                    }
+                    return (
+                      <div key={agentIdx} className="flex flex-wrap items-start gap-2 text-xs">
+                        <span>Agent {agentIdx + 1} to:</span>
+                        {layers[layerIndex + 1].agents.map((_, targetIdx) => {
+                          const isChecked = layers[layerIndex].agents[agentIdx].routes?.includes(targetIdx) || false
+                          return (
+                            <div key={targetIdx} className="flex flex-col gap-1">
+                              <label className="flex items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleRoutingChange(layerIndex, agentIdx, targetIdx)}
+                                  className="h-3 w-3"
+                                />
+                                Agent {targetIdx + 1}
+                              </label>
+                              {isChecked && schemaFields.length > 0 && (
+                                <div className="ml-4 flex flex-wrap gap-1">
+                                  {schemaFields.map(field => (
+                                    <label key={field} className="flex items-center gap-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={layers[layerIndex].agents[agentIdx].fieldRoutes?.[targetIdx]?.includes(field) || false}
+                                        onChange={(e) => handleFieldRouteChange(layerIndex, agentIdx, targetIdx, field, e.target.checked)}
+                                        className="h-3 w-3"
+                                      />
+                                      {field}
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </Card>
