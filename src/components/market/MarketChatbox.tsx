@@ -261,12 +261,17 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         finalModel = result.model
       }
 
-      const baseHistory = messages.map(m => ({ role: m.type, content: m.content }))
+      const baseHistory = messages
+        .filter(m => typeof m.content === 'string' && m.content.length > 0)
+        .map(m => ({ role: m.type, content: m.content! }))
+
+      // Always include market context while removing empty messages
       const marketContextMessage = {
         role: 'assistant' as const,
         content: `Current Market Context:\n- Market Question: ${marketQuestion || 'Not specified'}\n- Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}\n- Market ID: ${marketId || 'Not specified'}`
       }
-      const chatHistoryWithContext = baseHistory.length === 0 ? [marketContextMessage] : baseHistory
+
+      const chatHistoryWithContext = [marketContextMessage, ...baseHistory]
 
       const finalPlaceholder: Message = {
         type: 'assistant',
