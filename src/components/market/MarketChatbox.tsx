@@ -28,6 +28,7 @@ interface Message {
   agentId?: string
   layer?: number
   isTyping?: boolean
+  jsonMode?: boolean
 }
 
 interface OpenRouterModel {
@@ -78,6 +79,29 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     { border: 'border-purple-500', text: 'text-purple-500' },
     { border: 'border-pink-500', text: 'text-pink-500' }
   ] as const
+
+  const formatKey = (key: string) =>
+    key
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+
+  const renderJsonContent = (content?: string) => {
+    if (!content) return null
+    try {
+      const data = JSON.parse(content)
+      if (typeof data === 'object' && data !== null) {
+        return Object.entries(data).map(([key, value]) => (
+          <p key={key}>
+            <span className="font-medium">{formatKey(key)}:</span>{' '}
+            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+          </p>
+        ))
+      }
+    } catch {
+      return <pre className="text-sm">{content}</pre>
+    }
+    return null
+  }
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -261,21 +285,24 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         let finalJsonSchema: unknown
 
       const handleAgentOutput = (output: AgentOutput) => {
+        const agent = agents.find(a => a.id === output.agentId)
+        const isJson = agent?.json_mode
         setMessages(prev => {
           const index = prev.findIndex(
             m => m.agentId === output.agentId && m.layer === output.layer && m.isTyping
           )
           if (index !== -1) {
             const newMessages = [...prev]
-            newMessages[index] = { ...newMessages[index], content: output.output, isTyping: false }
+            newMessages[index] = { ...newMessages[index], content: output.output, isTyping: false, jsonMode: isJson }
             return newMessages
           }
-          return [...prev, { type: 'assistant', content: output.output, agentId: output.agentId, layer: output.layer }]
+          return [...prev, { type: 'assistant', content: output.output, agentId: output.agentId, layer: output.layer, jsonMode: isJson }]
         })
       }
 
       const handleAgentStart = ({ layer, agentId }: { layer: number; agentId: string }) => {
-        setMessages(prev => [...prev, { type: 'assistant', agentId, layer, isTyping: true }])
+        const agent = agents.find(a => a.id === agentId)
+        setMessages(prev => [...prev, { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode }])
       }
 
       if (activeChainId) {
@@ -328,7 +355,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         type: 'assistant',
         agentId: finalAgentId,
         layer: finalLayerIndex,
-        isTyping: true
+        isTyping: true,
+        jsonMode: finalJsonMode
       }
       setMessages(prev => [...prev, finalPlaceholder])
 
@@ -364,7 +392,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           content: data.content,
           reasoning: data.reasoning,
           agentId: finalAgentId,
-          layer: finalLayerIndex
+          layer: finalLayerIndex,
+          jsonMode: finalJsonMode
         }
         if (index !== -1) {
           newMessages[index] = updated
@@ -439,6 +468,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                       </div>
                     ) : message.type === 'user' ? (
                       <p className="text-sm font-medium">{message.content}</p>
+                    ) : message.jsonMode ? (
+                      <div className="text-sm space-y-1">
+                        {renderJsonContent(message.content)}
+                      </div>
                     ) : (
                       <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
                         {message.content || ''}
