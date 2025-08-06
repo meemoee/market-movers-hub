@@ -21,6 +21,8 @@ interface Message {
   type: 'user' | 'assistant'
   content?: string
   reasoning?: string
+  agentId?: string
+  layer?: number
 }
 
 interface OpenRouterModel {
@@ -212,6 +214,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalPrompt = userMessage
       let finalModel = selectedModel
       let finalAgentId: string | undefined
+      let finalLayerIndex: number | undefined
       let agentOutputs: AgentOutput[] = []
 
       if (activeChainId) {
@@ -219,6 +222,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         if (!chain) {
           throw new Error('Selected chain not found')
         }
+        finalLayerIndex = chain.config.layers.length - 1
         const result = await executeAgentChain(
           chain.config,
           agents,
@@ -241,7 +245,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       if (agentOutputs.length > 0) {
         setMessages(prev => [
           ...prev,
-          ...agentOutputs.map(o => ({ type: 'assistant', content: `Agent ${o.agentId}: ${o.output}` }))
+          ...agentOutputs.map(o => ({ type: 'assistant', content: o.output, agentId: o.agentId, layer: o.layer }))
         ])
       }
 
@@ -268,8 +272,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       const finalMessage: Message = {
         type: 'assistant',
-        content: finalAgentId ? `Agent ${finalAgentId}: ${data.content}` : data.content,
-        reasoning: data.reasoning
+        content: data.content,
+        reasoning: data.reasoning,
+        agentId: finalAgentId,
+        layer: finalLayerIndex
       }
       setMessages(prev => [...prev, finalMessage])
     } catch (error) {
@@ -314,7 +320,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                   </ReactMarkdown>
                 </div>
               )}
-              <div className="bg-muted/50 p-3 rounded-lg">
+              <div
+                className={`p-3 rounded-lg ${message.agentId ? 'bg-blue-50 border-l-4 border-blue-400' : 'bg-muted/50'}`}
+              >
+                {message.agentId !== undefined && message.layer !== undefined && (
+                  <p className="text-xs font-medium text-blue-800 mb-1">
+                    Layer {message.layer + 1} · Agent {message.agentId}
+                  </p>
+                )}
                 {message.type === 'user' ? (
                   <p className="text-sm font-medium">{message.content}</p>
                 ) : (
