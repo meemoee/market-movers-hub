@@ -1,5 +1,5 @@
 import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch } from 'lucide-react'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Card } from "@/components/ui/card"
@@ -35,7 +35,6 @@ interface Agent {
   id: string
   prompt: string
   model: string
-  name?: string
 }
 
 interface AgentChain {
@@ -62,15 +61,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
   const { user } = useCurrentUser()
-
-  const agentLabels = useMemo(() => {
-    const labels: Record<string, string> = {}
-    agents.forEach(agent => {
-      const label = agent.name?.trim() || agent.prompt.split(/\s+/).slice(0, 3).join(' ')
-      labels[agent.id] = label
-    })
-    return labels
-  }, [agents])
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -105,7 +95,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       if (!user?.id) return
       const { data, error } = await supabase
         .from('agents')
-        .select('id, prompt, model, name')
+        .select('id, prompt, model')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -164,12 +154,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const renderChainSummary = () => {
     const chain = chains.find(c => c.id === selectedChain)
     if (!chain) return null
+    const getAgentLabel = (id: string) => agents.find(a => a.id === id)?.prompt.slice(0, 20) || 'Unknown'
     return (
       <div className="mt-2 text-xs text-muted-foreground space-y-1">
         {chain.config.layers.map((layer, idx) => (
           <div key={idx}>
             <span className="font-medium">Layer {idx + 1}:</span>{' '}
-            {layer.agents.map(a => agentLabels[a.agentId] || `Agent ${a.agentId}`).join(', ')}
+            {layer.agents.map(a => getAgentLabel(a.agentId)).join(', ')}
           </div>
         ))}
       </div>
@@ -338,7 +329,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               >
                 {message.agentId !== undefined && message.layer !== undefined && (
                   <p className="text-xs font-medium text-primary mb-1">
-                    Layer {message.layer + 1} · {agentLabels[message.agentId] || `Agent ${message.agentId}`}
+                    Layer {message.layer + 1} · Agent {message.agentId}
                   </p>
                 )}
                 {message.type === 'user' ? (
