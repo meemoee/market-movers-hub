@@ -11,7 +11,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { JsonSchemaEditor, DEFAULT_JSON_SCHEMA } from "@/components/ui/json-schema-editor"
-// Removed agent chain functionality for security
+import AgentChainDialog from './AgentChainDialog'
+import AgentChainVisualizer from './AgentChainVisualizer'
+import { executeAgentChain, ChainConfig, AgentOutput } from "@/utils/executeAgentChain"
 
 interface MarketChatboxProps {
   marketId: string
@@ -44,6 +46,12 @@ interface Agent {
   json_schema?: unknown
 }
 
+interface AgentChain {
+  id: string
+  name: string
+  config: ChainConfig
+}
+
 export function MarketChatbox({ marketId, marketQuestion, marketDescription }: MarketChatboxProps) {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -55,10 +63,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [agents, setAgents] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
+  const [isChainDialogOpen, setIsChainDialogOpen] = useState(false)
+  const [editingChain, setEditingChain] = useState<AgentChain | null>(null)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const [newAgentJsonMode, setNewAgentJsonMode] = useState(false)
   const [newAgentJsonSchema, setNewAgentJsonSchema] = useState('')
+  const [chains, setChains] = useState<AgentChain[]>([])
+  const [selectedChain, setSelectedChain] = useState('')
   const { user } = useCurrentUser()
 
   const layerStyles = [
@@ -122,12 +134,39 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   useEffect(() => {
     const fetchAgents = async () => {
       if (!user?.id) return
-      // Mock agents data since agents table doesn't exist
-      setAgents([])
+      const { data, error } = await supabase
+        .from('agents')
+        .select('id, prompt, model, json_mode, json_schema')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Failed to fetch agents:', error)
+        return
+      }
+      setAgents(data || [])
     }
 
     fetchAgents()
   }, [user?.id])
+
+  const fetchChains = useCallback(async () => {
+    if (!user?.id) return
+    const { data, error } = await supabase
+      .from('agent_chains')
+      .select('id, name, config')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('Failed to fetch agent chains:', error)
+      return
+    }
+    setChains(data || [])
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchChains()
+  }, [fetchChains])
 
 
   const handleSelectAgent = (agentId: string) => {
@@ -135,10 +174,23 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (agent) {
       setSelectedAgent(agentId)
       setSelectedModel(agent.model)
-      handleChatMessage(agent.prompt, agent.id)
+      handleChatMessage(agent.prompt, undefined, agent.id)
     }
   }
 
+  const handleSelectChain = (chainId: string) => {
+    setSelectedChain(chainId)
+  }
+
+  const handleEditChain = () => {
+    const chain = chains.find(c => c.id === selectedChain)
+    if (chain) {
+      setEditingChain(chain)
+      setIsChainDialogOpen(true)
+    }
+  }
+
+  const selectedChainObj = chains.find(c => c.id === selectedChain)
   const selectedAgentObj = agents.find(a => a.id === selectedAgent)
 
   useEffect(() => {
@@ -166,7 +218,36 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }, [newAgentJsonMode, newAgentJsonSchema])
 
   const saveAgent = async () => {
-    // Disabled since agents table doesn't exist
+    if (!newAgentPrompt.trim() || !user?.id) return
+    let schemaObj = null
+    if (newAgentJsonMode && newAgentJsonSchema.trim()) {
+      try {
+        schemaObj = JSON.parse(newAgentJsonSchema)
+      } catch (e) {
+        console.error('Invalid JSON schema:', e)
+      }
+    }
+    const { data, error } = await supabase
+      .from('agents')
+      .insert({
+        user_id: user.id,
+        prompt: newAgentPrompt,
+        model: newAgentModel,
+        json_mode: newAgentJsonMode,
+        json_schema: schemaObj
+      })
+      .select()
+      .single()
+    if (error) {
+      console.error('Failed to save agent:', error)
+      return
+    }
+    if (data) {
+      setAgents(prev => [data, ...prev])
+      setSelectedAgent(data.id)
+      setSelectedModel(data.model)
+      handleChatMessage(data.prompt, undefined, data.id)
+    }
     setIsAgentDialogOpen(false)
     setNewAgentPrompt('')
     setNewAgentModel(selectedModel)
@@ -174,16 +255,90 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setNewAgentJsonSchema('')
   }
 
-  // Chat functionality 
-  const handleChatMessage = async (userMessage: string, agentId?: string) => {
-    if (!userMessage.trim() || isLoading) return
+  // Chat functionality using Web Worker
+  const handleChatMessage = async (userMessage: string, chainId?: string, agentId?: string) => {
+    const activeChainId = chainId
+    if ((!userMessage.trim() && !activeChainId) || isLoading) return
 
     setHasStartedChat(true)
     setIsLoading(true)
-    setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    if (userMessage.trim()) {
+      setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    } else if (activeChainId) {
+      const chain = chains.find(c => c.id === activeChainId)
+      setMessages(prev => [...prev, { type: 'user', content: `Running chain: ${chain?.name || ''}`.trim() }])
+    }
     setChatMessage('')
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const authToken = sessionData.session?.access_token
+      if (!authToken) {
+        throw new Error("No authentication token available")
+      }
+
+      let finalPrompt = userMessage
+      let finalModel = selectedModel
+      let finalAgentId: string | undefined = agentId
+      let finalLayerIndex: number | undefined
+      let finalJsonMode: boolean | undefined
+        let finalJsonSchema: unknown
+
+      const handleAgentOutput = (output: AgentOutput) => {
+        const agent = agents.find(a => a.id === output.agentId)
+        const isJson = agent?.json_mode
+        setMessages(prev => {
+          const index = prev.findIndex(
+            m => m.agentId === output.agentId && m.layer === output.layer && m.isTyping
+          )
+          if (index !== -1) {
+            const newMessages = [...prev]
+            newMessages[index] = { ...newMessages[index], content: output.output, isTyping: false, jsonMode: isJson }
+            return newMessages
+          }
+          return [...prev, { type: 'assistant', content: output.output, agentId: output.agentId, layer: output.layer, jsonMode: isJson }]
+        })
+      }
+
+      const handleAgentStart = ({ layer, agentId }: { layer: number; agentId: string }) => {
+        const agent = agents.find(a => a.id === agentId)
+        setMessages(prev => [...prev, { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode }])
+      }
+
+      if (activeChainId) {
+        const chain = chains.find(c => c.id === activeChainId)
+        if (!chain) {
+          throw new Error('Selected chain not found')
+        }
+        finalLayerIndex = chain.config.layers.length - 1
+        chain.config.layers.forEach((layer, layerIdx) => {
+          layer.agents.forEach((block, agentIdx) => {
+            const isFinalAgent = layerIdx === chain.config.layers.length - 1 && agentIdx === 0
+            if (isFinalAgent) {
+              finalAgentId = block.agentId
+            }
+          })
+        })
+        const result = await executeAgentChain(
+          chain.config,
+          agents,
+          userMessage,
+          {
+            userId: user?.id,
+            marketId,
+            marketQuestion,
+            marketDescription,
+            authToken
+          },
+          handleAgentOutput,
+          handleAgentStart
+        )
+        finalPrompt = result.prompt
+        finalModel = result.model
+        finalJsonMode = result.json_mode
+        finalJsonSchema = result.json_schema
+      }
+
       const baseHistory = messages
         .filter(m => typeof m.content === 'string' && m.content.length > 0)
         .map(m => ({ role: m.type, content: m.content! }))
@@ -198,33 +353,53 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       const finalPlaceholder: Message = {
         type: 'assistant',
-        isTyping: true
+        agentId: finalAgentId,
+        layer: finalLayerIndex,
+        isTyping: true,
+        jsonMode: finalJsonMode
       }
       setMessages(prev => [...prev, finalPlaceholder])
 
+      if (!finalJsonMode && finalAgentId) {
+        const agent = agents.find(a => a.id === finalAgentId)
+        finalJsonMode = agent?.json_mode
+        finalJsonSchema = agent?.json_schema
+      }
+
       const { data, error } = await supabase.functions.invoke('market-chat', {
         body: {
-          message: userMessage,
+          message: finalPrompt,
           chatHistory: chatHistoryWithContext,
           userId: user?.id,
           marketId,
           marketQuestion,
           marketDescription,
-          selectedModel
+          selectedModel: finalModel,
+          jsonMode: finalJsonMode,
+          jsonSchema: finalJsonSchema
         }
       })
 
       if (error) throw error
 
       setMessages(prev => {
+        const index = prev.findIndex(
+          m => m.agentId === finalAgentId && m.layer === finalLayerIndex && m.isTyping
+        )
         const newMessages = [...prev]
         const updated: Message = {
           type: 'assistant',
           content: data.content,
-          reasoning: data.reasoning
+          reasoning: data.reasoning,
+          agentId: finalAgentId,
+          layer: finalLayerIndex,
+          jsonMode: finalJsonMode
         }
-        newMessages[newMessages.length - 1] = updated
-        return newMessages
+        if (index !== -1) {
+          newMessages[index] = updated
+          return newMessages
+        }
+        return [...newMessages, updated]
       })
     } catch (error) {
       console.error('🚨 [CHAT] Error:', error)
@@ -334,7 +509,41 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           >
             <BookmarkPlus size={16} />
           </button>
+          <span className="text-sm text-muted-foreground">Saved Chain:</span>
+          {chains.length > 0 && (
+            <Select value={selectedChain} onValueChange={handleSelectChain} disabled={isLoading}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Select chain" />
+              </SelectTrigger>
+              <SelectContent>
+                {chains.map((chain) => (
+                  <SelectItem key={chain.id} value={chain.id} className="text-xs">
+                    {chain.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <button
+            className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+            onClick={() => { setEditingChain(null); setIsChainDialogOpen(true) }}
+            disabled={isLoading}
+          >
+            <GitBranchPlus size={16} />
+          </button>
+          {selectedChain && (
+            <button
+              className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+              onClick={handleEditChain}
+              disabled={isLoading}
+            >
+              <GitBranch size={16} />
+            </button>
+          )}
         </div>
+        {selectedChainObj && (
+          <AgentChainVisualizer chain={selectedChainObj.config} agents={agents} />
+        )}
       </div>
 
       {/* Model Selection */}
@@ -376,6 +585,17 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           placeholder="Ask about this market..."
           className="flex-grow p-2 bg-background border border-border rounded-lg text-sm"
         />
+        <button
+          className="p-2 hover:bg-accent rounded-lg transition-colors text-primary disabled:opacity-50"
+          onClick={() => {
+            if (selectedChain) {
+              handleChatMessage('', selectedChain)
+            }
+          }}
+          disabled={isLoading || !selectedChain}
+        >
+          <Play size={16} />
+        </button>
         <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
           onClick={() => handleChatMessage(chatMessage)}
@@ -438,6 +658,16 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AgentChainDialog
+        open={isChainDialogOpen}
+        onOpenChange={(open) => {
+          setIsChainDialogOpen(open)
+          if (!open) setEditingChain(null)
+        }}
+        agents={agents}
+        onSaved={fetchChains}
+        chain={editingChain || undefined}
+      />
     </>
   )
 }
