@@ -321,10 +321,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                 </div>
               )}
               <div
-                className={`p-3 rounded-lg ${message.agentId ? 'bg-blue-50 border-l-4 border-blue-400' : 'bg-muted/50'}`}
+                className={`p-3 rounded-lg ${
+                  message.type === 'user'
+                    ? 'bg-primary/10 border-l-4 border-primary text-primary'
+                    : 'bg-card border-l-4 border-muted text-foreground'
+                }`}
               >
                 {message.agentId !== undefined && message.layer !== undefined && (
-                  <p className="text-xs font-medium text-blue-800 mb-1">
+                  <p className="text-xs font-medium text-primary mb-1">
                     Layer {message.layer + 1} · Agent {message.agentId}
                   </p>
                 )}
@@ -339,7 +343,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             </div>
           ))}
           {isLoading && (
-            <div className="bg-muted/50 p-3 rounded-lg">
+            <div className="bg-muted p-3 rounded-lg">
               <p className="text-sm text-muted-foreground">Thinking...</p>
             </div>
           )}
