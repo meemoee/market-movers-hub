@@ -109,7 +109,8 @@ serve(async (req) => {
         const isDalle = model.id.includes('dall-e') || model.name.toLowerCase().includes('dall-e')
         
         return !isEmbedding && !isWhisper && !isDalle
-      })
+  })
+
       .sort((a, b) => {
         // Prioritize popular models at the top
         const priorityModels = [
@@ -141,16 +142,20 @@ serve(async (req) => {
     console.log('Filtered chat models:', chatModels.length)
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         models: chatModels.map(model => ({
           id: model.id,
           name: model.name,
           description: model.description,
           context_length: model.context_length,
-          pricing: model.pricing
+          pricing: model.pricing,
+          supports_response_format: Array.isArray(model.supported_parameters)
+            ? model.supported_parameters.includes('response_format') ||
+              model.supported_parameters.includes('structured_outputs')
+            : false
         }))
       }),
-      { 
+      {
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json'

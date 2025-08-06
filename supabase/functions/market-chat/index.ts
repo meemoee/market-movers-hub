@@ -15,7 +15,17 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory = [], userId, marketId, marketQuestion, marketDescription, selectedModel } = await req.json()
+    const {
+      message,
+      chatHistory = [],
+      userId,
+      marketId,
+      marketQuestion,
+      marketDescription,
+      selectedModel,
+      jsonMode,
+      jsonSchema
+    } = await req.json()
     console.log('Received market chat request:', {
       message,
       chatHistoryLength: Array.isArray(chatHistory) ? chatHistory.length : 'invalid',
@@ -169,7 +179,7 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
     console.log('Making request to OpenRouter API...')
     const fetchStart = performance.now()
     const historyMessages = Array.isArray(chatHistory) ? chatHistory : []
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       model: selectedModel || "perplexity/sonar",
       messages: [
         {
@@ -206,6 +216,23 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
         initialVolume: marketData?.initial_volume,
         outcomes: marketData?.outcomes,
         tags: marketData?.primary_tags
+      }
+    }
+    if (jsonMode && jsonSchema) {
+      let schemaObj = jsonSchema
+      if (typeof jsonSchema === 'string') {
+        try {
+          schemaObj = JSON.parse(jsonSchema)
+        } catch (_) {
+          console.error('Invalid JSON schema provided')
+          schemaObj = null
+        }
+      }
+      if (schemaObj && schemaObj.name && schemaObj.schema) {
+        requestBody.response_format = {
+          type: 'json_schema',
+          json_schema: schemaObj
+        }
       }
     }
     console.log('OpenRouter request body:', requestBody)
