@@ -244,10 +244,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       return
     }
     if (data) {
-      setAgents(prev => [data, ...prev])
+      const updatedAgents = [data, ...agents]
+      setAgents(updatedAgents)
       setSelectedAgent(data.id)
       setSelectedModel(data.model)
-      handleChatMessage(data.prompt, undefined, data.id)
+      handleChatMessage(data.prompt, undefined, data.id, updatedAgents)
     }
     setIsAgentDialogOpen(false)
     setNewAgentPrompt('')
@@ -257,8 +258,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   }
 
   // Chat functionality using Web Worker
-  const handleChatMessage = async (userMessage: string, chainId?: string, agentId?: string) => {
+  const handleChatMessage = async (
+    userMessage: string,
+    chainId?: string,
+    agentId?: string,
+    agentsOverride?: Agent[]
+  ) => {
     const activeChainId = chainId
+    const currentAgents = agentsOverride || agents
     if ((!userMessage.trim() && !activeChainId) || isLoading) return
 
     setHasStartedChat(true)
@@ -286,7 +293,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         let finalJsonSchema: unknown
 
       const handleAgentOutput = (output: AgentOutput) => {
-        const agent = agents.find(a => a.id === output.agentId)
+        const agent = currentAgents.find(a => a.id === output.agentId)
         const isJson = agent?.json_mode
         setMessages(prev => {
           const index = prev.findIndex(
@@ -302,7 +309,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       }
 
       const handleAgentStart = ({ layer, agentId }: { layer: number; agentId: string }) => {
-        const agent = agents.find(a => a.id === agentId)
+        const agent = currentAgents.find(a => a.id === agentId)
         setMessages(prev => [...prev, { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode }])
       }
 
@@ -322,7 +329,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
         const result = await executeAgentChain(
           chain.config,
-          agents,
+          currentAgents,
           userMessage,
           {
             userId: user?.id,
@@ -362,7 +369,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       setMessages(prev => [...prev, finalPlaceholder])
 
       if (!finalJsonMode && finalAgentId) {
-        const agent = agents.find(a => a.id === finalAgentId)
+        const agent = currentAgents.find(a => a.id === finalAgentId)
         finalJsonMode = agent?.json_mode
         finalJsonSchema = agent?.json_schema
       }
