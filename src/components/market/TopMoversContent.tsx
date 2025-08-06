@@ -79,6 +79,7 @@ export function TopMoversContent({
                 volume: mover.volume_change,
                 total_volume: mover.final_volume,
                 image: mover.image || '/placeholder.svg',
+                url: mover.url,
                 yes_sub_title: mover.yes_sub_title,
                 final_last_traded_price: mover.final_last_price,
                 final_best_ask: mover.final_best_ask,

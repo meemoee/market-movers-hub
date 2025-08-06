@@ -13,6 +13,7 @@ interface Market {
   volume: number;
   total_volume: number;
   image: string;
+  url?: string;
   yes_sub_title?: string;
   final_last_traded_price: number;
   final_best_ask: number;
@@ -24,7 +25,7 @@ interface Market {
   event_id?: string;
   primary_tags?: string[];
   tag_slugs?: string[];
-  tags?: any[];
+  tags?: unknown[];
 }
 
 interface MarketCardProps {
@@ -69,6 +70,7 @@ export function MarketCard({
         primaryTags={market.primary_tags}
         tagSlugs={market.tag_slugs}
         tags={market.tags}
+        url={market.url}
       />
       <MarketStats
         lastTradedPrice={market.final_last_traded_price}
