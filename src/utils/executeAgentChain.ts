@@ -211,8 +211,6 @@ export async function executeAgentChain(
   return {
     prompt: `${finalPromptBase}\n\n${finalInput}`.trim(),
     model: finalAgent.model,
-    json_mode: finalAgent.json_mode,
-    json_schema: finalAgent.json_schema,
     outputs: agentOutputs,
   }
 }
