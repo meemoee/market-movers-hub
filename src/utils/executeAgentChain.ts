@@ -78,7 +78,8 @@ export async function executeAgentChain(
   chainConfig: ChainConfig,
   agents: Agent[],
   initialInput: string,
-  context: ExecutionContext
+  context: ExecutionContext,
+  onAgentOutput?: (output: AgentOutput) => void
 ): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
@@ -119,7 +120,9 @@ export async function executeAgentChain(
           context
         )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
-        agentOutputs.push({ layer: i, agentId: agent.id, output })
+        const agentOutput = { layer: i, agentId: agent.id, output }
+        agentOutputs.push(agentOutput)
+        onAgentOutput?.(agentOutput)
         if (block.routes && block.routes.length > 0) {
           for (const target of block.routes) {
             nextInputs[target] = [nextInputs[target], output].filter(Boolean).join("\n")
@@ -163,11 +166,13 @@ export async function executeAgentChain(
           context
         )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
-        agentOutputs.push({
+        const agentOutput = {
           layer: chainConfig.layers.length - 1,
           agentId: agent.id,
           output,
-        })
+        }
+        agentOutputs.push(agentOutput)
+        onAgentOutput?.(agentOutput)
       }
     }
   }
