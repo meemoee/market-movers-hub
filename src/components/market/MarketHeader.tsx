@@ -66,17 +66,6 @@ export function MarketHeader({
                 </p>
               )}
             </div>
-            {url && (
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="mt-1 flex-shrink-0 text-muted-foreground hover:text-foreground"
-              >
-                <ExternalLink className={isMobile ? 'w-4 h-4' : 'w-5 h-5'} />
-              </a>
-            )}
           </div>
           <div className="mt-1">
             <MarketTags
@@ -88,11 +77,11 @@ export function MarketHeader({
           </div>
         </div>
       </div>
-      <div className={`flex ${isMobile ? 'w-full' : 'w-auto'} gap-2 ${isMobile ? 'h-9' : 'h-12'} flex-shrink-0`}>
+      <div className={`flex items-center ${isMobile ? 'w-full' : 'w-auto'} gap-2 ${isMobile ? 'h-9' : 'h-12'} flex-shrink-0`}>
         <HoverButton
           variant="buy"
           onClick={onBuy}
-          className={`flex-1 flex flex-col items-center justify-center ${isMobile ? 'max-w-[48%]' : 'w-[90px]'}`}
+          className={`flex-1 flex flex-col items-center justify-center ${isMobile ? '' : 'w-[90px]'}`}
         >
           <span className="text-xs truncate max-w-full px-1">{truncateOutcome(outcomes[0])}</span>
           {bestAsk !== undefined && (
@@ -104,7 +93,7 @@ export function MarketHeader({
         <HoverButton
           variant="sell"
           onClick={onSell}
-          className={`flex-1 flex flex-col items-center justify-center ${isMobile ? 'max-w-[48%]' : 'w-[90px]'}`}
+          className={`flex-1 flex flex-col items-center justify-center ${isMobile ? '' : 'w-[90px]'}`}
         >
           <span className="text-xs truncate max-w-full px-1">{truncateOutcome(outcomes[1])}</span>
           {noPrice !== undefined ? (
@@ -113,6 +102,17 @@ export function MarketHeader({
             </span>
           ) : null}
         </HoverButton>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className={`flex items-center justify-center text-muted-foreground hover:text-foreground ${isMobile ? 'w-8 h-9' : 'w-8 h-12'}`}
+          >
+            <ExternalLink className={isMobile ? 'w-3 h-3' : 'w-4 h-4'} />
+          </a>
+        )}
       </div>
     </div>
   );
