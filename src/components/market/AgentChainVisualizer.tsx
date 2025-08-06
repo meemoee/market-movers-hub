@@ -18,28 +18,22 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
   if (!chain || !chain.layers?.length) return null
 
   return (
-    <div className="mt-4 space-y-4 text-xs">
-      {chain.layers.map((layer, layerIdx) => (
-        <div key={layerIdx} className="flex items-stretch gap-3">
-          {/* Layer indicator */}
-          <div className="flex flex-col items-center w-6">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">
+    <div className="mt-4 space-y-3 text-xs">
+      {chain.layers.map((layer, layerIdx) => {
+        const isLast = layerIdx === chain.layers.length - 1
+        return (
+          <div key={layerIdx} className="relative pl-8">
+            {!isLast && <span className="absolute left-2 top-5 bottom-0 w-px bg-border" />}
+            <span className="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-medium">
               {layerIdx + 1}
-            </div>
-            {layerIdx < chain.layers.length - 1 && (
-              <div className="w-px flex-1 bg-border" />
-            )}
-          </div>
-
-          {/* Agents within layer */}
-          <div className="flex-1">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            </span>
+            <div className="flex flex-wrap gap-2">
               {layer.agents.map((block, idx) => {
                 const agent = agents.find(a => a.id === block.agentId)
                 const label = getAgentLabel(block.agentId, agents)
                 return (
-                  <div key={idx} className="p-2 rounded-md border bg-card text-card-foreground">
-                    <div className="font-medium truncate" title={agent?.prompt || ''}>
+                  <div key={idx} className="px-2 py-1 rounded-md border bg-card text-card-foreground">
+                    <div className="truncate font-medium" title={agent?.prompt || ''}>
                       {label}
                     </div>
                     {block.copies && block.copies > 1 && (
@@ -48,11 +42,17 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
                     {block.routes && block.routes.length > 0 && (
                       <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                         <ArrowRight className="w-3 h-3" />
-                        {block.routes.map(r => (
-                          <span key={r} className="px-1 py-0.5 rounded bg-muted">
-                            {`L${layerIdx + 2}A${r + 1}`}
-                          </span>
-                        ))}
+                        {block.routes.map(r => {
+                          const targetBlock = chain.layers[layerIdx + 1]?.agents[r]
+                          const targetLabel = targetBlock
+                            ? getAgentLabel(targetBlock.agentId, agents)
+                            : `Layer ${layerIdx + 2} Agent ${r + 1}`
+                          return (
+                            <span key={r} className="px-1 py-0.5 rounded bg-muted">
+                              {targetLabel}
+                            </span>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -60,8 +60,8 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
               })}
             </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
