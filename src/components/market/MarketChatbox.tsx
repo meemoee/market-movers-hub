@@ -62,30 +62,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [selectedChain, setSelectedChain] = useState('')
   const { user } = useCurrentUser()
 
-  const layerStyles = [
-    'bg-blue-100 border-blue-300 text-blue-900',
-    'bg-green-100 border-green-300 text-green-900',
-    'bg-purple-100 border-purple-300 text-purple-900',
-    'bg-pink-100 border-pink-300 text-pink-900'
-  ]
-
-  const getAgentLabel = useCallback((id: string) => {
-    return agents.find(a => a.id === id)?.prompt.slice(0, 20) || 'Agent'
-  }, [agents])
-
-  const getTargetLabels = useCallback((layer: number, agentId: string) => {
-    const chain = chains.find(c => c.id === selectedChain)
-    if (!chain) return ''
-    const currentLayer = chain.config.layers[layer]
-    const block = currentLayer?.agents.find(a => a.agentId === agentId)
-    const targets = block?.routes || []
-    const nextAgents = chain.config.layers[layer + 1]?.agents || []
-    return targets
-      .map(t => getAgentLabel(nextAgents[t]?.agentId))
-      .filter(Boolean)
-      .join(', ')
-  }, [chains, selectedChain, getAgentLabel])
-
   // Fetch available models on component mount
   useEffect(() => {
     const fetchModels = async () => {
@@ -151,8 +127,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     fetchChains()
   }, [fetchChains])
 
-  const activeChain = chains.find(c => c.id === selectedChain)
-  const totalLayers = activeChain?.config.layers.length || 1
 
   const handleSelectAgent = (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -180,23 +154,13 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const renderChainSummary = () => {
     const chain = chains.find(c => c.id === selectedChain)
     if (!chain) return null
-    const totalLayers = chain.config.layers.length
+    const getAgentLabel = (id: string) => agents.find(a => a.id === id)?.prompt.slice(0, 20) || 'Unknown'
     return (
-      <div className="mt-2 text-xs text-muted-foreground space-y-2">
-        <div className="font-medium">Pipeline ({totalLayers} layers)</div>
+      <div className="mt-2 text-xs text-muted-foreground space-y-1">
         {chain.config.layers.map((layer, idx) => (
-          <div key={idx} className="pl-2 space-y-1">
-            <div className="font-medium">Layer {idx + 1}</div>
-            {layer.agents.map((a, j) => {
-              const targets = (a.routes || [])
-                .map(r => getAgentLabel(chain.config.layers[idx + 1]?.agents[r]?.agentId))
-                .filter(Boolean)
-              return (
-                <div key={j} className="ml-2">
-                  {getAgentLabel(a.agentId)}{targets.length > 0 && ` → ${targets.join(', ')}`}
-                </div>
-              )
-            })}
+          <div key={idx}>
+            <span className="font-medium">Layer {idx + 1}:</span>{' '}
+            {layer.agents.map(a => getAgentLabel(a.agentId)).join(', ')}
           </div>
         ))}
       </div>
@@ -346,46 +310,36 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </div>
       ) : (
         <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
-          {messages.map((message, index) => {
-            const layerClass = message.agentId !== undefined && message.layer !== undefined
-              ? layerStyles[message.layer % layerStyles.length]
-              : message.type === 'user'
-                ? 'bg-secondary text-foreground'
-                : 'bg-muted text-foreground'
-            const targetLabels =
-              message.agentId !== undefined && message.layer !== undefined
-                ? getTargetLabels(message.layer, message.agentId)
-                : ''
-            return (
-              <div key={index} className="space-y-2">
-                {message.reasoning && (
-                  <div className="bg-yellow-50 border-l-4 border-yellow-300 p-3 rounded-lg">
-                    <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-                    <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
-                      {message.reasoning}
-                    </ReactMarkdown>
-                  </div>
-                )}
-                <div className={`p-3 rounded-lg border ${layerClass}`}>
-                  {message.agentId !== undefined && message.layer !== undefined && (
-                    <p className="text-xs font-medium mb-1">
-                      Layer {message.layer + 1}/{totalLayers} · {getAgentLabel(message.agentId)}
-                      {targetLabels && ` → ${targetLabels}`}
-                    </p>
-                  )}
-                  {message.type === 'user' ? (
-                    <p className="text-sm font-medium">{message.content}</p>
-                  ) : (
-                    <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                      {message.content || ''}
-                    </ReactMarkdown>
-                  )}
+          {messages.map((message, index) => (
+            <div key={index} className="space-y-2">
+              {message.reasoning && (
+                <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
+                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                    {message.reasoning}
+                  </ReactMarkdown>
                 </div>
+              )}
+              <div
+                className={`p-3 rounded-lg ${message.agentId ? 'bg-blue-50 border-l-4 border-blue-400' : 'bg-muted/50'}`}
+              >
+                {message.agentId !== undefined && message.layer !== undefined && (
+                  <p className="text-xs font-medium text-blue-800 mb-1">
+                    Layer {message.layer + 1} · Agent {message.agentId}
+                  </p>
+                )}
+                {message.type === 'user' ? (
+                  <p className="text-sm font-medium">{message.content}</p>
+                ) : (
+                  <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                    {message.content || ''}
+                  </ReactMarkdown>
+                )}
               </div>
-            )
-          })}
+            </div>
+          ))}
           {isLoading && (
-            <div className="bg-muted p-3 rounded-lg">
+            <div className="bg-muted/50 p-3 rounded-lg">
               <p className="text-sm text-muted-foreground">Thinking...</p>
             </div>
           )}
