@@ -47,9 +47,11 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
                           const targetLabel = targetBlock
                             ? getAgentLabel(targetBlock.agentId, agents)
                             : `Layer ${layerIdx + 2} Agent ${r + 1}`
+                          const fields = block.fieldRoutes?.[r]
                           return (
                             <span key={r} className="px-1 py-0.5 rounded bg-muted">
                               {targetLabel}
+                              {fields && fields.length > 0 && ` (${fields.join(', ')})`}
                             </span>
                           )
                         })}

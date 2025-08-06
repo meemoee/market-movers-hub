@@ -11,6 +11,7 @@ interface AgentBlock {
   prompt?: string
   copies: number
   routes?: number[]
+  fieldRoutes?: Record<number, string[]>
 }
 
 interface Layer {
@@ -138,9 +139,35 @@ export async function executeAgentChain(
         const agentOutput = { layer: i, agentId: agent.id, output }
         agentOutputs.push(agentOutput)
         onAgentOutput?.(agentOutput)
+
+        let parsed: Record<string, unknown> | undefined
+        if (agent.json_mode) {
+          try {
+            parsed = JSON.parse(output)
+          } catch {
+            parsed = undefined
+          }
+        }
+
         if (block.routes && block.routes.length > 0) {
           for (const target of block.routes) {
-            nextInputs[target] = [nextInputs[target], output].filter(Boolean).join("\n")
+            let routedOutput = output
+            const fields = block.fieldRoutes?.[target]
+            if (agent.json_mode && parsed && fields && fields.length > 0) {
+              const picked: Record<string, unknown> = {}
+              for (const f of fields) {
+                if (f in parsed) {
+                  picked[f] = (parsed as Record<string, unknown>)[f]
+                }
+              }
+              if (fields.length === 1) {
+                const val = picked[fields[0]]
+                routedOutput = typeof val === 'string' ? val : JSON.stringify(val)
+              } else {
+                routedOutput = JSON.stringify(picked)
+              }
+            }
+            nextInputs[target] = [nextInputs[target], routedOutput].filter(Boolean).join("\n")
           }
         } else {
           for (let t = 0; t < nextInputs.length; t++) {
