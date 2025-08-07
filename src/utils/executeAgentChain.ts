@@ -119,17 +119,22 @@ export async function executeAgentChain(
 
       const basePrompt = block.prompt || agent.prompt
       const input = currentInputs[agentIndex] || ""
+      const fullPrompt = input ? `${basePrompt}\n\n${input}` : basePrompt
 
       console.log(`🤖 [executeAgentChain] Agent ${agent.id} (copy x${block.copies || 1})`)
       console.log('🤖 [executeAgentChain] Base prompt:', basePrompt)
       console.log('🤖 [executeAgentChain] Input:', input)
+      if (!input) {
+        console.log('🟡 [executeAgentChain] Input is empty – using base prompt only')
+      }
+      console.log('📜 [executeAgentChain] Full prompt:', fullPrompt)
       console.log('🤖 [executeAgentChain] Routes:', block.routes)
 
       for (let c = 0; c < (block.copies || 1); c++) {
         onAgentStart?.({ layer: i, agentId: agent.id })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
-          `${basePrompt}\n\n${input}`,
+          fullPrompt,
           agent.model,
           context,
           agent.json_mode,
@@ -195,16 +200,21 @@ export async function executeAgentChain(
 
       const basePrompt = block.prompt || agent.prompt
       const input = currentInputs[agentIndex] || ""
+      const fullPrompt = input ? `${basePrompt}\n\n${input}` : basePrompt
 
       console.log(`🤖 [executeAgentChain] Final layer agent ${agent.id} (copy x${block.copies || 1})`)
       console.log('🤖 [executeAgentChain] Base prompt:', basePrompt)
       console.log('🤖 [executeAgentChain] Input:', input)
+      if (!input) {
+        console.log('🟡 [executeAgentChain] Input is empty – using base prompt only')
+      }
+      console.log('📜 [executeAgentChain] Full prompt:', fullPrompt)
 
       for (let c = 0; c < (block.copies || 1); c++) {
         onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
-          `${basePrompt}\n\n${input}`,
+          fullPrompt,
           agent.model,
           context,
           agent.json_mode,
