@@ -76,6 +76,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [newAgentSystemPrompt, setNewAgentSystemPrompt] = useState('')
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, 'pending' | 'running' | 'done'>>({})
+  const [fieldStatuses, setFieldStatuses] = useState<Record<string, 'pending' | 'done'>>({})
   const { user } = useCurrentUser()
 
   const layerStyles = [
@@ -205,6 +207,22 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     fetchChains()
   }, [fetchChains])
 
+  const initializeTracking = (config: ChainConfig) => {
+    const status: Record<string, 'pending'> = {}
+    const fieldStatus: Record<string, 'pending'> = {}
+    config.layers.forEach((layer, lIdx) => {
+      layer.agents.forEach((block, aIdx) => {
+        status[`${lIdx}-${aIdx}`] = 'pending'
+        Object.entries(block.fieldRoutes || {}).forEach(([tIdx, fields]) => {
+          fields.forEach(f => {
+            fieldStatus[`${lIdx}-${aIdx}-${tIdx}-${f}`] = 'pending'
+          })
+        })
+      })
+    })
+    setAgentStatuses(status)
+    setFieldStatuses(fieldStatus)
+  }
 
   const handleSelectAgent = (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
@@ -229,6 +247,15 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
   const selectedChainObj = chains.find(c => c.id === selectedChain)
   const selectedAgentObj = agents.find(a => a.id === selectedAgent)
+
+  useEffect(() => {
+    if (selectedChainObj) {
+      initializeTracking(selectedChainObj.config)
+    } else {
+      setAgentStatuses({})
+      setFieldStatuses({})
+    }
+  }, [selectedChainObj])
 
   useEffect(() => {
     if (selectedAgentObj?.json_mode) {
@@ -375,6 +402,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     agentsOverride?: Agent[]
   ) => {
     const activeChainId = chainId
+    const chain = activeChainId ? chains.find(c => c.id === activeChainId) : undefined
     const currentAgents = agentsOverride || agents
     if ((!userMessage.trim() && !activeChainId) || isLoading) return
 
@@ -383,7 +411,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (userMessage.trim()) {
       setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     } else if (activeChainId) {
-      const chain = chains.find(c => c.id === activeChainId)
       setMessages(prev => [...prev, { type: 'user', content: `Running chain: ${chain?.name || ''}`.trim() }])
     }
     setChatMessage('')
@@ -405,6 +432,25 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       const handleAgentOutput = (output: AgentOutput) => {
         const agent = currentAgents.find(a => a.id === output.agentId)
         const isJson = agent?.json_mode
+        const agentIdx = chain?.config.layers[output.layer].agents.findIndex(b => b.agentId === output.agentId)
+        if (agentIdx !== undefined && agentIdx !== -1) {
+          setAgentStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}`]: 'done' }))
+          if (isJson) {
+            try {
+              const parsed = JSON.parse(output.output)
+              const block = chain!.config.layers[output.layer].agents[agentIdx]
+              Object.entries(block.fieldRoutes || {}).forEach(([tIdx, fields]) => {
+                fields.forEach(f => {
+                  if (parsed && Object.prototype.hasOwnProperty.call(parsed, f)) {
+                    setFieldStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}-${tIdx}-${f}`]: 'done' }))
+                  }
+                })
+              })
+            } catch {
+              // ignore JSON parse errors
+            }
+          }
+        }
         setMessages(prev => {
           const index = prev.findIndex(
             m => m.agentId === output.agentId && m.layer === output.layer && m.isTyping
@@ -420,6 +466,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       const handleAgentStart = ({ layer, agentId, input }: { layer: number; agentId: string; input?: string }) => {
         const agent = currentAgents.find(a => a.id === agentId)
+        const agentIdx = chain?.config.layers[layer].agents.findIndex(b => b.agentId === agentId)
+        if (agentIdx !== undefined && agentIdx !== -1) {
+          setAgentStatuses(prev => ({ ...prev, [`${layer}-${agentIdx}`]: 'running' }))
+        }
         setMessages(prev => [
           ...prev,
           { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode, input }
@@ -427,19 +477,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       }
 
       if (activeChainId) {
-        const chain = chains.find(c => c.id === activeChainId)
         if (!chain) {
           throw new Error('Selected chain not found')
         }
+        initializeTracking(chain.config)
         finalLayerIndex = chain.config.layers.length - 1
-        chain.config.layers.forEach((layer, layerIdx) => {
-          layer.agents.forEach((block, agentIdx) => {
-            const isFinalAgent = layerIdx === chain.config.layers.length - 1 && agentIdx === 0
-            if (isFinalAgent) {
-              finalAgentId = block.agentId
-            }
-          })
-        })
+        finalAgentId = chain.config.layers[finalLayerIndex].agents[0].agentId
         const result = await executeAgentChain(
           chain.config,
           currentAgents,
@@ -487,6 +530,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         input: finalPrompt
       }
       setMessages(prev => [...prev, finalPlaceholder])
+      if (finalAgentId !== undefined && finalLayerIndex !== undefined) {
+        const finalAgentIdx = chain?.config.layers[finalLayerIndex].agents.findIndex(b => b.agentId === finalAgentId)
+        if (finalAgentIdx !== undefined && finalAgentIdx !== -1) {
+          setAgentStatuses(prev => ({ ...prev, [`${finalLayerIndex}-${finalAgentIdx}`]: 'running' }))
+        }
+      }
 
       const { data, error } = await supabase.functions.invoke('market-chat', {
         body: {
@@ -532,6 +581,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         }
         return [...newMessages, updated]
       })
+      if (finalAgentId !== undefined && finalLayerIndex !== undefined) {
+        const finalAgentIdx = chain?.config.layers[finalLayerIndex].agents.findIndex(b => b.agentId === finalAgentId)
+        if (finalAgentIdx !== undefined && finalAgentIdx !== -1) {
+          setAgentStatuses(prev => ({ ...prev, [`${finalLayerIndex}-${finalAgentIdx}`]: 'done' }))
+        }
+      }
     } catch (error) {
       console.error('🚨 [CHAT] Error:', error)
       const err = error as Error
@@ -688,7 +743,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           )}
         </div>
         {selectedChainObj && (
-          <AgentChainVisualizer chain={selectedChainObj.config} agents={agents} />
+          <AgentChainVisualizer
+            chain={selectedChainObj.config}
+            agents={agents}
+            statuses={agentStatuses}
+            fieldStatuses={fieldStatuses}
+          />
         )}
       </div>
 
