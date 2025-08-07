@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { ArrowRight } from 'lucide-react'
 import { ChainConfig, Agent } from '@/utils/executeAgentChain'
+import { Badge } from '@/components/ui/badge'
 
 interface AgentChainVisualizerProps {
   chain: ChainConfig
@@ -15,109 +16,57 @@ function getAgentLabel(agentId: string, agents: Agent[]) {
 }
 
 export default function AgentChainVisualizer({ chain, agents }: AgentChainVisualizerProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const agentRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const [lines, setLines] = useState<
-    { x1: number; y1: number; x2: number; y2: number; fields: string[] }
-  >([])
-
-  useEffect(() => {
-    const newLines: { x1: number; y1: number; x2: number; y2: number; fields: string[] }[] = []
-    const containerRect = containerRef.current?.getBoundingClientRect()
-    if (!containerRect) return
-
-    chain.layers.forEach((layer, layerIdx) => {
-      layer.agents.forEach((block, blockIdx) => {
-        const sourceKey = `${layerIdx}-${blockIdx}`
-        const sourceRect = agentRefs.current[sourceKey]?.getBoundingClientRect()
-        if (!sourceRect) return
-
-        block.routes?.forEach((targetIdx, routeIdx) => {
-          const targetKey = `${layerIdx + 1}-${targetIdx}`
-          const targetRect = agentRefs.current[targetKey]?.getBoundingClientRect()
-          if (!targetRect) return
-
-          newLines.push({
-            x1: sourceRect.left + sourceRect.width / 2 - containerRect.left,
-            y1: sourceRect.bottom - containerRect.top,
-            x2: targetRect.left + targetRect.width / 2 - containerRect.left,
-            y2: targetRect.top - containerRect.top,
-            fields: block.fieldRoutes?.[routeIdx] || []
-          })
-        })
-      })
-    })
-
-    setLines(newLines)
-  }, [chain])
-
   if (!chain || !chain.layers?.length) return null
 
   return (
-    <div ref={containerRef} className="relative mt-4 text-xs">
-      <svg className="pointer-events-none absolute inset-0 h-full w-full">
-        <defs>
-          <marker
-            id="arrow"
-            markerWidth="6"
-            markerHeight="6"
-            refX="3"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <path d="M0,0 L6,3 L0,6 z" className="fill-border" />
-          </marker>
-        </defs>
-        {lines.map((line, idx) => (
-          <g key={idx}>
-            <line
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
-              stroke="hsl(var(--border))"
-              strokeWidth={1}
-              markerEnd="url(#arrow)"
-            />
-            {line.fields.length > 0 && (
-              <text
-                x={(line.x1 + line.x2) / 2}
-                y={(line.y1 + line.y2) / 2 - 2}
-                className="fill-current text-[8px]"
-                textAnchor="middle"
-              >
-                {line.fields.join(', ')}
-              </text>
-            )}
-          </g>
-        ))}
-      </svg>
-      {chain.layers.map((layer, layerIdx) => (
-        <div key={layerIdx} className="mb-4 flex justify-center gap-4">
-          {layer.agents.map((block, idx) => {
-            const key = `${layerIdx}-${idx}`
-            const agent = agents.find(a => a.id === block.agentId)
-            const label = getAgentLabel(block.agentId, agents)
-            return (
-              <div
-                key={idx}
-                ref={el => {
-                  agentRefs.current[key] = el
-                }}
-                className="min-w-[120px] rounded-md border bg-card px-2 py-1 text-card-foreground"
-              >
-                <div className="truncate font-medium" title={agent?.prompt || ''}>
-                  {label}
-                </div>
-                {block.copies && block.copies > 1 && (
-                  <div className="text-[10px] text-muted-foreground">×{block.copies}</div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ))}
+    <div className="mt-4 space-y-3 text-xs">
+      {chain.layers.map((layer, layerIdx) => {
+        const isLast = layerIdx === chain.layers.length - 1
+        return (
+          <div key={layerIdx} className="relative pl-8">
+            {!isLast && <span className="absolute left-2 top-5 bottom-0 w-px bg-border" />}
+            <span className="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-medium">
+              {layerIdx + 1}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {layer.agents.map((block, idx) => {
+                const agent = agents.find(a => a.id === block.agentId)
+                const label = getAgentLabel(block.agentId, agents)
+                return (
+                  <div key={idx} className="px-2 py-1 rounded-md border bg-card text-card-foreground">
+                    <div className="truncate font-medium" title={agent?.prompt || ''}>
+                      {label}
+                    </div>
+                    {block.copies && block.copies > 1 && (
+                      <div className="text-[10px] text-muted-foreground">×{block.copies}</div>
+                    )}
+                    {block.routes && block.routes.length > 0 && (
+                      <div className="mt-1 flex flex-col gap-1">
+                        {block.routes.map(r => {
+                          const targetBlock = chain.layers[layerIdx + 1]?.agents[r]
+                          const targetLabel = targetBlock
+                            ? getAgentLabel(targetBlock.agentId, agents)
+                            : `Layer ${layerIdx + 2} Agent ${r + 1}`
+                          const fields = block.fieldRoutes?.[r] || []
+                          return (
+                            <div key={r} className="flex items-center gap-1 text-[10px]">
+                              <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                              <Badge variant="secondary" className="text-[10px]">{targetLabel}</Badge>
+                              {fields.map(f => (
+                                <Badge key={f} variant="outline" className="text-[10px]">{f}</Badge>
+                              ))}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
