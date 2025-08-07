@@ -43,6 +43,24 @@ interface ExecutionContext {
   authToken: string
 }
 
+function validateAgentIds(chainConfig: ChainConfig, agents: Agent[]) {
+  const availableIds = new Set(agents.map((a) => a.id))
+  const missing: string[] = []
+  chainConfig.layers.forEach((layer) => {
+    layer.agents.forEach((block) => {
+      if (!availableIds.has(block.agentId)) {
+        missing.push(block.agentId)
+      }
+    })
+  })
+  if (missing.length > 0) {
+    const unique = [...new Set(missing)]
+    const message = `Missing agent IDs in chain: ${unique.join(', ')}`
+    console.warn(`⚠️ [executeAgentChain] ${message}`)
+    throw new Error(message)
+  }
+}
+
 async function callModel(
   prompt: string,
   model: string,
@@ -108,6 +126,8 @@ export async function executeAgentChain(
     throw new Error("Chain has no layers")
   }
 
+  validateAgentIds(chainConfig, agents)
+
   let currentInputs: string[] = chainConfig.layers[0].agents.map(() => initialInput)
   const agentOutputs: AgentOutput[] = []
 
@@ -122,7 +142,12 @@ export async function executeAgentChain(
     for (let agentIndex = 0; agentIndex < layer.agents.length; agentIndex++) {
       const block = layer.agents[agentIndex]
       const agent = agents.find((a) => a.id === block.agentId)
-      if (!agent) continue
+      if (!agent) {
+        const msg = `Agent ID ${block.agentId} not found`
+        console.warn(`⚠️ [executeAgentChain] ${msg}`)
+        onAgentOutput?.({ layer: i, agentId: block.agentId, output: msg })
+        continue
+      }
 
       const basePrompt = block.prompt || agent.prompt
       const input = currentInputs[agentIndex] || ""
@@ -203,7 +228,12 @@ export async function executeAgentChain(
     for (let agentIndex = 1; agentIndex < finalLayer.agents.length; agentIndex++) {
       const block = finalLayer.agents[agentIndex]
       const agent = agents.find((a) => a.id === block.agentId)
-      if (!agent) continue
+      if (!agent) {
+        const msg = `Agent ID ${block.agentId} not found`
+        console.warn(`⚠️ [executeAgentChain] ${msg}`)
+        onAgentOutput?.({ layer: chainConfig.layers.length - 1, agentId: block.agentId, output: msg })
+        continue
+      }
 
       const basePrompt = block.prompt || agent.prompt
       const input = currentInputs[agentIndex] || ""
