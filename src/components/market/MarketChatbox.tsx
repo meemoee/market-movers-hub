@@ -153,7 +153,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         return
       }
 
-      const normalized = (data as any[]).map(a => ({
+      const normalized = ((data ?? []) as Agent[]).map(a => ({
         id: a.id,
         prompt: a.prompt,
         model: a.model,
@@ -351,7 +351,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const handleChatMessage = async (
     userMessage: string,
     chainId?: string,
-    agentId?: string,
+    agentId: string = selectedAgent,
     agentsOverride?: Agent[]
   ) => {
     const activeChainId = chainId
@@ -380,7 +380,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       let finalAgentId: string | undefined = agentId
       let finalLayerIndex: number | undefined
       let finalJsonMode: boolean | undefined
-        let finalJsonSchema: unknown
+      let finalJsonSchema: unknown
 
       const handleAgentOutput = (output: AgentOutput) => {
         const agent = currentAgents.find(a => a.id === output.agentId)
@@ -452,6 +452,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
       const chatHistoryWithContext = [marketContextMessage, ...baseHistory]
 
+      if (!finalJsonMode && finalAgentId) {
+        const agent = currentAgents.find(a => a.id === finalAgentId)
+        finalJsonMode = agent?.json_mode
+        finalJsonSchema = agent?.json_schema
+      }
+
       const finalPlaceholder: Message = {
         type: 'assistant',
         agentId: finalAgentId,
@@ -461,12 +467,6 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         input: finalPrompt
       }
       setMessages(prev => [...prev, finalPlaceholder])
-
-      if (!finalJsonMode && finalAgentId) {
-        const agent = currentAgents.find(a => a.id === finalAgentId)
-        finalJsonMode = agent?.json_mode
-        finalJsonSchema = agent?.json_schema
-      }
 
       const { data, error } = await supabase.functions.invoke('market-chat', {
         body: {
@@ -705,7 +705,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           onChange={(e) => setChatMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              handleChatMessage(chatMessage)
+              handleChatMessage(chatMessage, undefined, selectedAgent)
             }
           }}
           placeholder="Ask about this market..."
@@ -724,7 +724,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </button>
         <button
           className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
-          onClick={() => handleChatMessage(chatMessage)}
+          onClick={() => handleChatMessage(chatMessage, undefined, selectedAgent)}
           disabled={isLoading}
         >
           <Send size={16} />
