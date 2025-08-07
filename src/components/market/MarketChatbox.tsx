@@ -24,7 +24,7 @@ interface MarketChatboxProps {
 
 interface Message {
   type: 'user' | 'assistant'
-  content?: string
+  content?: string | Record<string, unknown>
   reasoning?: string
   agentId?: string
   layer?: number
@@ -88,20 +88,23 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       .replace(/_/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase())
 
-  const renderJsonContent = (content?: string) => {
+  const renderJsonContent = (content?: string | Record<string, unknown>) => {
     if (!content) return null
-    try {
-      const data = JSON.parse(content)
-      if (typeof data === 'object' && data !== null) {
-        return Object.entries(data).map(([key, value]) => (
-          <p key={key}>
-            <span className="font-medium">{formatKey(key)}:</span>{' '}
-            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-          </p>
-        ))
+    let data: unknown = content
+    if (typeof content === 'string') {
+      try {
+        data = JSON.parse(content)
+      } catch {
+        return <pre className="text-sm">{content}</pre>
       }
-    } catch {
-      return <pre className="text-sm">{content}</pre>
+    }
+    if (typeof data === 'object' && data !== null) {
+      return Object.entries(data as Record<string, unknown>).map(([key, value]) => (
+        <p key={key}>
+          <span className="font-medium">{formatKey(key)}:</span>{' '}
+          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+        </p>
+      ))
     }
     return null
   }
@@ -396,8 +399,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       }
 
       const baseHistory = messages
-        .filter(m => typeof m.content === 'string' && m.content.length > 0)
-        .map(m => ({ role: m.type, content: m.content! }))
+        .filter((m): m is Message & { content: string } => typeof m.content === 'string' && m.content.length > 0)
+        .map(m => ({ role: m.type, content: m.content }))
 
       // Always include market context while removing empty messages
       const marketContextMessage = {
@@ -438,6 +441,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       })
 
       if (error) throw error
+      let parsedContent: string | Record<string, unknown> = data.content
+      if (finalJsonMode) {
+        try {
+          parsedContent = JSON.parse(data.content)
+        } catch {
+          parsedContent = data.content
+        }
+      }
 
       setMessages(prev => {
         const index = prev.findIndex(
@@ -446,7 +457,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         const newMessages = [...prev]
         const updated: Message = {
           type: 'assistant',
-          content: data.content,
+          content: parsedContent,
           reasoning: data.reasoning,
           agentId: finalAgentId,
           layer: finalLayerIndex,
@@ -532,14 +543,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                         <span>Thinking...</span>
                       </div>
                     ) : message.type === 'user' ? (
-                      <p className="text-sm font-medium">{message.content}</p>
+                      <p className="text-sm font-medium">{typeof message.content === 'string' ? message.content : ''}</p>
                     ) : message.jsonMode ? (
                       <div className="text-sm space-y-1">
                         {renderJsonContent(message.content)}
                       </div>
                     ) : (
                       <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
-                        {message.content || ''}
+                        {typeof message.content === 'string' ? message.content : ''}
                       </ReactMarkdown>
                     )}
                   </div>
