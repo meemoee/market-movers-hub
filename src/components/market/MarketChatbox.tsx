@@ -44,6 +44,7 @@ interface Agent {
   id: string
   prompt: string
   model: string
+  system_prompt?: string
   json_mode?: boolean
   json_schema?: unknown
 }
@@ -72,6 +73,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const [newAgentJsonMode, setNewAgentJsonMode] = useState(false)
   const [newAgentJsonSchema, setNewAgentJsonSchema] = useState('')
+  const [newAgentSystemPrompt, setNewAgentSystemPrompt] = useState('')
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
   const { user } = useCurrentUser()
@@ -142,7 +144,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       if (!user?.id) return
       const { data, error } = await supabase
         .from('agents')
-        .select('id, prompt, model, json_mode, json_schema')
+        .select('id, prompt, model, system_prompt, json_mode, json_schema')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -229,6 +231,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setNewAgentModel(selectedModel)
     setNewAgentJsonMode(false)
     setNewAgentJsonSchema('')
+    setNewAgentSystemPrompt('')
     setIsAgentDialogOpen(true)
   }
 
@@ -241,6 +244,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setNewAgentModel(agent.model)
     setNewAgentJsonMode(!!agent.json_mode)
     setNewAgentJsonSchema(agent.json_schema ? JSON.stringify(agent.json_schema, null, 2) : '')
+    setNewAgentSystemPrompt(agent.system_prompt || '')
     setIsAgentDialogOpen(true)
   }
 
@@ -262,6 +266,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         .update({
           prompt: newAgentPrompt,
           model: newAgentModel,
+          system_prompt: newAgentSystemPrompt,
           json_mode: newAgentJsonMode,
           json_schema: schemaObj
         })
@@ -275,6 +280,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           user_id: user.id,
           prompt: newAgentPrompt,
           model: newAgentModel,
+          system_prompt: newAgentSystemPrompt,
           json_mode: newAgentJsonMode,
           json_schema: schemaObj
         })
@@ -303,6 +309,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     setNewAgentModel(selectedModel)
     setNewAgentJsonMode(false)
     setNewAgentJsonSchema('')
+    setNewAgentSystemPrompt('')
   }
 
   // Chat functionality using Web Worker
@@ -436,7 +443,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           marketDescription,
           selectedModel: finalModel,
           jsonMode: finalJsonMode,
-          jsonSchema: finalJsonSchema
+          jsonSchema: finalJsonSchema,
+          customSystemPrompt: currentAgents.find(a => a.id === finalAgentId)?.system_prompt
         }
       })
 
@@ -695,6 +703,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] pr-4">
             <div className="space-y-4">
+              <Textarea
+                value={newAgentSystemPrompt}
+                onChange={(e) => setNewAgentSystemPrompt(e.target.value)}
+                placeholder="Enter system prompt (optional)"
+                className="h-24"
+              />
               <Textarea
                 value={newAgentPrompt}
                 onChange={(e) => setNewAgentPrompt(e.target.value)}

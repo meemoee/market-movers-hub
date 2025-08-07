@@ -4,6 +4,7 @@ export interface Agent {
   id: string
   prompt: string
   model: string
+  system_prompt?: string
   json_mode?: boolean
   json_schema?: unknown
 }
@@ -67,7 +68,8 @@ async function callModel(
   model: string,
   context: ExecutionContext,
   json_mode?: boolean,
-  json_schema?: unknown
+  json_schema?: unknown,
+  system_prompt?: string
 ): Promise<string> {
   console.log('🧠 [callModel] Invoking model', model)
   console.log('🧠 [callModel] Prompt:', prompt)
@@ -85,6 +87,7 @@ async function callModel(
         selectedModel: model,
         jsonMode: json_mode,
         jsonSchema: json_schema,
+        customSystemPrompt: system_prompt,
       },
       headers: {
         Authorization: `Bearer ${context.authToken}`,
@@ -171,7 +174,8 @@ export async function executeAgentChain(
           agent.model,
           context,
           agent.json_mode,
-          agent.json_schema
+          agent.json_schema,
+          agent.system_prompt
         )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         const agentOutput = { layer: i, agentId: agent.id, output }
@@ -251,13 +255,14 @@ export async function executeAgentChain(
       for (let c = 0; c < (block.copies || 1); c++) {
         onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id, input })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
-        const output = await callModel(
-          fullPrompt,
-          agent.model,
-          context,
-          agent.json_mode,
-          agent.json_schema
-        )
+      const output = await callModel(
+        fullPrompt,
+        agent.model,
+        context,
+        agent.json_mode,
+        agent.json_schema,
+        agent.system_prompt
+      )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         const agentOutput = {
           layer: chainConfig.layers.length - 1,
