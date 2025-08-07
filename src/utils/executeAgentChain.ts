@@ -102,17 +102,30 @@ async function callModel(
 
   const content = (data?.content || "").trim()
 
+  let finalContent = content
   if (content && (json_mode || json_schema)) {
     try {
       JSON.parse(content)
     } catch {
-      console.log('⚠️ [callModel] Incomplete JSON content:', content)
-      return ""
+      const jsonMatch = content.match(/({[\s\S]*})/)
+      if (jsonMatch) {
+        finalContent = jsonMatch[0]
+        try {
+          JSON.parse(finalContent)
+          console.log('⚠️ [callModel] Extracted JSON from noisy content')
+        } catch {
+          console.log('⚠️ [callModel] Incomplete JSON content:', content)
+          return ""
+        }
+      } else {
+        console.log('⚠️ [callModel] Incomplete JSON content:', content)
+        return ""
+      }
     }
   }
 
-  console.log('✍️ [callModel] Parsed content:', content)
-  return content
+  console.log('✍️ [callModel] Parsed content:', finalContent)
+  return finalContent
 }
 
 export async function executeAgentChain(
@@ -187,7 +200,16 @@ export async function executeAgentChain(
           try {
             parsed = JSON.parse(output)
           } catch {
-            parsed = undefined
+            const jsonMatch = output.match(/({[\s\S]*})/)
+            if (jsonMatch) {
+              try {
+                parsed = JSON.parse(jsonMatch[0])
+              } catch {
+                parsed = undefined
+              }
+            } else {
+              parsed = undefined
+            }
           }
         }
 
