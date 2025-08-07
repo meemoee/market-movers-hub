@@ -30,6 +30,7 @@ interface Message {
   layer?: number
   isTyping?: boolean
   jsonMode?: boolean
+  input?: string
 }
 
 interface OpenRouterModel {
@@ -352,9 +353,12 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
       }
 
-      const handleAgentStart = ({ layer, agentId }: { layer: number; agentId: string }) => {
+      const handleAgentStart = ({ layer, agentId, input }: { layer: number; agentId: string; input?: string }) => {
         const agent = currentAgents.find(a => a.id === agentId)
-        setMessages(prev => [...prev, { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode }])
+        setMessages(prev => [
+          ...prev,
+          { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode, input }
+        ])
       }
 
       if (activeChainId) {
@@ -408,7 +412,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         agentId: finalAgentId,
         layer: finalLayerIndex,
         isTyping: true,
-        jsonMode: finalJsonMode
+        jsonMode: finalJsonMode,
+        input: finalPrompt
       }
       setMessages(prev => [...prev, finalPlaceholder])
 
@@ -511,6 +516,14 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                       <p className={`text-xs font-medium mb-1 flex items-center ${style.text}`}>
                         <GitBranch className="w-3 h-3 mr-1" />
                         Layer {message.layer + 1} · Agent {message.agentId}
+                      </p>
+                    )}
+                    {message.input && (
+                      <p
+                        className="text-[10px] text-muted-foreground mb-1 truncate cursor-help"
+                        title={message.input}
+                      >
+                        {message.input.length > 100 ? `${message.input.slice(0, 100)}...` : message.input}
                       </p>
                     )}
                     {message.isTyping ? (
