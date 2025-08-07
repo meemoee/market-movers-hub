@@ -1,7 +1,7 @@
 import { BookmarkPlus, MessageCircle, Send, Settings, GitBranchPlus, GitBranch, Loader2, Play } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
-import ReactMarkdown from 'react-markdown'
+import { Markdown } from '@/components/ui/markdown'
 import { Card } from "@/components/ui/card"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -549,9 +549,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
               {message.reasoning && (
                 <div className="bg-yellow-100/50 border-l-4 border-yellow-400 p-3 rounded-lg">
                   <p className="text-xs font-medium text-yellow-800 mb-1">REASONING:</p>
-                  <ReactMarkdown className="text-xs prose prose-sm max-w-none text-yellow-700">
+                  <Markdown className="text-xs text-yellow-700">
                     {message.reasoning}
-                  </ReactMarkdown>
+                  </Markdown>
                 </div>
               )}
               {(() => {
@@ -592,9 +592,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                         {renderJsonContent(message.content)}
                       </div>
                     ) : (
-                      <ReactMarkdown className="text-sm prose prose-sm max-w-none [&>*]:text-foreground">
+                      <Markdown className="text-sm [&>*]:text-foreground">
                         {typeof message.content === 'string' ? message.content : ''}
-                      </ReactMarkdown>
+                      </Markdown>
                     )}
                   </div>
                 )

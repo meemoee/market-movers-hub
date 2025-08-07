@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import ReactMarkdown from 'react-markdown';
+import { Markdown } from '@/components/ui/markdown';
 import type { Components as MarkdownComponents } from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -995,12 +995,12 @@ export function QADisplay({ marketId, question, description, userId }: QADisplay
                   <div className="flex-1">
                     {isExpanded ? (
                       <>
-                        <ReactMarkdown
+                        <Markdown
                           components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                          className="prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                         >
                           {analysisContent}
-                        </ReactMarkdown>
+                        </Markdown>
                         {renderCitations(citations)}
                         
                         <div className="mt-4 flex items-center gap-2">

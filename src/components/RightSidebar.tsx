@@ -1,7 +1,7 @@
 import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
-import ReactMarkdown from 'react-markdown'
+import { Markdown } from '@/components/ui/markdown'
 import { Separator } from './ui/separator'
 
 export default function RightSidebar() {
@@ -152,17 +152,17 @@ export default function RightSidebar() {
                 {message.type === 'user' ? (
                   <p className="text-white text-sm">{message.content}</p>
                 ) : (
-                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                  <Markdown className="text-white text-sm prose-invert">
                     {message.content || ''}
-                  </ReactMarkdown>
+                  </Markdown>
                 )}
               </div>
             ))}
             {streamingContent && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                <Markdown className="text-white text-sm prose-invert">
                   {streamingContent}
-                </ReactMarkdown>
+                </Markdown>
               </div>
             )}
             {isLoading && !streamingContent && (

@@ -1,6 +1,5 @@
 import { useLayoutEffect, useEffect, useState, useRef, useCallback } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import ReactMarkdown from 'react-markdown'
+import { Markdown } from '@/components/ui/markdown'
 
 interface AnalysisDisplayProps {
   content: string
@@ -469,11 +468,11 @@ export function AnalysisDisplay({
         data-should-scroll={shouldAutoScroll ? "true" : "false"}
       >
         <div className="overflow-x-hidden w-full max-w-full analysis-content" data-testid="analysis-content">
-          <ReactMarkdown 
-            className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
+          <Markdown
+            className="text-sm prose-invert break-words prose-p:my-1 prose-headings:my-2 max-w-full"
           >
             {content}
-          </ReactMarkdown>
+          </Markdown>
           {/* This is the element we'll scroll into view */}
           <div id="content-end-marker" ref={endMarkerRef} style={{ height: '2px' }} />
         </div>
