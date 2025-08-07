@@ -21,11 +21,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 
 const formSchema = z.object({
   openrouterApiKey: z.string().optional(),
+  agentSystemPrompt: z.string().optional(),
 });
 
 type AccountSettingsProps = {
@@ -43,6 +45,7 @@ export default function AccountSettings({ isOpen, onClose }: AccountSettingsProp
     resolver: zodResolver(formSchema),
     defaultValues: {
       openrouterApiKey: "",
+      agentSystemPrompt: "",
     },
   });
 
@@ -59,7 +62,7 @@ export default function AccountSettings({ isOpen, onClose }: AccountSettingsProp
       if (session?.user) {
         const { data, error } = await supabase
           .from("profiles")
-          .select("openrouter_api_key")
+          .select("openrouter_api_key, agent_system_prompt")
           .eq("id", session.user.id)
           .single();
 
@@ -70,6 +73,9 @@ export default function AccountSettings({ isOpen, onClose }: AccountSettingsProp
           setHasApiKey(true);
         } else {
           setHasApiKey(false);
+        }
+        if (data?.agent_system_prompt) {
+          form.setValue("agentSystemPrompt", data.agent_system_prompt);
         }
       }
     } catch (error: any) {
@@ -87,6 +93,7 @@ export default function AccountSettings({ isOpen, onClose }: AccountSettingsProp
       if (!session?.user) throw new Error("Not authenticated");
 
       let apiKeyValue = values.openrouterApiKey?.trim();
+      let agentPromptValue = values.agentSystemPrompt?.trim();
       
       // If the API key field is empty and user already has a key, ask for confirmation
       if (!apiKeyValue && hasApiKey) {
@@ -106,7 +113,10 @@ export default function AccountSettings({ isOpen, onClose }: AccountSettingsProp
 
       const { error } = await supabase
         .from("profiles")
-        .update({ openrouter_api_key: apiKeyValue || null })
+        .update({
+          openrouter_api_key: apiKeyValue || null,
+          agent_system_prompt: agentPromptValue || null,
+        })
         .eq("id", session.user.id);
 
       if (error) throw error;
@@ -175,12 +185,32 @@ export default function AccountSettings({ isOpen, onClose }: AccountSettingsProp
                     <FormMessage />
                   </FormItem>
                 )}
-              />
-              
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-                  Cancel
-                </Button>
+                />
+
+                <FormField
+                  control={form.control}
+                  name="agentSystemPrompt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custom Agent Instructions</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Optional system prompt additions for analysis agents"
+                          {...field}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        These instructions will be appended to the default system prompt.
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+                    Cancel
+                  </Button>
                 <Button type="submit" disabled={isSaving}>
                   {isSaving ? (
                     <>

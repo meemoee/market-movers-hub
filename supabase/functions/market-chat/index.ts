@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const {
+    let {
       message,
       chatHistory = [],
       userId,
@@ -24,7 +24,8 @@ serve(async (req) => {
       marketDescription,
       selectedModel,
       jsonMode,
-      jsonSchema
+      jsonSchema,
+      customSystemPrompt
     } = await req.json()
     console.log('Received market chat request:', {
       message,
@@ -38,7 +39,7 @@ serve(async (req) => {
     // Determine which API key to use
     let apiKey = OPENROUTER_API_KEY;
 
-    // If userId is provided, try to get their personal API key
+    // If userId is provided, try to get their personal API key and custom prompt
     if (userId) {
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
       const supabaseAdmin = createClient(
@@ -49,15 +50,21 @@ serve(async (req) => {
 
       const { data, error } = await supabaseAdmin
         .from('profiles')
-        .select('openrouter_api_key')
+        .select('openrouter_api_key, agent_system_prompt')
         .eq('id', userId)
         .single()
 
-      if (!error && data?.openrouter_api_key) {
-        console.log('Using user-provided API key')
-        apiKey = data.openrouter_api_key
+      if (!error && data) {
+        if (data.openrouter_api_key) {
+          console.log('Using user-provided API key')
+          apiKey = data.openrouter_api_key
+        }
+        if (!customSystemPrompt && data.agent_system_prompt) {
+          console.log('Using stored custom agent prompt')
+          customSystemPrompt = data.agent_system_prompt
+        }
       } else if (error) {
-        console.error('Error fetching user API key:', error)
+        console.error('Error fetching user settings:', error)
       }
     }
 
@@ -172,9 +179,13 @@ Current Market Context:
 - Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}
 - Market ID: ${marketId || 'Not specified'}`
 
-    const systemPrompt = `You are a helpful market analysis assistant focused on prediction markets. Use any market information provided in the conversation as background context and always prioritize the user's most recent question when generating search queries and responses.
+    const baseSystemPrompt = `You are a helpful market analysis assistant focused on prediction markets. Use any market information provided in the conversation as background context and always prioritize the user's most recent question when generating search queries and responses.
 
 In your first reply, surface the most relevant and up-to-date online sources, citing each with a URL. Provide concise insights on how the information affects the market outcome. Keep responses conversational, informative, and analytically focused.`
+
+    const systemPrompt = customSystemPrompt
+      ? `${baseSystemPrompt}\n\n${customSystemPrompt}`
+      : baseSystemPrompt
 
     console.log('Making request to OpenRouter API...')
     const fetchStart = performance.now()
