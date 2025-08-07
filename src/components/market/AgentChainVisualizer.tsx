@@ -14,9 +14,31 @@ const COLORS = [
   { bg: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-200' },
 ]
 
+const STATUS_STYLES: Record<
+  'pending' | 'running' | 'completed',
+  { bg: string; text: string; border: string }
+> = {
+  pending: {
+    bg: 'bg-card',
+    text: 'text-card-foreground',
+    border: 'border-border',
+  },
+  running: {
+    bg: 'bg-amber-100',
+    text: 'text-amber-800',
+    border: 'border-amber-200',
+  },
+  completed: {
+    bg: 'bg-green-100',
+    text: 'text-green-800',
+    border: 'border-green-200',
+  },
+}
+
 interface AgentChainVisualizerProps {
   chain: ChainConfig
   agents: Agent[]
+  statuses?: Record<string, 'pending' | 'running' | 'completed'>
 }
 
 // Helper to get truncated agent label
@@ -27,7 +49,7 @@ function getAgentLabel(agentId: string, agents: Agent[]) {
   return prompt.length > 20 ? `${prompt.slice(0, 20)}...` : prompt
 }
 
-export default function AgentChainVisualizer({ chain, agents }: AgentChainVisualizerProps) {
+export default function AgentChainVisualizer({ chain, agents, statuses }: AgentChainVisualizerProps) {
   if (!chain || !chain.layers?.length) return null
 
   const agentColors: Record<string, number> = {}
@@ -68,13 +90,15 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
                 const agent = agents.find(a => a.id === block.agentId)
                 const label = getAgentLabel(block.agentId, agents)
                 const colorIdx = agentColors[`${layerIdx}-${idx}`]
-                const color = colorIdx !== undefined ? COLORS[colorIdx] : null
+                const routeColor = colorIdx !== undefined ? COLORS[colorIdx] : null
+                const status = statuses?.[`${layerIdx}-${idx}`] || 'pending'
+                const statusStyle = STATUS_STYLES[status]
                 return (
                   <div
                     key={idx}
                     className={cn(
-                      'px-2 py-1 rounded-md border',
-                      color ? `${color.bg} ${color.text} ${color.border}` : 'bg-card text-card-foreground'
+                      'px-2 py-1 rounded-md border transition-colors',
+                      `${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`
                     )}
                   >
                     <div className="truncate font-medium" title={agent?.prompt || ''}>
