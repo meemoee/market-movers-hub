@@ -66,6 +66,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false)
   const [isChainDialogOpen, setIsChainDialogOpen] = useState(false)
   const [editingChain, setEditingChain] = useState<AgentChain | null>(null)
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
   const [newAgentPrompt, setNewAgentPrompt] = useState('')
   const [newAgentModel, setNewAgentModel] = useState('perplexity/sonar')
   const [newAgentJsonMode, setNewAgentJsonMode] = useState(false)
@@ -218,6 +219,27 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     }
   }, [newAgentJsonMode, newAgentJsonSchema])
 
+  const openNewAgentDialog = () => {
+    setEditingAgent(null)
+    setNewAgentPrompt('')
+    setNewAgentModel(selectedModel)
+    setNewAgentJsonMode(false)
+    setNewAgentJsonSchema('')
+    setIsAgentDialogOpen(true)
+  }
+
+  const handleEditAgent = () => {
+    if (!selectedAgent) return
+    const agent = agents.find(a => a.id === selectedAgent)
+    if (!agent) return
+    setEditingAgent(agent)
+    setNewAgentPrompt(agent.prompt)
+    setNewAgentModel(agent.model)
+    setNewAgentJsonMode(!!agent.json_mode)
+    setNewAgentJsonSchema(agent.json_schema ? JSON.stringify(agent.json_schema, null, 2) : '')
+    setIsAgentDialogOpen(true)
+  }
+
   const saveAgent = async () => {
     if (!newAgentPrompt.trim() || !user?.id) return
     let schemaObj = null
@@ -228,29 +250,51 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         console.error('Invalid JSON schema:', e)
       }
     }
-    const { data, error } = await supabase
-      .from('agents')
-      .insert({
-        user_id: user.id,
-        prompt: newAgentPrompt,
-        model: newAgentModel,
-        json_mode: newAgentJsonMode,
-        json_schema: schemaObj
-      })
-      .select()
-      .single()
+    let data
+    let error
+    if (editingAgent) {
+      ;({ data, error } = await supabase
+        .from('agents')
+        .update({
+          prompt: newAgentPrompt,
+          model: newAgentModel,
+          json_mode: newAgentJsonMode,
+          json_schema: schemaObj
+        })
+        .eq('id', editingAgent.id)
+        .select()
+        .single())
+    } else {
+      ;({ data, error } = await supabase
+        .from('agents')
+        .insert({
+          user_id: user.id,
+          prompt: newAgentPrompt,
+          model: newAgentModel,
+          json_mode: newAgentJsonMode,
+          json_schema: schemaObj
+        })
+        .select()
+        .single())
+    }
     if (error) {
       console.error('Failed to save agent:', error)
       return
     }
     if (data) {
-      const updatedAgents = [data, ...agents]
+      let updatedAgents
+      if (editingAgent) {
+        updatedAgents = agents.map(a => (a.id === data.id ? data : a))
+      } else {
+        updatedAgents = [data, ...agents]
+        handleChatMessage(data.prompt, undefined, data.id, updatedAgents)
+      }
       setAgents(updatedAgents)
       setSelectedAgent(data.id)
       setSelectedModel(data.model)
-      handleChatMessage(data.prompt, undefined, data.id, updatedAgents)
     }
     setIsAgentDialogOpen(false)
+    setEditingAgent(null)
     setNewAgentPrompt('')
     setNewAgentModel(selectedModel)
     setNewAgentJsonMode(false)
@@ -512,10 +556,17 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           )}
           <button
             className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
-            onClick={() => setIsAgentDialogOpen(true)}
+            onClick={openNewAgentDialog}
             disabled={isLoading}
           >
             <BookmarkPlus size={16} />
+          </button>
+          <button
+            className="p-2 hover:bg-accent rounded-lg transition-colors text-primary"
+            onClick={handleEditAgent}
+            disabled={isLoading || !selectedAgent}
+          >
+            <Settings size={16} />
           </button>
           <span className="text-sm text-muted-foreground">Saved Chain:</span>
           {chains.length > 0 && (
@@ -613,10 +664,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         </button>
       </div>
       </Card>
-      <Dialog open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+      <Dialog open={isAgentDialogOpen} onOpenChange={(open) => { setIsAgentDialogOpen(open); if (!open) setEditingAgent(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save Agent</DialogTitle>
+            <DialogTitle>{editingAgent ? 'Edit Agent' : 'Save Agent'}</DialogTitle>
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] pr-4">
             <div className="space-y-4">
@@ -659,11 +710,11 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             </div>
           </ScrollArea>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setIsAgentDialogOpen(false)}>
+            <Button variant="secondary" onClick={() => { setIsAgentDialogOpen(false); setEditingAgent(null) }}>
               Cancel
             </Button>
             <Button onClick={saveAgent} disabled={!newAgentPrompt.trim()}>
-              Save
+              {editingAgent ? 'Update' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
