@@ -69,7 +69,11 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
     } : layer))
   }
 
-  const handleRoutingChange = (layerIndex: number, agentIndex: number, targetIndex: number) => {
+  const handleRoutingToggle = (
+    layerIndex: number,
+    agentIndex: number,
+    targetIndex: number
+  ) => {
     setLayers(prev => prev.map((layer, i) => {
       if (i !== layerIndex) return layer
       return {
@@ -78,12 +82,44 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
           if (j !== agentIndex) return agent
           const current = agent.routes || []
           const exists = current.includes(targetIndex)
-          const routes = exists ? current.filter(r => r !== targetIndex) : [...current, targetIndex]
+          const routes = exists
+            ? current.filter(r => r !== targetIndex)
+            : [...current, targetIndex]
           const fieldRoutes = { ...(agent.fieldRoutes || {}) }
           if (exists) {
             delete fieldRoutes[targetIndex]
+          } else {
+            delete fieldRoutes[targetIndex]
           }
           return { ...agent, routes, fieldRoutes }
+        })
+      }
+    }))
+  }
+
+  const handleOutputTypeChange = (
+    layerIndex: number,
+    agentIndex: number,
+    targetIndex: number,
+    type: 'full' | 'fields'
+  ) => {
+    setLayers(prev => prev.map((layer, i) => {
+      if (i !== layerIndex) return layer
+      return {
+        ...layer,
+        agents: layer.agents.map((agent, j) => {
+          if (j !== agentIndex) return agent
+          const routes = agent.routes || []
+          const newRoutes = routes.includes(targetIndex)
+            ? routes
+            : [...routes, targetIndex]
+          const fieldRoutes = { ...(agent.fieldRoutes || {}) }
+          if (type === 'full') {
+            delete fieldRoutes[targetIndex]
+          } else {
+            fieldRoutes[targetIndex] = fieldRoutes[targetIndex] || []
+          }
+          return { ...agent, routes: newRoutes, fieldRoutes }
         })
       }
     }))
@@ -288,47 +324,97 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
               </Button>
 
               {layerIndex < layers.length - 1 && layers[layerIndex + 1].agents.length > 0 && (
-                <div className="pt-4 border-t space-y-2">
-                  {layer.agents.map((block, agentIdx) => {
-                    const schemaFields = getSchemaFields(block.agentId)
-                    return (
-                      <div key={agentIdx} className="flex flex-wrap items-start gap-2 text-xs">
-                        <span>Agent {agentIdx + 1} to:</span>
-                        {layers[layerIndex + 1].agents.map((_, targetIdx) => {
-                          const isChecked = layers[layerIndex].agents[agentIdx].routes?.includes(targetIdx) || false
-                          return (
-                            <div key={targetIdx} className="flex flex-col gap-1">
-                              <label className="flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => handleRoutingChange(layerIndex, agentIdx, targetIdx)}
-                                  className="h-3 w-3"
-                                />
-                                Agent {targetIdx + 1}
-                              </label>
-                              {schemaFields.length > 0 && (
-                                <div className="ml-4 flex flex-wrap gap-1">
-                                  {schemaFields.map(field => (
-                                    <label key={field} className="flex items-center gap-1">
-                                      <input
-                                        type="checkbox"
-                                        checked={layers[layerIndex].agents[agentIdx].fieldRoutes?.[targetIdx]?.includes(field) || false}
-                                        onChange={(e) => handleFieldRouteChange(layerIndex, agentIdx, targetIdx, field, e.target.checked)}
-                                        className="h-3 w-3"
-                                        disabled={!isChecked}
-                                      />
-                                      {field}
-                                    </label>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
+                <div className="pt-4 border-t space-y-4 text-xs">
+                  {layer.agents.map((block, agentIdx) => (
+                    <div key={agentIdx} className="space-y-2">
+                      <div className="font-medium">
+                        Layer {layerIndex + 1} Agent {agentIdx + 1} routes to:
                       </div>
-                    )
-                  })}
+                      {layers[layerIndex + 1].agents.map((_, targetIdx) => {
+                        const schemaFields = getSchemaFields(block.agentId)
+                        const isChecked =
+                          layers[layerIndex].agents[agentIdx].routes?.includes(targetIdx) || false
+                        const fieldRoute =
+                          layers[layerIndex].agents[agentIdx].fieldRoutes?.[targetIdx] || []
+                        return (
+                          <div key={targetIdx} className="ml-4 space-y-1">
+                            <label className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleRoutingToggle(layerIndex, agentIdx, targetIdx)}
+                                className="h-3 w-3"
+                              />
+                              Layer {layerIndex + 2} Agent {targetIdx + 1}
+                            </label>
+                            {isChecked && schemaFields.length > 0 && (
+                              <div className="ml-4 space-y-1">
+                                <div className="flex gap-4">
+                                  <label className="flex items-center gap-1">
+                                    <input
+                                      type="radio"
+                                      className="h-3 w-3"
+                                      name={`route-${layerIndex}-${agentIdx}-${targetIdx}`}
+                                      checked={fieldRoute.length === 0}
+                                      onChange={() =>
+                                        handleOutputTypeChange(
+                                          layerIndex,
+                                          agentIdx,
+                                          targetIdx,
+                                          'full'
+                                        )
+                                      }
+                                    />
+                                    Full output
+                                  </label>
+                                  <label className="flex items-center gap-1">
+                                    <input
+                                      type="radio"
+                                      className="h-3 w-3"
+                                      name={`route-${layerIndex}-${agentIdx}-${targetIdx}`}
+                                      checked={fieldRoute.length > 0}
+                                      onChange={() =>
+                                        handleOutputTypeChange(
+                                          layerIndex,
+                                          agentIdx,
+                                          targetIdx,
+                                          'fields'
+                                        )
+                                      }
+                                    />
+                                    Select fields
+                                  </label>
+                                </div>
+                                {fieldRoute.length > 0 && (
+                                  <div className="ml-4 flex flex-wrap gap-1">
+                                    {schemaFields.map(field => (
+                                      <label key={field} className="flex items-center gap-1">
+                                        <input
+                                          type="checkbox"
+                                          className="h-3 w-3"
+                                          checked={fieldRoute.includes(field)}
+                                          onChange={e =>
+                                            handleFieldRouteChange(
+                                              layerIndex,
+                                              agentIdx,
+                                              targetIdx,
+                                              field,
+                                              e.target.checked
+                                            )
+                                          }
+                                        />
+                                        {field}
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
             </Card>
