@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client"
+
 export interface Agent {
   id: string
   prompt: string
@@ -50,17 +52,11 @@ async function callModel(
 ): Promise<string> {
   console.log('🧠 [callModel] Invoking model', model)
   console.log('🧠 [callModel] Prompt:', prompt)
-  const res = await fetch(
-    "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/market-chat",
+  type MarketChatResponse = { content?: string }
+  const { data, error } = await supabase.functions.invoke<MarketChatResponse>(
+    'market-chat',
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${context.authToken}`,
-        apikey:
-          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+      body: {
         message: prompt,
         chatHistory: [],
         userId: context.userId,
@@ -70,20 +66,31 @@ async function callModel(
         selectedModel: model,
         jsonMode: json_mode,
         jsonSchema: json_schema,
-      }),
+      },
+      headers: {
+        Authorization: `Bearer ${context.authToken}`,
+      },
     }
   )
 
-  if (!res.ok) {
-    console.log('⚠️ [callModel] Request failed:', res.status)
+  if (error) {
+    console.log('⚠️ [callModel] Request failed:', error)
     return ""
   }
 
-  type MarketChatResponse = { content?: string }
-  const data: MarketChatResponse = await res.json().catch(() => ({} as MarketChatResponse))
-  const content = data.content || ""
-  console.log('✍️ [callModel] Parsed content:', content.trim())
-  return content.trim()
+  const content = (data?.content || "").trim()
+
+  if (content && (json_mode || json_schema)) {
+    try {
+      JSON.parse(content)
+    } catch {
+      console.log('⚠️ [callModel] Incomplete JSON content:', content)
+      return ""
+    }
+  }
+
+  console.log('✍️ [callModel] Parsed content:', content)
+  return content
 }
 
 export async function executeAgentChain(
