@@ -196,6 +196,7 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
     const historyMessages = Array.isArray(chatHistory) ? chatHistory : []
     const requestBody: Record<string, unknown> = {
       model: selectedModel || "perplexity/sonar",
+      max_tokens: 4000,
       messages: [
         {
           role: "system",
