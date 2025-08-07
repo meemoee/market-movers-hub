@@ -13,6 +13,7 @@ import { ChartSegment } from './chart/ChartSegment';
 import { EventMarkers } from './chart/EventMarkers';
 import { useChartData } from './chart/useChartData';
 import type { PriceData, MarketEvent } from './chart/types';
+import type { Holding } from '../account/AccountHoldings';
 
 const intervals = [
   { label: '1D', value: '1d' },
@@ -92,46 +93,14 @@ function Chart({
     [innerWidth, allTimePoints]
   );
 
-  const priceScale = useMemo(() => {
-    // Calculate the actual data range from all series
-    let minPrice = 0;
-    let maxPrice = 100;
-    
-    if (dataSeries && dataSeries.length > 0) {
-      const allPrices: number[] = [];
-      dataSeries.forEach(series => {
-        if (series.data && Array.isArray(series.data)) {
-          series.data.forEach(point => {
-            allPrices.push(point.price);
-          });
-        }
-      });
-      
-      if (allPrices.length > 0) {
-        const dataMin = Math.min(...allPrices);
-        const dataMax = Math.max(...allPrices);
-        
-        // For cumulative PnL, we want to show a wider range to accommodate negative values
-        const hasCumulativePnL = dataSeries.some(series => series.isCumulativePnL);
-        
-        if (hasCumulativePnL) {
-          // Extend the range to show negative PnL values properly
-          minPrice = Math.min(dataMin - 10, -20); // Allow for negative PnL
-          maxPrice = Math.max(dataMax + 10, 120); // Allow for high positive PnL
-        } else {
-          // For regular price data, stick closer to 0-100 but allow some extension
-          minPrice = Math.max(0, dataMin - 5);
-          maxPrice = Math.min(100, dataMax + 5);
-        }
-      }
-    }
-    
-    return scaleLinear<number>({
-      range: [innerHeight, 0],
-      domain: [minPrice, maxPrice],
-      nice: true,
-    });
-  }, [innerHeight, dataSeries]);
+  const priceScale = useMemo(
+    () =>
+      scaleLinear<number>({
+        range: [innerHeight, 0],
+        domain: [0, 100],
+      }),
+    [innerHeight]
+  );
 
   const { segments } = useChartData(primaryData);
 
@@ -178,9 +147,9 @@ function Chart({
     (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
       const { x } = localPoint(event) || { x: 0 };
       const xValue = x - margin.left;
-      
+
       if (xValue < 0 || xValue > innerWidth) return;
-      
+
       const interpolatedData = getInterpolatedPrices(xValue);
       
       // Use the first price for positioning if available
@@ -192,7 +161,7 @@ function Chart({
         tooltipTop: priceScale(firstPrice) + margin.top,
       });
     },
-    [timeScale, priceScale, margin, showTooltip, innerWidth, getInterpolatedPrices]
+    [priceScale, margin, showTooltip, innerWidth, getInterpolatedPrices]
   );
 
   const tooltipDateFormat = useMemo(() => {
@@ -411,7 +380,7 @@ interface PriceSeriesData {
   color: string;
   data: PriceData[];
   isCumulativePnL?: boolean;
-  holding?: any;
+    holding?: Holding;
 }
 
 interface PriceChartProps {
