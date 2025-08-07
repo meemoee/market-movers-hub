@@ -432,23 +432,21 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       const handleAgentOutput = (output: AgentOutput) => {
         const agent = currentAgents.find(a => a.id === output.agentId)
         const isJson = agent?.json_mode
-        const agentIdx = chain?.config.layers[output.layer].agents.findIndex(b => b.agentId === output.agentId)
-        if (agentIdx !== undefined && agentIdx !== -1) {
-          setAgentStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}`]: 'done' }))
-          if (isJson) {
-            try {
-              const parsed = JSON.parse(output.output)
-              const block = chain!.config.layers[output.layer].agents[agentIdx]
-              Object.entries(block.fieldRoutes || {}).forEach(([tIdx, fields]) => {
-                fields.forEach(f => {
-                  if (parsed && Object.prototype.hasOwnProperty.call(parsed, f)) {
-                    setFieldStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}-${tIdx}-${f}`]: 'done' }))
-                  }
-                })
+        const agentIdx = output.agentIndex
+        setAgentStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}`]: 'done' }))
+        if (isJson) {
+          try {
+            const parsed = JSON.parse(output.output)
+            const block = chain!.config.layers[output.layer].agents[agentIdx]
+            Object.entries(block.fieldRoutes || {}).forEach(([tIdx, fields]) => {
+              fields.forEach(f => {
+                if (parsed && Object.prototype.hasOwnProperty.call(parsed, f)) {
+                  setFieldStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}-${tIdx}-${f}`]: 'done' }))
+                }
               })
-            } catch {
-              // ignore JSON parse errors
-            }
+            })
+          } catch {
+            // ignore JSON parse errors
           }
         }
         setMessages(prev => {
@@ -464,12 +462,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
       }
 
-      const handleAgentStart = ({ layer, agentId, input }: { layer: number; agentId: string; input?: string }) => {
+      const handleAgentStart = ({ layer, agentId, agentIndex, input }: { layer: number; agentId: string; agentIndex: number; input?: string }) => {
         const agent = currentAgents.find(a => a.id === agentId)
-        const agentIdx = chain?.config.layers[layer].agents.findIndex(b => b.agentId === agentId)
-        if (agentIdx !== undefined && agentIdx !== -1) {
-          setAgentStatuses(prev => ({ ...prev, [`${layer}-${agentIdx}`]: 'running' }))
-        }
+        setAgentStatuses(prev => ({ ...prev, [`${layer}-${agentIndex}`]: 'running' }))
         setMessages(prev => [
           ...prev,
           { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode, input }

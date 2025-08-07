@@ -28,12 +28,14 @@ export interface ChainConfig {
 export interface AgentOutput {
   layer: number
   agentId: string
+  agentIndex: number
   output: string
 }
 
 export interface AgentStart {
   layer: number
   agentId: string
+  agentIndex: number
   input?: string
 }
 
@@ -177,7 +179,7 @@ export async function executeAgentChain(
       if (!agent) {
         const msg = `Agent ID ${block.agentId} not found`
         console.warn(`⚠️ [executeAgentChain] ${msg}`)
-        onAgentOutput?.({ layer: i, agentId: block.agentId, output: msg })
+        onAgentOutput?.({ layer: i, agentId: block.agentId, agentIndex, output: msg })
         continue
       }
 
@@ -195,7 +197,7 @@ export async function executeAgentChain(
       console.log('🤖 [executeAgentChain] Routes:', block.routes)
 
       for (let c = 0; c < (block.copies || 1); c++) {
-        onAgentStart?.({ layer: i, agentId: agent.id, input })
+        onAgentStart?.({ layer: i, agentId: agent.id, agentIndex, input })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
           fullPrompt,
@@ -206,7 +208,7 @@ export async function executeAgentChain(
           agent.system_prompt
         )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
-        const agentOutput = { layer: i, agentId: agent.id, output }
+        const agentOutput = { layer: i, agentId: agent.id, agentIndex, output }
         agentOutputs.push(agentOutput)
         onAgentOutput?.(agentOutput)
 
@@ -268,7 +270,7 @@ export async function executeAgentChain(
       if (!agent) {
         const msg = `Agent ID ${block.agentId} not found`
         console.warn(`⚠️ [executeAgentChain] ${msg}`)
-        onAgentOutput?.({ layer: chainConfig.layers.length - 1, agentId: block.agentId, output: msg })
+        onAgentOutput?.({ layer: chainConfig.layers.length - 1, agentId: block.agentId, agentIndex, output: msg })
         continue
       }
 
@@ -285,7 +287,7 @@ export async function executeAgentChain(
       console.log('📜 [executeAgentChain] Full prompt:', fullPrompt)
 
       for (let c = 0; c < (block.copies || 1); c++) {
-        onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id, input })
+        onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id, agentIndex, input })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
           fullPrompt,
@@ -299,6 +301,7 @@ export async function executeAgentChain(
         const agentOutput = {
           layer: chainConfig.layers.length - 1,
           agentId: agent.id,
+          agentIndex,
           output,
         }
         agentOutputs.push(agentOutput)
