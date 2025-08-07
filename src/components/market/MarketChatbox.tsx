@@ -97,15 +97,35 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       try {
         data = JSON.parse(content)
       } catch {
-        return <pre className="text-sm">{content}</pre>
+        return (
+          <Markdown
+            className="inline"
+            components={{
+              p: ({ children }) => <span className="whitespace-pre-wrap">{children}</span>,
+            }}
+          >
+            {content}
+          </Markdown>
+        )
       }
     }
     if (typeof data === 'object' && data !== null) {
       return Object.entries(data as Record<string, unknown>).map(([key, value]) => (
-        <p key={key}>
-          <span className="font-medium">{formatKey(key)}:</span>{' '}
-          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-        </p>
+        <div key={key} className="flex items-start gap-1">
+          <span className="font-medium">{formatKey(key)}:</span>
+          {typeof value === 'string' ? (
+            <Markdown
+              className="inline"
+              components={{
+                p: ({ children }) => <span className="whitespace-pre-wrap">{children}</span>,
+              }}
+            >
+              {value}
+            </Markdown>
+          ) : (
+            <pre className="whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+          )}
+        </div>
       ))
     }
     return null
