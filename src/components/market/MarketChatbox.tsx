@@ -76,6 +76,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
   const [newAgentSystemPrompt, setNewAgentSystemPrompt] = useState('')
   const [chains, setChains] = useState<AgentChain[]>([])
   const [selectedChain, setSelectedChain] = useState('')
+  const [chainStatuses, setChainStatuses] = useState<Record<string, 'pending' | 'running' | 'completed'>>({})
+  const [agentIndexMap, setAgentIndexMap] = useState<Record<string, number>>({})
   const { user } = useCurrentUser()
 
   const layerStyles = [
@@ -229,6 +231,29 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
 
   const selectedChainObj = chains.find(c => c.id === selectedChain)
   const selectedAgentObj = agents.find(a => a.id === selectedAgent)
+
+  const prepareChainStatus = useCallback((config: ChainConfig) => {
+    const statuses: Record<string, 'pending' | 'running' | 'completed'> = {}
+    const index: Record<string, number> = {}
+    config.layers.forEach((layer, layerIdx) => {
+      layer.agents.forEach((block, agentIdx) => {
+        statuses[`${layerIdx}-${agentIdx}`] = 'pending'
+        index[`${layerIdx}-${block.agentId}`] = agentIdx
+      })
+    })
+    return { statuses, index }
+  }, [])
+
+  useEffect(() => {
+    if (selectedChainObj) {
+      const { statuses, index } = prepareChainStatus(selectedChainObj.config)
+      setChainStatuses(statuses)
+      setAgentIndexMap(index)
+    } else {
+      setChainStatuses({})
+      setAgentIndexMap({})
+    }
+  }, [selectedChainObj, prepareChainStatus])
 
   useEffect(() => {
     if (selectedAgentObj?.json_mode) {
@@ -416,6 +441,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           }
           return [...prev, { type: 'assistant', content: output.output, agentId: output.agentId, layer: output.layer, jsonMode: isJson }]
         })
+        const agentIdx = agentIndexMap[`${output.layer}-${output.agentId}`]
+        if (agentIdx !== undefined) {
+          setChainStatuses(prev => ({ ...prev, [`${output.layer}-${agentIdx}`]: 'completed' }))
+        }
       }
 
       const handleAgentStart = ({ layer, agentId, input }: { layer: number; agentId: string; input?: string }) => {
@@ -424,6 +453,10 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           ...prev,
           { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode, input }
         ])
+        const agentIdx = agentIndexMap[`${layer}-${agentId}`]
+        if (agentIdx !== undefined) {
+          setChainStatuses(prev => ({ ...prev, [`${layer}-${agentIdx}`]: 'running' }))
+        }
       }
 
       if (activeChainId) {
@@ -431,6 +464,9 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         if (!chain) {
           throw new Error('Selected chain not found')
         }
+        const { statuses, index } = prepareChainStatus(chain.config)
+        setChainStatuses(statuses)
+        setAgentIndexMap(index)
         finalLayerIndex = chain.config.layers.length - 1
         chain.config.layers.forEach((layer, layerIdx) => {
           layer.agents.forEach((block, agentIdx) => {
@@ -688,7 +724,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           )}
         </div>
         {selectedChainObj && (
-          <AgentChainVisualizer chain={selectedChainObj.config} agents={agents} />
+          <AgentChainVisualizer chain={selectedChainObj.config} agents={agents} statuses={chainStatuses} />
         )}
       </div>
 
