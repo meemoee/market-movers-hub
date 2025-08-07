@@ -46,7 +46,7 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
         const targetColor = agentColors[`${layerIdx + 1}-${r}`]
         if (targetColor === undefined) return
         const fields = block.fieldRoutes?.[r] || []
-        if (fields.length === 0) {
+        if (fields.length === 0 || (block.routes && block.routes.length === 1)) {
           agentColors[`${layerIdx}-${agentIdx}`] = targetColor
         }
       })
