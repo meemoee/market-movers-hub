@@ -144,7 +144,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
       if (!user?.id) return
       const { data, error } = await supabase
         .from('agents')
-        .select('id, prompt, model, system_prompt, json_mode, json_schema')
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -152,7 +152,16 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         console.error('Failed to fetch agents:', error)
         return
       }
-      setAgents(data || [])
+
+      const normalized = (data as any[]).map(a => ({
+        id: a.id,
+        prompt: a.prompt,
+        model: a.model,
+        system_prompt: a.system_prompt ?? undefined,
+        json_mode: a.json_mode ?? undefined,
+        json_schema: a.json_schema ?? undefined,
+      }))
+      setAgents(normalized)
     }
 
     fetchAgents()
@@ -273,6 +282,19 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         .eq('id', editingAgent.id)
         .select()
         .single())
+      if (error && String(error.message).includes('system_prompt')) {
+        ;({ data, error } = await supabase
+          .from('agents')
+          .update({
+            prompt: newAgentPrompt,
+            model: newAgentModel,
+            json_mode: newAgentJsonMode,
+            json_schema: schemaObj
+          })
+          .eq('id', editingAgent.id)
+          .select()
+          .single())
+      }
     } else {
       ;({ data, error } = await supabase
         .from('agents')
@@ -286,6 +308,19 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         })
         .select()
         .single())
+      if (error && String(error.message).includes('system_prompt')) {
+        ;({ data, error } = await supabase
+          .from('agents')
+          .insert({
+            user_id: user.id,
+            prompt: newAgentPrompt,
+            model: newAgentModel,
+            json_mode: newAgentJsonMode,
+            json_schema: schemaObj
+          })
+          .select()
+          .single())
+      }
     }
     if (error) {
       console.error('Failed to save agent:', error)
