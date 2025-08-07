@@ -33,6 +33,7 @@ export interface AgentOutput {
 export interface AgentStart {
   layer: number
   agentId: string
+  input?: string
 }
 
 interface ExecutionContext {
@@ -163,7 +164,7 @@ export async function executeAgentChain(
       console.log('🤖 [executeAgentChain] Routes:', block.routes)
 
       for (let c = 0; c < (block.copies || 1); c++) {
-        onAgentStart?.({ layer: i, agentId: agent.id })
+        onAgentStart?.({ layer: i, agentId: agent.id, input })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
           fullPrompt,
@@ -248,7 +249,7 @@ export async function executeAgentChain(
       console.log('📜 [executeAgentChain] Full prompt:', fullPrompt)
 
       for (let c = 0; c < (block.copies || 1); c++) {
-        onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id })
+        onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id, input })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
         const output = await callModel(
           fullPrompt,
