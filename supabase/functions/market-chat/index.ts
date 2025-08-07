@@ -15,7 +15,8 @@ serve(async (req) => {
   }
 
   try {
-    let {
+    const body = await req.json()
+    const {
       message,
       chatHistory = [],
       userId,
@@ -24,9 +25,9 @@ serve(async (req) => {
       marketDescription,
       selectedModel,
       jsonMode,
-      jsonSchema,
-      customSystemPrompt
-    } = await req.json()
+      jsonSchema
+    } = body
+    let customSystemPrompt = body.customSystemPrompt
     console.log('Received market chat request:', {
       message,
       chatHistoryLength: Array.isArray(chatHistory) ? chatHistory.length : 'invalid',
@@ -162,7 +163,9 @@ serve(async (req) => {
     console.log('redis lookup time', performance.now() - redisStart)
 
     // Create market-specific system prompt with rich context
+    const currentDate = new Date().toISOString().split('T')[0]
     const marketContext = marketData ? `
+Current Date: ${currentDate}
 Current Market Data:
 - Question: ${marketData.question}
 - Current Price: ${marketData.final_last_price || 'N/A'}
@@ -174,6 +177,7 @@ Current Market Data:
 - Tags: ${marketData.primary_tags ? marketData.primary_tags.join(', ') : 'N/A'}
 - Description: ${(marketData.description || marketDescription) ? ( (marketData.description || marketDescription).substring(0, 300) + '...') : 'N/A'}
 - Outcomes: ${marketData.outcomes ? marketData.outcomes.join(' vs ') : 'N/A'}` : `
+Current Date: ${currentDate}
 Current Market Context:
 - Market Question: ${marketQuestion || 'Not specified'}
 - Market Description: ${marketDescription ? marketDescription.substring(0, 300) + '...' : 'Not specified'}
