@@ -63,6 +63,19 @@ function validateAgentIds(chainConfig: ChainConfig, agents: Agent[]) {
   }
 }
 
+function extractJsonString(text: string): string | null {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i)
+  if (fenced) {
+    return fenced[1].trim()
+  }
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start !== -1 && end !== -1 && end > start) {
+    return text.slice(start, end + 1)
+  }
+  return null
+}
+
 async function callModel(
   prompt: string,
   model: string,
@@ -101,24 +114,26 @@ async function callModel(
   }
 
   const content = (data?.content || "").trim()
+  console.log('📝 [callModel] Raw response:', content)
 
   let finalContent = content
   if (content && (json_mode || json_schema)) {
     try {
       JSON.parse(content)
     } catch {
-      const jsonMatch = content.match(/({[\s\S]*})/)
-      if (jsonMatch) {
-        finalContent = jsonMatch[0]
+      const extracted = extractJsonString(content)
+      if (extracted) {
+        finalContent = extracted
         try {
           JSON.parse(finalContent)
           console.log('⚠️ [callModel] Extracted JSON from noisy content')
         } catch {
           console.log('⚠️ [callModel] Incomplete JSON content:', content)
+          console.log('⚠️ [callModel] Raw JSON string:', finalContent)
           return ""
         }
       } else {
-        console.log('⚠️ [callModel] Incomplete JSON content:', content)
+        console.log('⚠️ [callModel] Unable to locate JSON in response')
         return ""
       }
     }
@@ -135,7 +150,7 @@ export async function executeAgentChain(
   context: ExecutionContext,
   onAgentOutput?: (output: AgentOutput) => void,
   onAgentStart?: (info: AgentStart) => void
-): Promise<{ prompt: string; model: string; outputs: AgentOutput[] }> {
+): Promise<{ prompt: string; model: string; json_mode?: boolean; json_schema?: unknown; outputs: AgentOutput[] }> {
   console.log('🚀 [executeAgentChain] Starting chain execution')
   console.log('🚀 [executeAgentChain] Chain config:', JSON.stringify(chainConfig, null, 2))
   console.log('🚀 [executeAgentChain] Initial input:', initialInput)
@@ -197,18 +212,13 @@ export async function executeAgentChain(
 
         let parsed: Record<string, unknown> | undefined
         if (agent.json_mode) {
-          try {
-            parsed = JSON.parse(output)
-          } catch {
-            const jsonMatch = output.match(/({[\s\S]*})/)
-            if (jsonMatch) {
-              try {
-                parsed = JSON.parse(jsonMatch[0])
-              } catch {
-                parsed = undefined
-              }
-            } else {
-              parsed = undefined
+          console.log(`📝 [executeAgentChain] Raw JSON response from agent ${agent.id}:`, output)
+          const extracted = extractJsonString(output)
+          if (extracted) {
+            try {
+              parsed = JSON.parse(extracted)
+            } catch {
+              console.log(`⚠️ [executeAgentChain] Failed to parse JSON for agent ${agent.id}`)
             }
           }
         }
@@ -277,14 +287,14 @@ export async function executeAgentChain(
       for (let c = 0; c < (block.copies || 1); c++) {
         onAgentStart?.({ layer: chainConfig.layers.length - 1, agentId: agent.id, input })
         console.log(`📡 [executeAgentChain] Calling model for agent ${agent.id}, copy ${c + 1}`)
-      const output = await callModel(
-        fullPrompt,
-        agent.model,
-        context,
-        agent.json_mode,
-        agent.json_schema,
-        agent.system_prompt
-      )
+        const output = await callModel(
+          fullPrompt,
+          agent.model,
+          context,
+          agent.json_mode,
+          agent.json_schema,
+          agent.system_prompt
+        )
         console.log(`📦 [executeAgentChain] Output from agent ${agent.id}:`, output)
         const agentOutput = {
           layer: chainConfig.layers.length - 1,
@@ -293,6 +303,9 @@ export async function executeAgentChain(
         }
         agentOutputs.push(agentOutput)
         onAgentOutput?.(agentOutput)
+        if (agent.json_mode) {
+          console.log(`📝 [executeAgentChain] Raw JSON response from agent ${agent.id}:`, output)
+        }
       }
     }
   }
