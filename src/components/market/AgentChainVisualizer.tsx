@@ -1,6 +1,13 @@
-import { ArrowRight } from 'lucide-react'
+import { useMemo } from 'react'
+import ReactFlow, {
+  Background,
+  Controls,
+  MarkerType,
+  type Edge,
+  type Node,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
 import { ChainConfig, Agent } from '@/utils/executeAgentChain'
-import { Badge } from '@/components/ui/badge'
 
 interface AgentChainVisualizerProps {
   chain: ChainConfig
@@ -18,55 +25,43 @@ function getAgentLabel(agentId: string, agents: Agent[]) {
 export default function AgentChainVisualizer({ chain, agents }: AgentChainVisualizerProps) {
   if (!chain || !chain.layers?.length) return null
 
+  const { nodes, edges } = useMemo(() => {
+    const nodes: Node[] = []
+    const edges: Edge[] = []
+
+    chain.layers.forEach((layer, layerIdx) => {
+      layer.agents.forEach((block, idx) => {
+        const id = `${layerIdx}-${idx}`
+        const label = getAgentLabel(block.agentId, agents)
+        nodes.push({
+          id,
+          data: { label },
+          position: { x: layerIdx * 200, y: idx * 120 },
+        })
+
+        block.routes?.forEach((targetIdx, rIdx) => {
+          const targetId = `${layerIdx + 1}-${targetIdx}`
+          const fields = block.fieldRoutes?.[rIdx]?.join(', ')
+          edges.push({
+            id: `${id}-${targetId}-${rIdx}`,
+            source: id,
+            target: targetId,
+            label: fields,
+            markerEnd: { type: MarkerType.ArrowClosed },
+          })
+        })
+      })
+    })
+
+    return { nodes, edges }
+  }, [chain, agents])
+
   return (
-    <div className="mt-4 space-y-3 text-xs">
-      {chain.layers.map((layer, layerIdx) => {
-        const isLast = layerIdx === chain.layers.length - 1
-        return (
-          <div key={layerIdx} className="relative pl-8">
-            {!isLast && <span className="absolute left-2 top-5 bottom-0 w-px bg-border" />}
-            <span className="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-medium">
-              {layerIdx + 1}
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {layer.agents.map((block, idx) => {
-                const agent = agents.find(a => a.id === block.agentId)
-                const label = getAgentLabel(block.agentId, agents)
-                return (
-                  <div key={idx} className="px-2 py-1 rounded-md border bg-card text-card-foreground">
-                    <div className="truncate font-medium" title={agent?.prompt || ''}>
-                      {label}
-                    </div>
-                    {block.copies && block.copies > 1 && (
-                      <div className="text-[10px] text-muted-foreground">×{block.copies}</div>
-                    )}
-                    {block.routes && block.routes.length > 0 && (
-                      <div className="mt-1 flex flex-col gap-1">
-                        {block.routes.map(r => {
-                          const targetBlock = chain.layers[layerIdx + 1]?.agents[r]
-                          const targetLabel = targetBlock
-                            ? getAgentLabel(targetBlock.agentId, agents)
-                            : `Layer ${layerIdx + 2} Agent ${r + 1}`
-                          const fields = block.fieldRoutes?.[r] || []
-                          return (
-                            <div key={r} className="flex items-center gap-1 text-[10px]">
-                              <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                              <Badge variant="secondary" className="text-[10px]">{targetLabel}</Badge>
-                              {fields.map(f => (
-                                <Badge key={f} variant="outline" className="text-[10px]">{f}</Badge>
-                              ))}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
+    <div className="mt-4 h-64">
+      <ReactFlow nodes={nodes} edges={edges} fitView>
+        <Background />
+        <Controls />
+      </ReactFlow>
     </div>
   )
 }
