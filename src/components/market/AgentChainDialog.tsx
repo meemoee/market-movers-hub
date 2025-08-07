@@ -120,6 +120,25 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
       .filter((idx): idx is number => idx !== null)
   }
 
+  const getSchemaFields = (agentId: string): string[] => {
+    const agentObj = agents.find(a => a.id === agentId)
+    if (agentObj?.json_mode && agentObj.json_schema) {
+      try {
+        const schema =
+          typeof agentObj.json_schema === 'string'
+            ? JSON.parse(agentObj.json_schema)
+            : agentObj.json_schema
+        return Object.keys(
+          // json_schema follows the structure { schema: { properties: { ... } } }
+          (schema as { schema?: { properties?: Record<string, unknown> } })?.schema?.properties || {}
+        )
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
+
   const reset = () => {
     setChainName('')
     setLayers([initialLayer])
@@ -201,6 +220,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
 
               {layer.agents.map((agent, agentIndex) => {
                 const incoming = getIncomingAgents(layerIndex, agentIndex)
+                const schemaFields = getSchemaFields(agent.agentId)
                 return (
                   <div key={agentIndex} className="border p-3 rounded-md space-y-2">
                     <div className="flex items-center gap-2">
@@ -244,6 +264,15 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
                       value={agent.prompt}
                       onChange={(e) => updateAgentBlock(layerIndex, agentIndex, 'prompt', e.target.value)}
                     />
+                    {schemaFields.length > 0 && (
+                      <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                        {schemaFields.map(field => (
+                          <span key={field} className="rounded bg-muted px-1 py-0.5">
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -255,22 +284,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
               {layerIndex < layers.length - 1 && layers[layerIndex + 1].agents.length > 0 && (
                 <div className="pt-4 border-t space-y-2">
                   {layer.agents.map((block, agentIdx) => {
-                    const agentObj = agents.find(a => a.id === block.agentId)
-                    let schemaFields: string[] = []
-                    if (agentObj?.json_mode && agentObj.json_schema) {
-                      try {
-                        const schema =
-                          typeof agentObj.json_schema === 'string'
-                            ? JSON.parse(agentObj.json_schema)
-                            : agentObj.json_schema
-                        schemaFields = Object.keys(
-                          // json_schema follows the structure { schema: { properties: { ... } } }
-                          (schema as { schema?: { properties?: Record<string, unknown> } })?.schema?.properties || {}
-                        )
-                      } catch {
-                        schemaFields = []
-                      }
-                    }
+                    const schemaFields = getSchemaFields(block.agentId)
                     return (
                       <div key={agentIdx} className="flex flex-wrap items-start gap-2 text-xs">
                         <span>Agent {agentIdx + 1} to:</span>
@@ -287,7 +301,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
                                 />
                                 Agent {targetIdx + 1}
                               </label>
-                              {isChecked && schemaFields.length > 0 && (
+                              {schemaFields.length > 0 && (
                                 <div className="ml-4 flex flex-wrap gap-1">
                                   {schemaFields.map(field => (
                                     <label key={field} className="flex items-center gap-1">
@@ -296,6 +310,7 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
                                         checked={layers[layerIndex].agents[agentIdx].fieldRoutes?.[targetIdx]?.includes(field) || false}
                                         onChange={(e) => handleFieldRouteChange(layerIndex, agentIdx, targetIdx, field, e.target.checked)}
                                         className="h-3 w-3"
+                                        disabled={!isChecked}
                                       />
                                       {field}
                                     </label>
