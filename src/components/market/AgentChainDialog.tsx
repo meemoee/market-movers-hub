@@ -265,12 +265,18 @@ export function AgentChainDialog({ open, onOpenChange, agents, onSaved, chain }:
                       onChange={(e) => updateAgentBlock(layerIndex, agentIndex, 'prompt', e.target.value)}
                     />
                     {schemaFields.length > 0 && (
-                      <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
-                        {schemaFields.map(field => (
-                          <span key={field} className="rounded bg-muted px-1 py-0.5">
-                            {field}
-                          </span>
-                        ))}
+                      <div className="text-xs space-y-1">
+                        <div className="text-muted-foreground font-medium">JSON Output</div>
+                        <div className="flex flex-wrap gap-1">
+                          {schemaFields.map(field => (
+                            <span
+                              key={field}
+                              className="rounded bg-muted px-1 py-0.5 text-foreground"
+                            >
+                              {field}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
