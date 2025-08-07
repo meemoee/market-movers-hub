@@ -17,6 +17,8 @@ const COLORS = [
 interface AgentChainVisualizerProps {
   chain: ChainConfig
   agents: Agent[]
+  statuses?: Record<string, 'pending' | 'running' | 'done'>
+  fieldStatuses?: Record<string, 'pending' | 'done'>
 }
 
 // Helper to get truncated agent label
@@ -27,7 +29,7 @@ function getAgentLabel(agentId: string, agents: Agent[]) {
   return prompt.length > 20 ? `${prompt.slice(0, 20)}...` : prompt
 }
 
-export default function AgentChainVisualizer({ chain, agents }: AgentChainVisualizerProps) {
+export default function AgentChainVisualizer({ chain, agents, statuses, fieldStatuses }: AgentChainVisualizerProps) {
   if (!chain || !chain.layers?.length) return null
 
   const agentColors: Record<string, number> = {}
@@ -69,12 +71,20 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
                 const label = getAgentLabel(block.agentId, agents)
                 const colorIdx = agentColors[`${layerIdx}-${idx}`]
                 const color = colorIdx !== undefined ? COLORS[colorIdx] : null
+                const status = statuses?.[`${layerIdx}-${idx}`] || 'pending'
+                const statusClass =
+                  status === 'running'
+                    ? 'ring-2 ring-amber-500'
+                    : status === 'done'
+                    ? 'ring-2 ring-emerald-500'
+                    : 'opacity-50'
                 return (
                   <div
                     key={idx}
                     className={cn(
                       'px-2 py-1 rounded-md border',
-                      color ? `${color.bg} ${color.text} ${color.border}` : 'bg-card text-card-foreground'
+                      color ? `${color.bg} ${color.text} ${color.border}` : 'bg-card text-card-foreground',
+                      statusClass
                     )}
                   >
                     <div className="truncate font-medium" title={agent?.prompt || ''}>
@@ -102,15 +112,23 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
                               >
                                 {targetLabel}
                               </Badge>
-                              {fields.map(f => (
-                                <Badge
-                                  key={f}
-                                  variant="outline"
-                                  className={cn('text-[10px]', tColor && `${tColor.bg} ${tColor.text} ${tColor.border}`)}
-                                >
-                                  {f}
-                                </Badge>
-                              ))}
+                              {fields.map(f => {
+                                const fKey = `${layerIdx}-${idx}-${r}-${f}`
+                                const fDone = fieldStatuses?.[fKey] === 'done'
+                                return (
+                                  <Badge
+                                    key={f}
+                                    variant="outline"
+                                    className={cn(
+                                      'text-[10px]',
+                                      tColor && `${tColor.bg} ${tColor.text} ${tColor.border}`,
+                                      !fDone && 'opacity-50'
+                                    )}
+                                  >
+                                    {f}
+                                  </Badge>
+                                )
+                              })}
                             </div>
                           )
                         })}
