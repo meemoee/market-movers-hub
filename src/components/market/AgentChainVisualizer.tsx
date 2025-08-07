@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { ChainConfig, Agent } from '@/utils/executeAgentChain'
+import { Badge } from '@/components/ui/badge'
 
 interface AgentChainVisualizerProps {
   chain: ChainConfig
@@ -40,19 +41,21 @@ export default function AgentChainVisualizer({ chain, agents }: AgentChainVisual
                       <div className="text-[10px] text-muted-foreground">×{block.copies}</div>
                     )}
                     {block.routes && block.routes.length > 0 && (
-                      <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                        <ArrowRight className="w-3 h-3" />
+                      <div className="mt-1 flex flex-col gap-1">
                         {block.routes.map(r => {
                           const targetBlock = chain.layers[layerIdx + 1]?.agents[r]
                           const targetLabel = targetBlock
                             ? getAgentLabel(targetBlock.agentId, agents)
                             : `Layer ${layerIdx + 2} Agent ${r + 1}`
-                          const fields = block.fieldRoutes?.[r]
+                          const fields = block.fieldRoutes?.[r] || []
                           return (
-                            <span key={r} className="px-1 py-0.5 rounded bg-muted">
-                              {targetLabel}
-                              {fields && fields.length > 0 && ` (${fields.join(', ')})`}
-                            </span>
+                            <div key={r} className="flex items-center gap-1 text-[10px]">
+                              <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                              <Badge variant="secondary" className="text-[10px]">{targetLabel}</Badge>
+                              {fields.map(f => (
+                                <Badge key={f} variant="outline" className="text-[10px]">{f}</Badge>
+                              ))}
+                            </div>
                           )
                         })}
                       </div>
