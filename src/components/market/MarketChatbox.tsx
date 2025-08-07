@@ -176,7 +176,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
     if (agent) {
       setSelectedAgent(agentId)
       setSelectedModel(agent.model)
-      handleChatMessage(agent.prompt, undefined, agent.id)
+      setChatMessage(agent.prompt)
     }
   }
 
@@ -287,7 +287,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         updatedAgents = agents.map(a => (a.id === data.id ? data : a))
       } else {
         updatedAgents = [data, ...agents]
-        handleChatMessage(data.prompt, undefined, data.id, updatedAgents)
+        setChatMessage(data.prompt)
       }
       setAgents(updatedAgents)
       setSelectedAgent(data.id)
