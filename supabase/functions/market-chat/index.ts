@@ -247,6 +247,9 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
         type: 'json_schema',
         json_schema: schemaObj
       }
+      // Without an explicit max_output_tokens value OpenRouter will
+      // truncate structured responses to a small default limit.
+      requestBody.max_output_tokens = 8000
     }
     console.log('OpenRouter request body:', requestBody)
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
