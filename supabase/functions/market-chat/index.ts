@@ -197,6 +197,7 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
     const requestBody: Record<string, unknown> = {
       model: selectedModel || "perplexity/sonar",
       max_tokens: 8000,
+      max_output_tokens: 8000,
       messages: [
         {
           role: "system",
@@ -213,7 +214,7 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
         }
       ],
       reasoning: {
-        maxTokens: 8000
+        max_tokens: 8000
       },
       info: {
         marketId,
@@ -247,9 +248,8 @@ In your first reply, surface the most relevant and up-to-date online sources, ci
         type: 'json_schema',
         json_schema: schemaObj
       }
-      // Without an explicit max_output_tokens value OpenRouter will
-      // truncate structured responses to a small default limit.
-      requestBody.max_output_tokens = 8000
+      // max_output_tokens is set on the request body to avoid
+      // truncation of structured responses.
     }
     console.log('OpenRouter request body:', requestBody)
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
