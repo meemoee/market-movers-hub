@@ -45,6 +45,7 @@ RESPONSE_TERMS = [
 ]
 
 PROCESSED_MARKETS_FILE = "processed_markets.json"
+OUTPUT_FILE = "openrouter_responses.jsonl"
 
 # HTTP tuning
 HTTP_TOTAL_TIMEOUT_SECS = 180  # deep-research can be slow
@@ -78,6 +79,21 @@ def save_processed_market(slug: str) -> None:
     processed.add(slug)
     with open(PROCESSED_MARKETS_FILE, "w", encoding="utf-8") as f:
         json.dump(list(processed), f)
+
+
+def log_openrouter_response(response: str) -> None:
+    """Append an OpenRouter response to the output file with a timestamp."""
+    if not response:
+        return
+    try:
+        with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
+            json.dump({
+                "timestamp": datetime.now().isoformat(),
+                "response": response,
+            }, f)
+            f.write("\n")
+    except Exception as e:
+        print(f"[WARN] Failed to log OpenRouter response: {e}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Utilities: parsing / SSE helpers
@@ -253,11 +269,15 @@ async def openrouter_chat(
                     raise RuntimeError(f"OpenRouter HTTP {resp.status}: {txt}")
 
                 if stream:
-                    return await read_sse_stream(resp)
+                    content = await read_sse_stream(resp)
+                    log_openrouter_response(content)
+                    return content
                 else:
                     parsed = await parse_openrouter_payload(resp)
                     if parsed and 'content' in parsed:
-                        return parsed['content']
+                        content = parsed['content']
+                        log_openrouter_response(content)
+                        return content
                     # Unexpected: retry?
                     if attempt < OPENROUTER_RETRIES - 1:
                         await asyncio.sleep(sleeping_backoff(attempt))
