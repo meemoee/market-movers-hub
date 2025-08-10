@@ -86,7 +86,7 @@ def save_processed_market(slug: str) -> None:
         json.dump(processed, f)
 
 
-def log_openrouter_response(response: str) -> None:
+def log_openrouter_response(response: str, market_url: str) -> None:
     """Append an OpenRouter response to the output file with a timestamp."""
     if not response:
         return
@@ -94,6 +94,7 @@ def log_openrouter_response(response: str) -> None:
         with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
             json.dump({
                 "timestamp": datetime.now().isoformat(),
+                "market_url": market_url,
                 "response": response,
             }, f)
             f.write("\n")
@@ -808,7 +809,7 @@ Evaluation:
 
 async def generate_final_evaluation(session: aiohttp.ClientSession, market_info: Dict[str, Any], all_analyses: str,
                                     response_terms: List[str], price_info: Optional[Dict[str, float]],
-                                    all_markets: List[Dict[str, Any]]) -> Optional[str]:
+                                    all_markets: List[Dict[str, Any]], market_url: str) -> Optional[str]:
     if price_info:
         polymarket_data = (
             f"\nLatest Polymarket Market Data:\n"
@@ -883,14 +884,14 @@ At the end, list the 5 most relevant future external factors from our optimistic
         stream=True,
     )
     if content:
-        log_openrouter_response(content)
+        log_openrouter_response(content, market_url)
     return content
 
 async def final_evaluation_with_perplexity(session: aiohttp.ClientSession, market_info: Dict[str, Any],
                                            all_analyses: str, response_terms: List[str],
                                            price_info: Optional[Dict[str, float]],
                                            perplexity_answers: str,
-                                           all_markets: List[Dict[str, Any]]) -> Optional[str]:
+                                           all_markets: List[Dict[str, Any]], market_url: str) -> Optional[str]:
     if price_info:
         polymarket_data = (
             f"\nLatest Polymarket Market Data:\n"
@@ -964,10 +965,10 @@ Finally, give a final decimal likelihood of the YES outcome between 0-1. Explain
         stream=True,
     )
     if content:
-        log_openrouter_response(content)
+        log_openrouter_response(content, market_url)
     return content
 
-async def generate_final_summary(session: aiohttp.ClientSession, final_evaluations_with_perplexity: List[str]) -> Optional[Dict[str, Any]]:
+async def generate_final_summary(session: aiohttp.ClientSession, final_evaluations_with_perplexity: List[str], market_url: str) -> Optional[Dict[str, Any]]:
     evaluations_text = "\n\n".join(final_evaluations_with_perplexity)
     prompt = f"""
 Given the following final evaluations:
@@ -994,7 +995,7 @@ If there is only a single numerical prediction, just provide that value.
     )
     if not content:
         return None
-    log_openrouter_response(content)
+    log_openrouter_response(content, market_url)
     try:
         return json.loads(content)
     except json.JSONDecodeError:
@@ -1024,6 +1025,10 @@ async def process_market(session: aiohttp.ClientSession, slug: str,
             return False
 
         market_info = convert_polymarket_to_question(main_market)
+        if event_slug:
+            market_url = f"https://polymarket.com/event/{event_slug}/{slug}"
+        else:
+            market_url = f"https://polymarket.com/market/{slug}"
 
         print("\n" + "="*50)
         print(f"Processing Market Slug: {slug}")
@@ -1113,7 +1118,7 @@ async def process_market(session: aiohttp.ClientSession, slug: str,
 
         print("\nGenerating initial final evaluations...")
         final_evaluation_tasks = [
-            generate_final_evaluation(session, market_info, all_analyses, RESPONSE_TERMS[0], price_info, all_markets)
+            generate_final_evaluation(session, market_info, all_analyses, RESPONSE_TERMS[0], price_info, all_markets, market_url)
             for _ in range(num_final_evaluations)
         ]
         final_evaluations = await asyncio.gather(*final_evaluation_tasks)
@@ -1160,6 +1165,7 @@ async def process_market(session: aiohttp.ClientSession, slug: str,
                         price_info,
                         "\n".join(perplexity_answers),
                         all_markets,
+                        market_url,
                     )
                     if evaluation:
                         final_evaluations_with_perplexity.append(evaluation)
@@ -1170,7 +1176,7 @@ async def process_market(session: aiohttp.ClientSession, slug: str,
 
             if final_evaluations_with_perplexity:
                 print("\nGenerating final summary...")
-                final_summary = await generate_final_summary(session, final_evaluations_with_perplexity)
+                final_summary = await generate_final_summary(session, final_evaluations_with_perplexity, market_url)
                 if final_summary:
                     print("\nFinal Summary:")
                     print(json.dumps(final_summary, indent=2))
