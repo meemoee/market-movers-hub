@@ -31,6 +31,7 @@ interface Message {
   isTyping?: boolean
   jsonMode?: boolean
   input?: string
+  model?: string
 }
 
 interface OpenRouterModel {
@@ -458,7 +459,17 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
             newMessages[index] = { ...newMessages[index], content: output.output, isTyping: false, jsonMode: isJson }
             return newMessages
           }
-          return [...prev, { type: 'assistant', content: output.output, agentId: output.agentId, layer: output.layer, jsonMode: isJson }]
+          return [
+            ...prev,
+            {
+              type: 'assistant',
+              content: output.output,
+              agentId: output.agentId,
+              layer: output.layer,
+              jsonMode: isJson,
+              model: agent?.model,
+            },
+          ]
         })
       }
 
@@ -467,7 +478,15 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         setAgentStatuses(prev => ({ ...prev, [`${layer}-${agentIndex}`]: 'running' }))
         setMessages(prev => [
           ...prev,
-          { type: 'assistant', agentId, layer, isTyping: true, jsonMode: agent?.json_mode, input }
+          {
+            type: 'assistant',
+            agentId,
+            layer,
+            isTyping: true,
+            jsonMode: agent?.json_mode,
+            input,
+            model: agent?.model,
+          },
         ])
       }
 
@@ -522,7 +541,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
         layer: finalLayerIndex,
         isTyping: true,
         jsonMode: finalJsonMode,
-        input: finalPrompt
+        input: finalPrompt,
+        model: finalModel,
       }
       setMessages(prev => [...prev, finalPlaceholder])
       if (finalAgentId !== undefined && finalLayerIndex !== undefined) {
@@ -568,7 +588,8 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
           reasoning: data.reasoning,
           agentId: finalAgentId,
           layer: finalLayerIndex,
-          jsonMode: finalJsonMode
+          jsonMode: finalJsonMode,
+          model: finalModel,
         }
         if (index !== -1) {
           newMessages[index] = updated
@@ -640,6 +661,7 @@ export function MarketChatbox({ marketId, marketQuestion, marketDescription }: M
                       <p className={`text-xs font-medium mb-1 flex items-center ${style.text}`}>
                         <GitBranch className="w-3 h-3 mr-1" />
                         Layer {message.layer + 1} · Agent {message.agentId}
+                        {message.model ? ` · ${message.model}` : ''}
                       </p>
                     )}
                     {message.input && (
