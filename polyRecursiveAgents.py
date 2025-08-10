@@ -8,7 +8,7 @@ import sys
 import json
 import math
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dotenv import load_dotenv
@@ -65,20 +65,25 @@ DEFAULT_NUM_FINAL_EVALS_WITH_PX = int(os.getenv("PRA_NUM_FINAL_EVALS_WITH_PX", "
 # Utilities: persistence
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_processed_markets() -> set:
+def load_processed_markets() -> Dict[str, str]:
+    """Load mapping of market slug to ISO timestamp of last analysis."""
     if os.path.exists(PROCESSED_MARKETS_FILE):
         with open(PROCESSED_MARKETS_FILE, "r", encoding="utf-8") as f:
             try:
-                return set(json.load(f))
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+                if isinstance(data, list):  # backward compatibility
+                    return {slug: "1970-01-01T00:00:00" for slug in data if isinstance(slug, str)}
             except json.JSONDecodeError:
-                return set()
-    return set()
+                pass
+    return {}
 
 def save_processed_market(slug: str) -> None:
     processed = load_processed_markets()
-    processed.add(slug)
+    processed[slug] = datetime.now().isoformat()
     with open(PROCESSED_MARKETS_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(processed), f)
+        json.dump(processed, f)
 
 
 def log_openrouter_response(response: str) -> None:
@@ -270,13 +275,11 @@ async def openrouter_chat(
 
                 if stream:
                     content = await read_sse_stream(resp)
-                    log_openrouter_response(content)
                     return content
                 else:
                     parsed = await parse_openrouter_payload(resp)
                     if parsed and 'content' in parsed:
                         content = parsed['content']
-                        log_openrouter_response(content)
                         return content
                     # Unexpected: retry?
                     if attempt < OPENROUTER_RETRIES - 1:
@@ -868,7 +871,7 @@ Finally, give a final decimal likelihood of the YES outcome between 0-1. If Poly
 
 At the end, list the 5 most relevant future external factors from our optimistic/pessimistic agent analyses that have the highest historical precedent of influencing our outcome in the future. If the outcome hinges on recent or breaking news, or recent information, you may search upcoming or latest relevant news or queries. With each factor, include a specific and directed question that would allow you to glean as much useful information about the possibility of that external factor occurring using up to date info. ATTENTION: Each question MUST contain all named entities and be fully understandable as a standalone, searchable query without any headers or context.
 """
-    return await openrouter_chat(
+    content = await openrouter_chat(
         session,
         model="google/gemini-2.5-flash",
         messages=[
@@ -879,6 +882,9 @@ At the end, list the 5 most relevant future external factors from our optimistic
         temperature=0.2,
         stream=True,
     )
+    if content:
+        log_openrouter_response(content)
+    return content
 
 async def final_evaluation_with_perplexity(session: aiohttp.ClientSession, market_info: Dict[str, Any],
                                            all_analyses: str, response_terms: List[str],
@@ -946,7 +952,7 @@ Based on all available information, including the Perplexity answers, provide a 
 
 Finally, give a final decimal likelihood of the YES outcome between 0-1. Explain in detail why you agree or disagree with the current Polymarket consensus (if available) and justify any significant deviations from it.
 """
-    return await openrouter_chat(
+    content = await openrouter_chat(
         session,
         model="anthropic/claude-3.7-sonnet",
         messages=[
@@ -957,6 +963,9 @@ Finally, give a final decimal likelihood of the YES outcome between 0-1. Explain
         temperature=0.2,
         stream=True,
     )
+    if content:
+        log_openrouter_response(content)
+    return content
 
 async def generate_final_summary(session: aiohttp.ClientSession, final_evaluations_with_perplexity: List[str]) -> Optional[Dict[str, Any]]:
     evaluations_text = "\n\n".join(final_evaluations_with_perplexity)
@@ -985,6 +994,7 @@ If there is only a single numerical prediction, just provide that value.
     )
     if not content:
         return None
+    log_openrouter_response(content)
     try:
         return json.loads(content)
     except json.JSONDecodeError:
@@ -1210,8 +1220,16 @@ async def main():
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
         processed_markets = load_processed_markets()
         if slug in processed_markets and not args.force:
-            print(f"\nSkipping already processed market {slug} (use --force to reprocess)")
-            return
+            try:
+                last_time = datetime.fromisoformat(processed_markets[slug])
+            except ValueError:
+                last_time = datetime.min
+            if datetime.now() - last_time < timedelta(days=7):
+                print(
+                    f"\nSkipping market {slug}; last analyzed on {last_time.isoformat()}"
+                    " (use --force to reprocess)"
+                )
+                return
         await process_market(
             session,
             slug,
