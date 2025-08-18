@@ -515,6 +515,7 @@ def openrouter_json_request(prompt: str, model: str = "google/gemini-flash-1.5")
 def fetch_top_movers_pages(interval: int, need: int, batch: int, history_recent: Set[str], max_pages: int = 200) -> List[Dict[str, Any]]:
     qualified: List[Dict[str, Any]] = []
     seen_ids: Set[str] = set()  # everything we've *processed* (even skips)
+    total_requested = 0  # track how many items we've asked for to set next offset
 
     skipped_tags = 0
     skipped_text = 0
@@ -617,6 +618,7 @@ def fetch_top_movers_pages(interval: int, need: int, batch: int, history_recent:
         if not data:
             print(f"[DEBUG] cursor phase {i}: empty batch; stopping cursor mode.")
             break
+        total_requested += len(data)
         new_seen, new_kept, unique_in_batch = consider_batch(data, "CURSOR", i)
         if new_seen == 0 and new_kept == 0:
             no_progress += 1
@@ -627,65 +629,37 @@ def fetch_top_movers_pages(interval: int, need: int, batch: int, history_recent:
             print("[DEBUG] No cursor returned by server; switching to OFFSET mode.")
             break
         if no_progress >= 2 or unique_in_batch == 0:
-            print("[DEBUG] Cursor stalled; switching to LIMIT-GROWTH fallback.")
+            print("[DEBUG] Cursor stalled; switching to OFFSET pagination.")
             cursor = None
             break
 
     if len(qualified) >= need:
         return qualified[:need]
 
-    # Offset
+    # Offset pagination from last seen offset
     if cursor is None:
-        no_progress = 0
-        for page in range(max_pages):
+        offset = total_requested
+        page = offset // batch
+        print(f"[DEBUG] Starting OFFSET pagination at offset={offset}, page={page}")
+        for _ in range(max_pages):
             if len(qualified) >= need:
                 break
-            offset = page * batch
             try:
+                print(f"[DEBUG] OFFSET request page={page} offset={offset}")
                 data, _ = fetch_top_movers(interval=interval, limit=batch, offset=offset, page=page)
             except Exception as e:
                 print(f"[WARN] fetch_top_movers failed offset={offset} page={page}: {e}")
                 data = []
             if not data:
-                print(f"[DEBUG] OFFSET page {page}: empty batch; stopping offset mode.")
+                print(f"[DEBUG] OFFSET page {page}: empty batch; stopping offset pagination.")
                 break
             new_seen, new_kept, unique_in_batch = consider_batch(data, "OFFSET", page)
-            if new_seen == 0 and new_kept == 0:
-                no_progress += 1
-            else:
-                no_progress = 0
-            if no_progress >= 2 or unique_in_batch == 0:
-                print("[DEBUG] Offset stalled; switching to LIMIT-GROWTH fallback.")
+            total_requested += len(data)
+            offset += len(data)
+            page += 1
+            if unique_in_batch == 0:
+                print("[DEBUG] Offset pagination returned no new unique items; stopping.")
                 break
-
-        if len(qualified) >= need:
-            return qualified[:need]
-
-    # Fallback: limit growth (with no-progress stop)
-    limit = batch
-    fallback_no_progress = 0
-    for tries in range(max_pages):
-        if len(qualified) >= need:
-            break
-        # grow up to 1000, then keep at 1000
-        limit = min(limit + batch, 1000)
-        try:
-            data, _ = fetch_top_movers(interval=interval, limit=limit)
-        except Exception as e:
-            print(f"[WARN] Fallback fetch(limit={limit}) failed: {e}")
-            data = []
-        if not data:
-            print(f"[DEBUG] Fallback try {tries}: empty response; stopping fallback.")
-            break
-        new_seen, new_kept, unique_in_batch = consider_batch(data, "FALLBACK", tries)
-        if new_seen == 0 and new_kept == 0:
-            fallback_no_progress += 1
-        else:
-            fallback_no_progress = 0
-        # If we hit 1000 and got no progress even once, bail quickly to avoid spam
-        if unique_in_batch == 0 or fallback_no_progress >= 2 or (limit == 1000 and fallback_no_progress >= 1):
-            print("[DEBUG] Fallback stalled; stopping fallback loop.")
-            break
 
     return qualified[:need]
 
