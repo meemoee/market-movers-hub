@@ -638,24 +638,22 @@ def fetch_top_movers_pages(interval: int, need: int, batch: int, history_recent:
 
     # Offset pagination from last seen offset
     if cursor is None:
-        offset = total_requested
-        page = offset // batch
-        print(f"[DEBUG] Starting OFFSET pagination at offset={offset}, page={page}")
+        page = total_requested // batch + 1
+        print(f"[DEBUG] Starting OFFSET pagination at page={page}")
         for _ in range(max_pages):
             if len(qualified) >= need:
                 break
             try:
-                print(f"[DEBUG] OFFSET request page={page} offset={offset}")
-                data, _ = fetch_top_movers(interval=interval, limit=batch, offset=offset, page=page)
+                print(f"[DEBUG] OFFSET request page={page}")
+                data, _ = fetch_top_movers(interval=interval, limit=batch, page=page)
             except Exception as e:
-                print(f"[WARN] fetch_top_movers failed offset={offset} page={page}: {e}")
+                print(f"[WARN] fetch_top_movers failed page={page}: {e}")
                 data = []
             if not data:
                 print(f"[DEBUG] OFFSET page {page}: empty batch; stopping offset pagination.")
                 break
             new_seen, new_kept, unique_in_batch = consider_batch(data, "OFFSET", page)
             total_requested += len(data)
-            offset += len(data)
             page += 1
             if unique_in_batch == 0:
                 print("[DEBUG] Offset pagination returned no new unique items; stopping.")
