@@ -1460,6 +1460,53 @@ Conflicts: [ … ]
         log_openrouter_response(content, market_url)
     return content
 
+async def fact_check_final_evaluations(
+    session: aiohttp.ClientSession,
+    final_evaluations_with_perplexity: List[str],
+    market_url: str,
+) -> Optional[str]:
+    evaluations_text = "\n\n".join(final_evaluations_with_perplexity)
+    prompt = f"find what's factually incorrect about this:\n\n{evaluations_text}"
+    content = await openrouter_chat(
+        session,
+        model="openai/gpt-5-chat",
+        messages=[
+            {"role": "system", "content": "You are a meticulous fact-checking assistant."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.0,
+    )
+    if content:
+        log_openrouter_response(content, market_url)
+    return content
+
+
+async def rescore_with_fact_check(
+    session: aiohttp.ClientSession,
+    final_evaluations_with_perplexity: List[str],
+    fact_check_feedback: str,
+    market_url: str,
+) -> Optional[str]:
+    evaluations_text = "\n\n".join(final_evaluations_with_perplexity)
+    prompt = (
+        "generate a better score, keeping in mind all that is factually incorrect with the prior analysis.\n\n"
+        f"Analyses:\n{evaluations_text}\n\n"
+        f"Fact-check findings:\n{fact_check_feedback}"
+    )
+    content = await openrouter_chat(
+        session,
+        model="openai/gpt-5-chat",
+        messages=[
+            {"role": "system", "content": "You improve probabilistic forecasts using fact-check feedback."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+    )
+    if content:
+        log_openrouter_response(content, market_url)
+    return content
+
+
 async def generate_final_summary(session: aiohttp.ClientSession, final_evaluations_with_perplexity: List[str], market_url: str) -> Optional[Dict[str, Any]]:
     evaluations_text = "\n\n".join(final_evaluations_with_perplexity)
     prompt = f"""
@@ -1667,8 +1714,26 @@ async def process_market(session: aiohttp.ClientSession, slug: str,
                     continue
 
             if final_evaluations_with_perplexity:
+                combined_evaluations = list(final_evaluations_with_perplexity)
+                print("\nRunning factual accuracy review on final evaluations...")
+                fact_check_feedback = await fact_check_final_evaluations(
+                    session, final_evaluations_with_perplexity, market_url
+                )
+                improved_score_analysis: Optional[str] = None
+                if fact_check_feedback:
+                    combined_evaluations.append("Fact-check findings:\n" + fact_check_feedback)
+                    print("Generating improved score based on fact-check findings...")
+                    improved_score_analysis = await rescore_with_fact_check(
+                        session,
+                        final_evaluations_with_perplexity,
+                        fact_check_feedback,
+                        market_url,
+                    )
+                    if improved_score_analysis:
+                        combined_evaluations.append("Improved score analysis:\n" + improved_score_analysis)
+
                 print("\nGenerating final summary...")
-                final_summary = await generate_final_summary(session, final_evaluations_with_perplexity, market_url)
+                final_summary = await generate_final_summary(session, combined_evaluations, market_url)
                 if final_summary:
                     print("\nFinal Summary:")
                     print(json.dumps(final_summary, indent=2))
