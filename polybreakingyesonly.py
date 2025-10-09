@@ -379,21 +379,32 @@ class Portfolio:
     positions: List[Position] = None
     realized_pnl: float = 0.0
     last_run_ts: int = 0
+    ai_gate_log: Dict[str, int] = field(default_factory=dict)
 
     def to_json(self) -> dict:
-        pos_val = sum(p.mtm_value for p in self.positions)
+        pos_list = self.positions or []
+        pos_val = sum(p.mtm_value for p in pos_list)
+        ai_gate_log_serialized: Dict[str, int] = {}
+        for key, ts in (self.ai_gate_log or {}).items():
+            try:
+                ts_int = int(ts)
+            except Exception:
+                continue
+            if ts_int > 0:
+                ai_gate_log_serialized[str(key)] = ts_int
         return {
             "cash": round(self.cash, 2),
-            "positions": [asdict(p) for p in self.positions],
+            "positions": [asdict(p) for p in pos_list],
             "realized_pnl": round(self.realized_pnl, 2),
             "positions_value": round(pos_val, 2),
             "equity": round(self.cash + pos_val, 2),
             "last_run_ts": self.last_run_ts,
             "totals": {
-                "unrealized_pnl": round(sum(p.unrealized_pnl for p in self.positions), 2),
+                "unrealized_pnl": round(sum(p.unrealized_pnl for p in pos_list), 2),
                 "realized_pnl": round(self.realized_pnl, 2),
-                "position_count": len(self.positions),
+                "position_count": len(pos_list),
             },
+            "ai_gate_log": ai_gate_log_serialized,
         }
 
 # =========================
@@ -483,11 +494,23 @@ def load_portfolio(path: str) -> Portfolio:
                 mae=float(p.get("mae", 0.0)),
             )
         )
+    raw_ai_log = data.get("ai_gate_log")
+    ai_gate_log: Dict[str, int] = {}
+    if isinstance(raw_ai_log, dict):
+        for key, ts in raw_ai_log.items():
+            try:
+                ts_int = int(ts)
+            except Exception:
+                continue
+            if ts_int > 0:
+                ai_gate_log[str(key)] = ts_int
+
     return Portfolio(
         cash=float(data.get("cash", 10000.0)),
         positions=positions,
         realized_pnl=float(data.get("realized_pnl", 0.0)),
         last_run_ts=int(data.get("last_run_ts", 0)),
+        ai_gate_log=ai_gate_log,
     )
 
 def save_portfolio(path: str, pf: Portfolio) -> None:
@@ -1193,14 +1216,39 @@ def find_position(pf: Portfolio, slug: str, side: str) -> Optional[Position]:
 
 
 def minutes_since_last_add(pf: Portfolio, slug: str, side: str) -> Optional[float]:
+    timestamps: List[int] = []
     pos = find_position(pf, slug, side)
-    if not pos or not pos.lots:
+    if pos and pos.lots:
+        timestamps.extend(int(l.entry_ts or 0) for l in pos.lots if (l.entry_ts or 0) > 0)
+
+    ai_gate_log = pf.ai_gate_log or {}
+    ai_key = f"{slug}:{side}"
+    for key in (ai_key, slug):
+        ts = ai_gate_log.get(key)
+        if ts is None:
+            continue
+        try:
+            ts_int = int(ts)
+        except Exception:
+            continue
+        if ts_int > 0:
+            timestamps.append(ts_int)
+
+    if not timestamps:
         return None
-    latest_ts = max((l.entry_ts or 0) for l in pos.lots)
-    if latest_ts <= 0:
-        return None
+
+    latest_ts = max(timestamps)
     delta_seconds = max(0, int(time.time()) - latest_ts)
     return delta_seconds / 60.0
+
+
+def record_ai_gate_attempt(pf: Portfolio, slug: str, side: str) -> None:
+    if pf.ai_gate_log is None:
+        pf.ai_gate_log = {}
+    key = f"{slug}:{side}"
+    ts_now = int(time.time())
+    pf.ai_gate_log[key] = ts_now
+    logging.info("[ai_gate] logged attempt slug=%s side=%s ts=%d", slug, side, ts_now)
 
 
 def _recompute_avg_cost_from_lots(p: Position) -> None:
@@ -1584,6 +1632,7 @@ def trading_pass_from_breaking(pf: Portfolio) -> Tuple[Dict[str, Tuple[float, fl
             )
             continue
 
+        record_ai_gate_attempt(pf, slug, side)
         approved, analysis_text, summary_sections = ai_trade_gate(slug, title, this_size, px, mkt)
         if not approved:
             logging.info("[trade] blocked by AI gate slug=%s", slug)
