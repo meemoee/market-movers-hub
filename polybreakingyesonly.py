@@ -172,19 +172,48 @@ def send_discord_notification(
     ]
 
     if summary_block:
-        content_lines.extend([summary_block, ""])
+        # Guard against Discord's 2,000 character limit by trimming aggressively.
+        trimmed_summary = summary_block[:1500]
+        content_lines.extend([trimmed_summary, ""])
 
     content_lines.extend([
-        "**Market Info (JSON)**",
-        f"```json\n{json.dumps(market_info, ensure_ascii=False, indent=2)[:1800]}\n```",
-        "",
-        "**GPT-5 Analysis**",
-        analysis[:1900],
+        "**Market Info**: attached as `market_info.json`",
+        "**GPT-5 Analysis**: attached as `analysis.txt`",
     ])
-    payload = {"content": "\n".join(content_lines)}
-    _print_and_log("[discord] payload", payload)
+
+    content = "\n".join(content_lines)
+    if len(content) > 1900:
+        content = f"{content[:1900]}…"
+
+    payload = {
+        "content": content,
+        "allowed_mentions": {"parse": []},
+    }
+
+    files = []
     try:
-        resp = requests.post(DISCORD_WEBHOOK, json=payload, timeout=30)
+        market_json = json.dumps(market_info, ensure_ascii=False, indent=2)
+        files.append(("files[0]", ("market_info.json", market_json.encode("utf-8"), "application/json")))
+    except Exception as exc:
+        logging.exception("[discord] failed to serialize market_info err=%s", exc)
+
+    if analysis:
+        files.append(("files[1]", ("analysis.txt", analysis.encode("utf-8"), "text/plain")))
+
+    data = {"payload_json": json.dumps(payload)}
+
+    _print_and_log("[discord] payload", payload)
+    if files:
+        _print_and_log(
+            "[discord] attachments",
+            [
+                {"field": field, "filename": meta[0], "content_type": meta[2]}
+                for field, meta in files
+            ],
+        )
+
+    try:
+        resp = requests.post(DISCORD_WEBHOOK, data=data, files=files or None, timeout=30)
         _print_and_log("[discord] status", resp.status_code)
         _print_and_log("[discord] raw_response", resp.text)
         resp.raise_for_status()
