@@ -119,10 +119,48 @@ def extract_message_content(resp: dict) -> Optional[str]:
         return None
 
 
-def send_discord_notification(slug: str, title: str, price: float, qty: float, analysis: str, market_info: dict) -> None:
+def _format_summary_for_discord(summary_sections: Optional[List[Dict[str, Any]]]) -> Optional[str]:
+    if not summary_sections:
+        return None
+
+    lines: List[str] = ["**Summary**"]
+    for section in summary_sections:
+        if not isinstance(section, dict):
+            continue
+        heading = str(section.get("heading") or section.get("title") or "Section").strip()
+        if heading:
+            lines.append(f"__{heading}__")
+        bullets = section.get("bullets") or section.get("bullet_points") or []
+        if isinstance(bullets, list):
+            for bullet in bullets:
+                bullet_text = str(bullet).strip()
+                if bullet_text:
+                    # Discord bullets cannot exceed ~2000 characters; trim defensively.
+                    lines.append(f"• {bullet_text[:300]}")
+        else:
+            bullet_text = str(bullets).strip()
+            if bullet_text:
+                lines.append(f"• {bullet_text[:300]}")
+        lines.append("")
+
+    formatted = "\n".join(line for line in lines if line.strip())
+    return formatted or None
+
+
+def send_discord_notification(
+    slug: str,
+    title: str,
+    price: float,
+    qty: float,
+    analysis: str,
+    market_info: dict,
+    summary_sections: Optional[List[Dict[str, Any]]] = None,
+) -> None:
     if not DISCORD_WEBHOOK:
         logging.warning("[discord] DISCORD_WEBHOOK not configured; skipping notification")
         return
+
+    summary_block = _format_summary_for_discord(summary_sections)
 
     content_lines = [
         "**Polybreaking YES Trade Executed**",
@@ -131,12 +169,18 @@ def send_discord_notification(slug: str, title: str, price: float, qty: float, a
         f"Price: {price:.4f}",
         f"Quantity: {qty}",
         "",
+    ]
+
+    if summary_block:
+        content_lines.extend([summary_block, ""])
+
+    content_lines.extend([
         "**Market Info (JSON)**",
         f"```json\n{json.dumps(market_info, ensure_ascii=False, indent=2)[:1800]}\n```",
         "",
         "**GPT-5 Analysis**",
         analysis[:1900],
-    ]
+    ])
     payload = {"content": "\n".join(content_lines)}
     _print_and_log("[discord] payload", payload)
     try:
@@ -148,7 +192,13 @@ def send_discord_notification(slug: str, title: str, price: float, qty: float, a
         logging.exception("[discord] notification failed err=%s", exc)
 
 
-def ai_trade_gate(slug: str, title: str, qty: float, price: float, market_info: dict) -> Tuple[bool, Optional[str]]:
+def ai_trade_gate(
+    slug: str,
+    title: str,
+    qty: float,
+    price: float,
+    market_info: dict,
+) -> Tuple[bool, Optional[str], Optional[List[Dict[str, Any]]]]:
     labelled_market_info = {
         "slug": slug,
         "title": title,
@@ -185,15 +235,21 @@ def ai_trade_gate(slug: str, title: str, qty: float, price: float, market_info: 
     _print_and_log("[ai_gate] analysis_text", analysis_text)
 
     decision_prompt = (
-        "Determine if the provided analysis indicates that the YES outcome is currently undervalued."
-        " Respond strictly in JSON mode as {\"undervalued\": \"yes\"} or {\"undervalued\": \"no\"}."
-        " Base the decision solely on the analysis narrative, live news, rule traps, and analogous events provided."
+        "You will receive a detailed analysis intended for a Discord trading desk."
+        " Produce a concise, sectioned summary suitable for Discord embeds while also judging whether the YES outcome"
+        " remains undervalued. Respond strictly in JSON with the structure:"
+        " {\"undervalued\": \"yes|no\","
+        "  \"summary_sections\": ["
+        "    {\"heading\": \"Heading\", \"bullets\": [\"Key point 1\", \"Key point 2\"]}"
+        "  ]"
+        " }."
+        " Keep bullet points short (≤2 sentences) and preserve the major themes from the original analysis."
         f"\n\nAnalysis:\n{analysis_text}\n\nLabelled Market Info:\n{json.dumps(labelled_market_info, ensure_ascii=False)}"
     )
 
     decision_resp = call_openrouter_chat(
         [
-            {"role": "system", "content": "You must reply with a strict JSON object."},
+            {"role": "system", "content": "Respond only with JSON following the requested schema."},
             {"role": "user", "content": decision_prompt},
         ],
         response_format={"type": "json_object"},
@@ -206,6 +262,7 @@ def ai_trade_gate(slug: str, title: str, qty: float, price: float, market_info: 
     _print_and_log("[ai_gate] decision_text", decision_text)
 
     decision_value = None
+    summary_sections: Optional[List[Dict[str, Any]]] = None
     try:
         if decision_text:
             parsed = json.loads(decision_text)
@@ -213,16 +270,19 @@ def ai_trade_gate(slug: str, title: str, qty: float, price: float, market_info: 
             parsed = decision_resp
         if isinstance(parsed, dict):
             decision_value = str(parsed.get("undervalued", "")).strip().lower()
+            ss = parsed.get("summary_sections")
+            if isinstance(ss, list):
+                summary_sections = [s for s in ss if isinstance(s, dict)]
     except Exception as exc:
         logging.exception("[ai_gate] failed parsing decision err=%s", exc)
         decision_value = None
 
     if decision_value != "yes":
         logging.info("[ai_gate] decision not yes (value=%s); skipping trade slug=%s", decision_value, slug)
-        return False, analysis_text
+        return False, analysis_text, summary_sections
 
     logging.info("[ai_gate] approval received for slug=%s", slug)
-    return True, analysis_text
+    return True, analysis_text, summary_sections
 
 # =========================
 # Bracket Parameters (YES side only)
@@ -1102,6 +1162,18 @@ def find_position(pf: Portfolio, slug: str, side: str) -> Optional[Position]:
             return p
     return None
 
+
+def minutes_since_last_add(pf: Portfolio, slug: str, side: str) -> Optional[float]:
+    pos = find_position(pf, slug, side)
+    if not pos or not pos.lots:
+        return None
+    latest_ts = max((l.entry_ts or 0) for l in pos.lots)
+    if latest_ts <= 0:
+        return None
+    delta_seconds = max(0, int(time.time()) - latest_ts)
+    return delta_seconds / 60.0
+
+
 def _recompute_avg_cost_from_lots(p: Position) -> None:
     total_qty = sum(l.remaining_qty for l in p.lots)
     if total_qty <= 0:
@@ -1471,7 +1543,19 @@ def trading_pass_from_breaking(pf: Portfolio) -> Tuple[Dict[str, Tuple[float, fl
             logging.warning("[price] extreme skip slug=%s side=%s px=%.4f", slug, side, px)
             continue
 
-        approved, analysis_text = ai_trade_gate(slug, title, this_size, px, mkt)
+        minutes_gap = minutes_since_last_add(pf, slug, side)
+        if minutes_gap is not None and minutes_gap < 60.0:
+            wait_min = max(0.0, 60.0 - minutes_gap)
+            logging.info(
+                "[spacing] skip slug=%s side=%s minutes_since_last_add=%.1f require>=60 (wait another %.1f min)",
+                slug,
+                side,
+                minutes_gap,
+                wait_min,
+            )
+            continue
+
+        approved, analysis_text, summary_sections = ai_trade_gate(slug, title, this_size, px, mkt)
         if not approved:
             logging.info("[trade] blocked by AI gate slug=%s", slug)
             continue
@@ -1479,8 +1563,16 @@ def trading_pass_from_breaking(pf: Portfolio) -> Tuple[Dict[str, Tuple[float, fl
         add_or_update_position(pf, slug, title, side, this_size, px)
         traded += 1
 
-        if analysis_text:
-            send_discord_notification(slug, title, px, this_size, analysis_text, mkt)
+        if analysis_text or summary_sections:
+            send_discord_notification(
+                slug,
+                title,
+                px,
+                this_size,
+                analysis_text or "",
+                mkt,
+                summary_sections,
+            )
 
         logging.info(
             "[trade] size_rule idx=%d size=%g top10_full=%s slug=%s side=%s px=%.4f",
