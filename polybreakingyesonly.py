@@ -53,14 +53,22 @@ logging.basicConfig(
 # =========================
 # Bracket Parameters (YES side only)
 # =========================
-STOP_DN = 0.29        # stop = entry - 0.29 (unrealized PnL threshold)
-TP1_UP = 0.165        # TP1 level above entry
-TP2_UP = 0.245        # TP2 level above entry
-TP3_UP = 0.25         # TP3 level above entry (activates trailing; no sale at trigger)
-TP1_PCT = 0.40        # sell 40% of ORIGINAL at TP1
-TP2_PCT = 0.40        # sell 40% of ORIGINAL at TP2 (80% cumul.)
-TP3_RUN_PCT = 0.20    # leave 20% to run
-TRAIL_GAP = (TP3_UP - TP1_UP) / 3.0  # trailing gap after TP3
+# New “breaking” ladder (percent-of-entry based)
+STOP_PCT_DEFAULT = 0.02    # -2% hard stop (default)
+STOP_PCT_ULTRA = 0.025     # optional wiggle for ultra-liquid names
+TP1_GAIN_PCT = 0.05        # +5% => scale 33%
+TP2_GAIN_PCT = 0.12        # +12% (within 10-13% guidance) => scale another 33%
+TP1_TOTAL_SELL_PCT = 0.33
+TP2_TOTAL_SELL_PCT = 0.66  # cumulative sold after TP2
+TRAIL_STOP_PCT = 0.03      # 3% trailing stop on final runner
+ULTRA_LIQUID_SLUGS = {
+    slug.strip() for slug in os.getenv("POLYBREAK_ULTRA_SLUGS", "").split(",") if slug.strip()
+}
+TIME_DECAY_THRESHOLD_PCT = 0.02  # require +2% within window
+TIME_DECAY_MIN_S = 30 * 60
+TIME_DECAY_MAX_S = 45 * 60
+TIME_DECAY_TRIM_STAGE1 = 0.25  # trim 25% if stall at 30m
+TIME_DECAY_TRIM_STAGE2 = 0.50  # trim to 50% sold if still stalled at 45m
 EPS = 1e-9
 
 # =========================
@@ -75,11 +83,15 @@ class Lot:
     # Bracket state
     tp1_hit: bool = False
     tp2_hit: bool = False
-    tp3_hit: bool = False
+    tp3_hit: bool = False  # legacy field (unused in new ladder but kept for compatibility)
     trail_active: bool = False
     stop_px: Optional[float] = None  # dynamic stop per specs
-    # Accounting of how much of the ORIGINAL qty has been sold (not just remaining math)
+    # Accounting/meta
     sold_qty: float = 0.0
+    stop_pct: float = STOP_PCT_DEFAULT
+    entry_ts: int = 0
+    peak_price: float = 0.0
+    time_decay_stage: int = 0  # 0 -> none, 1 -> trimmed to 25%, 2 -> trimmed to 50%
 
 @dataclass
 class Position:
@@ -138,19 +150,40 @@ def load_portfolio(path: str) -> Portfolio:
         if lots_raw:
             for lr in lots_raw:
                 try:
-                    lots.append(
-                        Lot(
-                            qty=float(lr.get("qty", 0.0)),
-                            entry_price=float(lr.get("entry_price", p.get("avg_cost", 0.0))),
-                            remaining_qty=float(lr.get("remaining_qty", lr.get("qty", 0.0))),
-                            tp1_hit=bool(lr.get("tp1_hit", False)),
-                            tp2_hit=bool(lr.get("tp2_hit", False)),
-                            tp3_hit=bool(lr.get("tp3_hit", False)),
-                            trail_active=bool(lr.get("trail_active", False)),
-                            stop_px=float(lr.get("stop_px")) if lr.get("stop_px") is not None else None,
-                            sold_qty=float(lr.get("sold_qty", 0.0)),
-                        )
+                    lot = Lot(
+                        qty=float(lr.get("qty", 0.0)),
+                        entry_price=float(lr.get("entry_price", p.get("avg_cost", 0.0))),
+                        remaining_qty=float(lr.get("remaining_qty", lr.get("qty", 0.0))),
+                        tp1_hit=bool(lr.get("tp1_hit", False)),
+                        tp2_hit=bool(lr.get("tp2_hit", False)),
+                        tp3_hit=bool(lr.get("tp3_hit", False)),
+                        trail_active=bool(lr.get("trail_active", False)),
+                        stop_px=float(lr.get("stop_px")) if lr.get("stop_px") is not None else None,
+                        sold_qty=float(lr.get("sold_qty", 0.0)),
+                        stop_pct=float(lr.get("stop_pct", STOP_PCT_DEFAULT)),
+                        entry_ts=int(lr.get("entry_ts", int(time.time()))),
+                        peak_price=float(lr.get("peak_price", lr.get("entry_price", p.get("avg_cost", 0.0)))),
+                        time_decay_stage=int(lr.get("time_decay_stage", 0)),
                     )
+                    if lot.entry_ts <= 0:
+                        lot.entry_ts = int(time.time())
+                    if lot.stop_pct <= 0:
+                        lot.stop_pct = STOP_PCT_DEFAULT
+                    if lot.peak_price <= 0:
+                        lot.peak_price = lot.entry_price
+                    # Re-initialize stop to current spec (percent-based)
+                    lot.stop_px = lot.entry_price * (1.0 - lot.stop_pct)
+                    if lot.tp1_hit:
+                        lot.stop_px = max(lot.stop_px, lot.entry_price)
+                    if lot.tp2_hit:
+                        lot.trail_active = True
+                        lot.peak_price = max(lot.peak_price, lot.entry_price * (1.0 + TP2_GAIN_PCT))
+                        lot.stop_px = max(
+                            lot.stop_px,
+                            lot.entry_price,
+                            lot.peak_price * (1.0 - TRAIL_STOP_PCT),
+                        )
+                    lots.append(lot)
                 except Exception as e:
                     logging.warning("[portfolio] lot parse error slug=%s err=%s raw=%r", p.get("slug"), e, lr)
         else:
@@ -158,7 +191,18 @@ def load_portfolio(path: str) -> Portfolio:
             q = float(p.get("qty", 0.0))
             ac = float(p.get("avg_cost", 0.0))
             if q > 0:
-                lots = [Lot(qty=q, entry_price=ac, remaining_qty=q, stop_px=ac - STOP_DN)]
+                stop_pct = STOP_PCT_DEFAULT
+                lots = [
+                    Lot(
+                        qty=q,
+                        entry_price=ac,
+                        remaining_qty=q,
+                        stop_px=ac * (1.0 - stop_pct),
+                        stop_pct=stop_pct,
+                        entry_ts=int(time.time()),
+                        peak_price=ac,
+                    )
+                ]
 
         positions.append(
             Position(
@@ -895,6 +939,7 @@ def _recompute_avg_cost_from_lots(p: Position) -> None:
     p.qty = total_qty
 
 def _add_lot(p: Position, trade_qty: float, trade_price: float) -> None:
+    stop_pct = STOP_PCT_ULTRA if p.slug in ULTRA_LIQUID_SLUGS else STOP_PCT_DEFAULT
     lot = Lot(
         qty=trade_qty,
         entry_price=trade_price,
@@ -903,8 +948,12 @@ def _add_lot(p: Position, trade_qty: float, trade_price: float) -> None:
         tp2_hit=False,
         tp3_hit=False,
         trail_active=False,
-        stop_px=trade_price - STOP_DN,  # initial hard stop
-        sold_qty=0.0
+        stop_px=trade_price * (1.0 - stop_pct),
+        sold_qty=0.0,
+        stop_pct=stop_pct,
+        entry_ts=int(time.time()),
+        peak_price=trade_price,
+        time_decay_stage=0,
     )
     p.lots.append(lot)
     _recompute_avg_cost_from_lots(p)
@@ -989,19 +1038,16 @@ def _sell_from_lot(pf: Portfolio, p: Position, lot: Lot, sell_qty: float, exec_p
         reason, p.slug, lot.entry_price, exec_px, sell_qty, lot.remaining_qty, proceeds, pnl, pf.cash
     )
 
-def _target_qty_sold_for_tp(tp_pct: float, lot: Lot) -> float:
-    """How much should have been sold TOTAL at this TP (as a qty of original)."""
-    return lot.qty * tp_pct
-
 def process_brackets(pf: Portfolio, quotes_by_slug: Dict[str, Tuple[float, float]]):
     """
     YES-only bracket system:
 
-    - Initial STOP: entry - 0.29 (entire remaining)
-    - TP1: entry + 0.165 => sell to reach 40% of ORIGINAL sold; move stop to breakeven (entry)
-    - TP2: entry + 0.245 => sell to reach 80% of ORIGINAL sold; move stop to TP1 level (entry + 0.165)
-    - TP3: entry + 0.25  => no sale; activate trailing stop with gap = (TP3-TP1)/3 above TP1 floor.
-                           While trailing, stop = max(current_stop, px - TRAIL_GAP), but not below TP1 level.
+    - Initial hard stop: entry * (1 - stop_pct) where stop_pct defaults to 2% (or 2.5% if
+      slug marked ultra-liquid via POLYBREAK_ULTRA_SLUGS)
+    - TP1: entry * (1 + 5%) => scale to 33% of original size sold, move stop to breakeven
+    - TP2: entry * (1 + 12%) => scale to 66% of original size sold, enable runner with 3% trailing stop
+    - Trailing: once active, trail remaining quantity with 3% stop from peak (never below entry)
+    - Time-decay kicker: if price never prints +2% within 30-45 minutes, trim to 25-50% sold
 
     All executions happen at the exact trigger price, not current price, to keep deterministic accounting.
     """
@@ -1017,21 +1063,62 @@ def process_brackets(pf: Portfolio, quotes_by_slug: Dict[str, Tuple[float, float
 
             # Compute key price levels for this lot
             entry = lot.entry_price
-            lvl_stop_initial = entry - STOP_DN
-            lvl_tp1 = entry + TP1_UP
-            lvl_tp2 = entry + TP2_UP
-            lvl_tp3 = entry + TP3_UP
-            lvl_floor_after_tp2 = lvl_tp1  # floor for stop after TP2
+            stop_pct = lot.stop_pct or STOP_PCT_DEFAULT
+            lvl_stop_initial = entry * (1.0 - stop_pct)
+            lvl_tp1 = entry * (1.0 + TP1_GAIN_PCT)
+            lvl_tp2 = entry * (1.0 + TP2_GAIN_PCT)
 
             # Ensure stop_px initialized
             if lot.stop_px is None:
                 lot.stop_px = lvl_stop_initial
+            else:
+                lot.stop_px = max(lot.stop_px, lvl_stop_initial)
+
+            # Update peak tracking for trailing + decay logic
+            lot.peak_price = max(lot.peak_price, px)
+
+            # Time-decay trim if price failed to extend
+            if lot.remaining_qty > EPS:
+                now_ts = int(time.time())
+                if lot.entry_ts <= 0:
+                    lot.entry_ts = now_ts
+                elapsed = now_ts - lot.entry_ts
+                threshold_px = entry * (1.0 + TIME_DECAY_THRESHOLD_PCT)
+                met_threshold = lot.peak_price >= threshold_px - EPS
+
+                if not met_threshold:
+                    if lot.time_decay_stage == 0 and elapsed >= TIME_DECAY_MIN_S:
+                        target_sold = lot.qty * TIME_DECAY_TRIM_STAGE1
+                        need_to_sell = max(0.0, target_sold - lot.sold_qty)
+                        if need_to_sell > EPS:
+                            _sell_from_lot(
+                                pf,
+                                p,
+                                lot,
+                                need_to_sell,
+                                px,
+                                f"TIME DECAY TRIM30 (lot_idx={idx})",
+                            )
+                        lot.time_decay_stage = 1
+                    if lot.time_decay_stage < 2 and elapsed >= TIME_DECAY_MAX_S:
+                        target_sold = lot.qty * TIME_DECAY_TRIM_STAGE2
+                        need_to_sell = max(0.0, target_sold - lot.sold_qty)
+                        if need_to_sell > EPS:
+                            _sell_from_lot(
+                                pf,
+                                p,
+                                lot,
+                                need_to_sell,
+                                px,
+                                f"TIME DECAY TRIM45 (lot_idx={idx})",
+                            )
+                        lot.time_decay_stage = 2
 
             # 1) Upward triggers (TP1/TP2/TP3)
             # We process upward first so stops can be advanced appropriately.
             # TP1
             if not lot.tp1_hit and px >= lvl_tp1 - EPS:
-                target_sold = _target_qty_sold_for_tp(TP1_PCT, lot)
+                target_sold = lot.qty * TP1_TOTAL_SELL_PCT
                 need_to_sell = max(0.0, target_sold - lot.sold_qty)
                 if need_to_sell > EPS:
                     _sell_from_lot(pf, p, lot, need_to_sell, lvl_tp1, f"TP1 HIT (lot_idx={idx})")
@@ -1046,33 +1133,30 @@ def process_brackets(pf: Portfolio, quotes_by_slug: Dict[str, Tuple[float, float
 
             # TP2
             if lot.tp1_hit and not lot.tp2_hit and px >= lvl_tp2 - EPS:
-                target_sold = _target_qty_sold_for_tp(TP1_PCT + TP2_PCT, lot)  # 80% total
+                target_sold = lot.qty * TP2_TOTAL_SELL_PCT  # 66% total
                 need_to_sell = max(0.0, target_sold - lot.sold_qty)
                 if need_to_sell > EPS:
                     _sell_from_lot(pf, p, lot, need_to_sell, lvl_tp2, f"TP2 HIT (lot_idx={idx})")
                 lot.tp2_hit = True
-                # Move stop to TP1 level
-                old_stop = lot.stop_px
-                lot.stop_px = max(lot.stop_px or -1.0, lvl_floor_after_tp2)
-                logging.info(
-                    "[bracket] TP2->move stop | slug=%s lot=%d old_stop=%.4f new_stop=%.4f (floor=TP1)",
-                    p.slug, idx, old_stop if old_stop is not None else float("nan"), lot.stop_px
-                )
-
-            # TP3 (activate trailing, no sale here)
-            if lot.tp1_hit and lot.tp2_hit and not lot.tp3_hit and px >= lvl_tp3 - EPS:
-                lot.tp3_hit = True
                 lot.trail_active = True
-                # Ensure stop at least TP1 level to start trailing
-                lot.stop_px = max(lot.stop_px or -1.0, lvl_floor_after_tp2)
+                # Initialize trailing stop with current peak
+                lot.peak_price = max(lot.peak_price, px, lvl_tp2)
+                old_stop = lot.stop_px
+                desired_stop = max(entry, lot.peak_price * (1.0 - TRAIL_STOP_PCT))
+                lot.stop_px = max(lot.stop_px or -1.0, desired_stop)
                 logging.info(
-                    "[bracket] TP3 HIT -> activate trailing | slug=%s lot=%d stop_floor=%.4f trail_gap=%.6f",
-                    p.slug, idx, lot.stop_px, TRAIL_GAP
+                    "[bracket] TP2->trail | slug=%s lot=%d old_stop=%.4f new_stop=%.4f peak=%.4f",
+                    p.slug,
+                    idx,
+                    old_stop if old_stop is not None else float("nan"),
+                    lot.stop_px,
+                    lot.peak_price,
                 )
 
             # 2) Trailing stop update (if active after TP3)
             if lot.trail_active and lot.remaining_qty > EPS:
-                desired_trail_stop = max(lvl_floor_after_tp2, px - TRAIL_GAP)
+                lot.peak_price = max(lot.peak_price, px)
+                desired_trail_stop = max(entry, lot.peak_price * (1.0 - TRAIL_STOP_PCT))
                 if lot.stop_px is None or desired_trail_stop > lot.stop_px + EPS:
                     old_stop = lot.stop_px
                     lot.stop_px = desired_trail_stop
