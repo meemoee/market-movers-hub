@@ -50,12 +50,37 @@ CLOSING_SCHEDULE_JSON = "polybreaking_closing_schedule.json"
 
 TRADE_QTY = 10.0  # base "full size"
 SKIP_EXTREME = True  # skip trades with quotes ~0 or ~1
+AI_REPYRAMID_MINUTES = 1440.0  # minimum wait (1 day) between AI gate re-pyramids
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] polybreaking: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+# Attempt to force UTF-8 stdout so Windows consoles do not crash on narrow no-break
+# spaces (\u202f) or other Unicode data emitted by the model. Fallback safely if the
+# platform does not support reconfigure (e.g., Python run with redirected stdout).
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    # If the reconfigure attempt fails we still want the script to continue.
+    pass
+
+_UNICODE_SPACE_MAP = {
+    ord("\u00a0"): " ",  # non-breaking space
+    ord("\u2007"): " ",  # figure space
+    ord("\u202f"): " ",  # narrow no-break space
+    ord("\u2060"): "",   # word joiner (remove entirely)
+    ord("\u200b"): "",   # zero width space (strip)
+}
+
+
+def _normalize_unicode_spaces(text: str) -> str:
+    if not isinstance(text, str):
+        return text
+    return text.translate(_UNICODE_SPACE_MAP)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK", "").strip()
@@ -66,9 +91,20 @@ def _print_and_log(prefix: str, payload: Any) -> None:
         serialized = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, indent=2)
     except Exception:
         serialized = str(payload)
-    message = f"{prefix}: {serialized}"
+    message = _normalize_unicode_spaces(f"{prefix}: {serialized}")
     logging.info(message)
-    print(message)
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        safe_message = message.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        try:
+            print(safe_message)
+        except Exception:
+            try:
+                sys.stdout.write(f"{safe_message}\n")
+            except Exception:
+                # Give up on printing but avoid crashing.
+                pass
 
 
 def call_openrouter_chat(messages: List[Dict[str, Any]], response_format: Optional[Dict[str, Any]] = None) -> Optional[dict]:
@@ -109,10 +145,11 @@ def extract_message_content(resp: dict) -> Optional[str]:
         message = choices[0].get("message") or {}
         content = message.get("content")
         if isinstance(content, str):
-            return content
+            return _normalize_unicode_spaces(content)
         if isinstance(content, list):
             # OpenRouter may return content as list of parts
-            return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            joined = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            return _normalize_unicode_spaces(joined)
         return None
     except Exception as exc:
         logging.exception("[openrouter] failed extracting content err=%s", exc)
@@ -254,12 +291,12 @@ def ai_trade_gate(
     ])
     if not analysis_resp:
         logging.warning("[ai_gate] analysis response missing; blocking trade slug=%s", slug)
-        return False, None
+        return False, None, None
 
     analysis_text = extract_message_content(analysis_resp)
     if not analysis_text:
         logging.warning("[ai_gate] analysis text missing; blocking trade slug=%s", slug)
-        return False, None
+        return False, None, None
 
     _print_and_log("[ai_gate] analysis_text", analysis_text)
 
@@ -285,7 +322,7 @@ def ai_trade_gate(
     )
     if not decision_resp:
         logging.warning("[ai_gate] decision response missing; blocking trade slug=%s", slug)
-        return False, analysis_text
+        return False, analysis_text, None
 
     decision_text = extract_message_content(decision_resp)
     _print_and_log("[ai_gate] decision_text", decision_text)
@@ -1621,13 +1658,14 @@ def trading_pass_from_breaking(pf: Portfolio) -> Tuple[Dict[str, Tuple[float, fl
             continue
 
         minutes_gap = minutes_since_last_add(pf, slug, side)
-        if minutes_gap is not None and minutes_gap < 60.0:
-            wait_min = max(0.0, 60.0 - minutes_gap)
+        if minutes_gap is not None and minutes_gap < AI_REPYRAMID_MINUTES:
+            wait_min = max(0.0, AI_REPYRAMID_MINUTES - minutes_gap)
             logging.info(
-                "[spacing] skip slug=%s side=%s minutes_since_last_add=%.1f require>=60 (wait another %.1f min)",
+                "[spacing] skip slug=%s side=%s minutes_since_last_add=%.1f require>=%.1f (1 day) wait another %.1f min",
                 slug,
                 side,
                 minutes_gap,
+                AI_REPYRAMID_MINUTES,
                 wait_min,
             )
             continue
