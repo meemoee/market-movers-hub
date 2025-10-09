@@ -18,6 +18,13 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception as dotenv_exc:  # pragma: no cover - optional convenience
+    logging.warning("[env] unable to load .env file err=%s", dotenv_exc)
+
+try:
     from zoneinfo import ZoneInfo
     _TZ_NY = ZoneInfo("America/New_York")
 except Exception:
@@ -49,6 +56,173 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] polybreaking: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK", "").strip()
+
+
+def _print_and_log(prefix: str, payload: Any) -> None:
+    try:
+        serialized = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, indent=2)
+    except Exception:
+        serialized = str(payload)
+    message = f"{prefix}: {serialized}"
+    logging.info(message)
+    print(message)
+
+
+def call_openrouter_chat(messages: List[Dict[str, Any]], response_format: Optional[Dict[str, Any]] = None) -> Optional[dict]:
+    if not OPENROUTER_API_KEY:
+        logging.error("[openrouter] missing OPENROUTER_API_KEY; skipping AI gate")
+        return None
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload: Dict[str, Any] = {
+        "model": "openai/gpt-5-chat",
+        "messages": messages,
+    }
+    if response_format:
+        payload["response_format"] = response_format
+
+    _print_and_log("[openrouter] request", payload)
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        _print_and_log("[openrouter] status", resp.status_code)
+        _print_and_log("[openrouter] raw_response", resp.text)
+        resp.raise_for_status()
+        data = resp.json()
+        return data
+    except Exception as exc:
+        logging.exception("[openrouter] request failed err=%s", exc)
+        return None
+
+
+def extract_message_content(resp: dict) -> Optional[str]:
+    try:
+        choices = resp.get("choices") or []
+        if not choices:
+            return None
+        message = choices[0].get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            # OpenRouter may return content as list of parts
+            return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        return None
+    except Exception as exc:
+        logging.exception("[openrouter] failed extracting content err=%s", exc)
+        return None
+
+
+def send_discord_notification(slug: str, title: str, price: float, qty: float, analysis: str, market_info: dict) -> None:
+    if not DISCORD_WEBHOOK:
+        logging.warning("[discord] DISCORD_WEBHOOK not configured; skipping notification")
+        return
+
+    content_lines = [
+        "**Polybreaking YES Trade Executed**",
+        f"Slug: `{slug}`",
+        f"Title: {title}",
+        f"Price: {price:.4f}",
+        f"Quantity: {qty}",
+        "",
+        "**Market Info (JSON)**",
+        f"```json\n{json.dumps(market_info, ensure_ascii=False, indent=2)[:1800]}\n```",
+        "",
+        "**GPT-5 Analysis**",
+        analysis[:1900],
+    ]
+    payload = {"content": "\n".join(content_lines)}
+    _print_and_log("[discord] payload", payload)
+    try:
+        resp = requests.post(DISCORD_WEBHOOK, json=payload, timeout=30)
+        _print_and_log("[discord] status", resp.status_code)
+        _print_and_log("[discord] raw_response", resp.text)
+        resp.raise_for_status()
+    except Exception as exc:
+        logging.exception("[discord] notification failed err=%s", exc)
+
+
+def ai_trade_gate(slug: str, title: str, qty: float, price: float, market_info: dict) -> Tuple[bool, Optional[str]]:
+    labelled_market_info = {
+        "slug": slug,
+        "title": title,
+        "intended_trade": {
+            "side": "YES",
+            "quantity": qty,
+            "price": price,
+        },
+        "market": market_info,
+    }
+
+    prompt = (
+        "(ALL the market info labelled from the api )+ ACQUIRE live news + rule traps + analogous events with differences going into this one.\n"
+        "You are advising on whether to execute a Polymarket YES trade."
+        " Provide detailed sections covering live news context, potential rule traps, analogous historical events (with their differences),"
+        " and conclude with a clear assessment of whether the YES contract appears undervalued."
+        " Cite sources where possible and focus on actionable insights."
+        f"\n\nLabelled Market Info:\n{json.dumps(labelled_market_info, ensure_ascii=False, indent=2)}"
+    )
+
+    analysis_resp = call_openrouter_chat([
+        {"role": "system", "content": "You are a meticulous analyst for prediction market trades."},
+        {"role": "user", "content": prompt},
+    ])
+    if not analysis_resp:
+        logging.warning("[ai_gate] analysis response missing; blocking trade slug=%s", slug)
+        return False, None
+
+    analysis_text = extract_message_content(analysis_resp)
+    if not analysis_text:
+        logging.warning("[ai_gate] analysis text missing; blocking trade slug=%s", slug)
+        return False, None
+
+    _print_and_log("[ai_gate] analysis_text", analysis_text)
+
+    decision_prompt = (
+        "Determine if the provided analysis indicates that the YES outcome is currently undervalued."
+        " Respond strictly in JSON mode as {\"undervalued\": \"yes\"} or {\"undervalued\": \"no\"}."
+        " Base the decision solely on the analysis narrative, live news, rule traps, and analogous events provided."
+        f"\n\nAnalysis:\n{analysis_text}\n\nLabelled Market Info:\n{json.dumps(labelled_market_info, ensure_ascii=False)}"
+    )
+
+    decision_resp = call_openrouter_chat(
+        [
+            {"role": "system", "content": "You must reply with a strict JSON object."},
+            {"role": "user", "content": decision_prompt},
+        ],
+        response_format={"type": "json_object"},
+    )
+    if not decision_resp:
+        logging.warning("[ai_gate] decision response missing; blocking trade slug=%s", slug)
+        return False, analysis_text
+
+    decision_text = extract_message_content(decision_resp)
+    _print_and_log("[ai_gate] decision_text", decision_text)
+
+    decision_value = None
+    try:
+        if decision_text:
+            parsed = json.loads(decision_text)
+        else:
+            parsed = decision_resp
+        if isinstance(parsed, dict):
+            decision_value = str(parsed.get("undervalued", "")).strip().lower()
+    except Exception as exc:
+        logging.exception("[ai_gate] failed parsing decision err=%s", exc)
+        decision_value = None
+
+    if decision_value != "yes":
+        logging.info("[ai_gate] decision not yes (value=%s); skipping trade slug=%s", decision_value, slug)
+        return False, analysis_text
+
+    logging.info("[ai_gate] approval received for slug=%s", slug)
+    return True, analysis_text
 
 # =========================
 # Bracket Parameters (YES side only)
@@ -1297,8 +1471,16 @@ def trading_pass_from_breaking(pf: Portfolio) -> Tuple[Dict[str, Tuple[float, fl
             logging.warning("[price] extreme skip slug=%s side=%s px=%.4f", slug, side, px)
             continue
 
+        approved, analysis_text = ai_trade_gate(slug, title, this_size, px, mkt)
+        if not approved:
+            logging.info("[trade] blocked by AI gate slug=%s", slug)
+            continue
+
         add_or_update_position(pf, slug, title, side, this_size, px)
         traded += 1
+
+        if analysis_text:
+            send_discord_notification(slug, title, px, this_size, analysis_text, mkt)
 
         logging.info(
             "[trade] size_rule idx=%d size=%g top10_full=%s slug=%s side=%s px=%.4f",
