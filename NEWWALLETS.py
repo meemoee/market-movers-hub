@@ -14,6 +14,8 @@ What changed (while retaining all prior functionality & styling):
 - Added a **cache snapshot** method and a **store backfill sweeper** that updates historical
   rows in-place when an age becomes known.
 - Kept the **priority lookup** and **larger lookup budget** (slider) so we learn ages faster.
+- Introduced a **dedicated wallet-age resolver worker** so lookups keep flowing even while
+  the trade fetcher respects API backoff windows.
 - Added structured logs for the sweeper: `age_backfill_sweep` with counts and timings.
 
 You’ll still see some ⚪ during the first seconds/minutes of a surge,
@@ -38,6 +40,7 @@ import json
 import traceback
 import inspect
 import math
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -66,6 +69,7 @@ DEFAULT_HISTORY_MAX_ROWS = 20000
 
 DEFAULT_SEEN_TX_MAX = 50000
 DEFAULT_MAX_LOOKUPS_PER_CYCLE = 60
+DEFAULT_AGE_LOOKUP_RATE_PER_SEC = 3.0
 PENDING_WALLET_MAX = 5000
 NO_PROGRESS_WARN_CYCLES = 6
 
@@ -170,32 +174,78 @@ def handle_feed_selection() -> None:
 def http_get_json(url: str, params: Optional[Dict[str, Any]] = None,
                   timeout: int = 30, retries: int = 4,
                   tag: str = "generic") -> Any:
+    """GET helper with structured logging and resilient retry/backoff handling."""
     last_err = None
-    for i in range(retries):
+    for attempt in range(1, retries + 1):
         t0 = time.time()
+        req_url = url
         try:
             r = requests.get(url, params=params, timeout=timeout)
+            req_url = r.url
             ms = int((time.time() - t0) * 1000)
+
             if r.status_code == 429:
-                log_json("WARN", f"{tag} 429", url=url, params=params, ms=ms)
-                time.sleep(min(10.0, 1.0 + i * 1.5))
-                continue
+                retry_after_raw = r.headers.get("Retry-After")
+                wait_s: float
+                retry_after: Optional[float] = None
+                if retry_after_raw:
+                    try:
+                        retry_after = float(retry_after_raw)
+                    except ValueError:
+                        try:
+                            retry_after_dt = datetime.fromisoformat(retry_after_raw.replace("Z", "+00:00"))
+                            retry_after = max(0.0, retry_after_dt.timestamp() - time.time())
+                        except Exception:
+                            retry_after = None
+                if retry_after is not None:
+                    wait_s = min(30.0, max(0.5, retry_after))
+                else:
+                    base = 0.8 * (2 ** (attempt - 1))
+                    wait_s = min(30.0, base + random.uniform(0.3, 1.4))
+
+                last_err = f"HTTP 429 (attempt {attempt})"
+                log_json(
+                    "WARN",
+                    f"{tag}_429",
+                    attempt=attempt,
+                    retries=retries,
+                    url=req_url,
+                    params=params,
+                    ms=ms,
+                    wait_s=round(wait_s, 3),
+                    retry_after=retry_after_raw,
+                )
+                if attempt < retries:
+                    time.sleep(wait_s)
+                    continue
+                break
+
             r.raise_for_status()
             data = r.json()
             if tag == "trades":
                 rows = len(data) if isinstance(data, list) else 0
                 first_ts = parse_epoch_seconds_maybe_ms(data[0].get("timestamp")) if rows else None
-                last_ts  = parse_epoch_seconds_maybe_ms(data[-1].get("timestamp")) if rows else None
-                log_json("INFO", "trades_ok", url=r.url, ms=ms, rows=rows, first_ts=first_ts, last_ts=last_ts)
+                last_ts = parse_epoch_seconds_maybe_ms(data[-1].get("timestamp")) if rows else None
+                log_json("INFO", "trades_ok", url=req_url, ms=ms, rows=rows, first_ts=first_ts, last_ts=last_ts)
             else:
-                log_json("DEBUG", f"{tag}_ok", url=r.url, ms=ms)
+                log_json("DEBUG", f"{tag}_ok", url=req_url, ms=ms)
             return data
+
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             last_err = repr(e)
-            log_json("WARN", f"{tag}_retry", attempt=i+1, retries=retries, url=url, params=params, ms=ms, err=last_err)
-            if i < retries - 1:
-                time.sleep(min(6.0, 0.5 * (2 ** i)))
+            log_json(
+                "WARN",
+                f"{tag}_retry",
+                attempt=attempt,
+                retries=retries,
+                url=req_url,
+                params=params,
+                ms=ms,
+                err=last_err,
+            )
+            if attempt < retries:
+                time.sleep(min(10.0, 0.6 * (2 ** (attempt - 1))))
                 continue
             break
     raise RuntimeError(f"GET {url} failed after {retries} attempts: {last_err}")
@@ -211,7 +261,13 @@ def fetch_global_trades(limit: int, taker_only: bool = True, offset: int = 0) ->
     params: Dict[str, Any] = {"limit": limit, "offset": offset}
     if taker_only:
         params["takerOnly"] = "true"
-    data = http_get_json(f"{DATA_API_BASE}/trades", params=params, timeout=20, retries=2, tag="trades")
+    data = http_get_json(
+        f"{DATA_API_BASE}/trades",
+        params=params,
+        timeout=20,
+        retries=6,
+        tag="trades",
+    )
     out: List[Dict[str, Any]] = []
     if isinstance(data, list):
         for tr in data:
@@ -337,10 +393,19 @@ class WalletAgeCache:
 
     def set(self, addr: str, earliest_ts: Optional[int]) -> WalletAgeRecord:
         key = addr.lower()
-        rec = WalletAgeRecord(earliest_ts=earliest_ts, fetched_at=time.time())
+        now_ts = time.time()
         with self._lock:
+            existing = self._map.get(key)
+            if existing is not None:
+                current = existing.earliest_ts
+                if earliest_ts is None and current is not None:
+                    existing.fetched_at = now_ts
+                    return existing
+                if earliest_ts is not None and current is not None and earliest_ts > current:
+                    earliest_ts = current
+            rec = WalletAgeRecord(earliest_ts=earliest_ts, fetched_at=now_ts)
             self._map[key] = rec
-        return rec
+            return rec
 
     def snapshot(self) -> Dict[str, Optional[int]]:
         """
@@ -349,6 +414,81 @@ class WalletAgeCache:
         """
         with self._lock:
             return {k: v.earliest_ts for k, v in self._map.items()}
+
+# ──────────────────────────────────────────────────────────────────────
+# Wallet age resolver worker
+# ──────────────────────────────────────────────────────────────────────
+
+class WalletAgeResolver(threading.Thread):
+    def __init__(self, wallet_cache: WalletAgeCache, rate_limit_per_sec: float,
+                 max_queue: int, verbose: bool):
+        super().__init__(daemon=True)
+        self.wallet_cache = wallet_cache
+        self.rate_limit_per_sec = max(0.1, float(rate_limit_per_sec))
+        self.sleep_interval = max(0.05, 1.0 / self.rate_limit_per_sec)
+        self.max_queue = max(1, int(max_queue))
+        self.verbose = verbose
+        self._queue: deque[str] = deque()
+        self._queue_set: set[str] = set()
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._completed_lock = threading.Lock()
+        self._completed_since_last = 0
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def enqueue(self, addr: str, priority: bool = False) -> None:
+        key = (addr or "").lower()
+        if not key or not key.startswith("0x"):
+            return
+        with self._lock:
+            if key in self._queue_set:
+                return
+            if len(self._queue) >= self.max_queue:
+                try:
+                    dropped = self._queue.pop()
+                    self._queue_set.discard(dropped)
+                except IndexError:
+                    pass
+            if priority:
+                self._queue.appendleft(key)
+            else:
+                self._queue.append(key)
+            self._queue_set.add(key)
+
+    def queue_size(self) -> int:
+        with self._lock:
+            return len(self._queue)
+
+    def drain_completed_count(self) -> int:
+        with self._completed_lock:
+            val = self._completed_since_last
+            self._completed_since_last = 0
+            return val
+
+    def run(self) -> None:
+        jitter = lambda: random.uniform(0.0, min(0.2, self.sleep_interval * 0.3))
+        while not self._stop_event.is_set():
+            wallet = None
+            with self._lock:
+                if self._queue:
+                    wallet = self._queue.popleft()
+                    self._queue_set.discard(wallet)
+            if wallet is None:
+                time.sleep(min(0.25, self.sleep_interval))
+                continue
+            try:
+                ts_val = fetch_earliest_activity_ts_quick(wallet, timeout=3.8, verbose=self.verbose)
+                self.wallet_cache.set(wallet, ts_val)
+                with self._completed_lock:
+                    self._completed_since_last += 1
+            except Exception as e:
+                if self.verbose:
+                    log_json("DEBUG", "activity_resolver_err", wallet=wallet, err=repr(e))
+            delay = self.sleep_interval + jitter()
+            if delay > 0:
+                time.sleep(delay)
 
 # ──────────────────────────────────────────────────────────────────────
 # Seen Ring (O(1) de-dup)
@@ -559,41 +699,23 @@ class GlobalTradeFetcher(threading.Thread):
 
         self.last_max_ts: Optional[int] = None
         self.no_progress_cycles = 0
-        self._pending_wallets: deque[str] = deque()
-        self._pending_wallets_set: set[str] = set()
-        self.max_pending_wallets = PENDING_WALLET_MAX
+        cycle_span = max(self.fetch_interval, 1.0)
+        rate_guess = self.max_lookups_per_cycle / cycle_span if cycle_span > 0 else DEFAULT_AGE_LOOKUP_RATE_PER_SEC
+        if rate_guess <= 0:
+            rate_guess = DEFAULT_AGE_LOOKUP_RATE_PER_SEC
+        rate_limit = max(0.5, min(6.0, rate_guess))
+        self.age_lookup_rate_per_sec = rate_limit
+        self.age_resolver = WalletAgeResolver(
+            wallet_cache=self.wallet_cache,
+            rate_limit_per_sec=rate_limit,
+            max_queue=PENDING_WALLET_MAX,
+            verbose=verbose,
+        )
+        self._resolver_started = False
 
     def stop(self):
         self._stop_event.set()
-
-    def _enqueue_pending_wallet(self, addr: str) -> None:
-        addr_l = (addr or "").lower()
-        if not addr_l:
-            return
-        if addr_l in self._pending_wallets_set:
-            return
-        if len(self._pending_wallets) >= self.max_pending_wallets:
-            old = self._pending_wallets.popleft()
-            self._pending_wallets_set.discard(old)
-        self._pending_wallets.append(addr_l)
-        self._pending_wallets_set.add(addr_l)
-
-    def _drain_pending_wallets(self, budget: int) -> int:
-        used = 0
-        while budget > 0 and self._pending_wallets:
-            wallet = self._pending_wallets.popleft()
-            self._pending_wallets_set.discard(wallet)
-            try:
-                rec = self.wallet_cache.get(wallet)
-            except Exception:
-                rec = None
-            if rec is not None and rec.earliest_ts is not None:
-                continue
-            ts_val = fetch_earliest_activity_ts_quick(wallet, timeout=3.8, verbose=self.verbose)
-            self.wallet_cache.set(wallet, ts_val)
-            used += 1
-            budget -= 1
-        return used
+        self.age_resolver.stop()
 
     def run(self):
         log_json("INFO", "global_fetcher_start",
@@ -602,9 +724,16 @@ class GlobalTradeFetcher(threading.Thread):
                  accum_window_sec=self.accum.window_sec,
                  max_lookups_per_cycle=self.max_lookups_per_cycle)
 
+        if not self._resolver_started:
+            try:
+                self.age_resolver.start()
+                self._resolver_started = True
+            except RuntimeError:
+                # Already started — ignore
+                self._resolver_started = True
+
         while not self._stop_event.is_set():
             cycle_t0 = time.time()
-            lookups_left = self.max_lookups_per_cycle
 
             # Priority set for wallets contributing most notional
             priority_wallets: set[str] = set()
@@ -622,7 +751,6 @@ class GlobalTradeFetcher(threading.Thread):
             appended = 0
             dropped_not_young = 0
             unknown_age_allowed = 0
-            activity_lookups = 0
             last_ts_seen = None
             first_ts_seen = None
 
@@ -660,13 +788,8 @@ class GlobalTradeFetcher(threading.Thread):
                         if (time.time() - rec.fetched_at) >= UNKNOWN_WALLET_RETRY_SEC:
                             need_lookup = True
 
-                    if need_lookup and lookups_left > 0:
-                        lookups_left -= 1
-                        activity_lookups += 1
-                        earliest_ts_val = fetch_earliest_activity_ts_quick(taker, timeout=3.8, verbose=self.verbose)
-                        self.wallet_cache.set(taker, earliest_ts_val)
-                    elif need_lookup:
-                        self._enqueue_pending_wallet(taker)
+                    if need_lookup:
+                        self.age_resolver.enqueue(taker, priority=(taker in priority_wallets))
 
                     if earliest_ts_val is None:
                         is_young = True
@@ -703,11 +826,6 @@ class GlobalTradeFetcher(threading.Thread):
             except Exception as e:
                 log_json("ERROR", "fetch_loop_error", err=repr(e), tb=traceback.format_exc())
 
-            if lookups_left > 0 and self._pending_wallets:
-                used = self._drain_pending_wallets(lookups_left)
-                activity_lookups += used
-                lookups_left = max(0, lookups_left - used)
-
             curr_max_ts = int(last_ts_seen) if last_ts_seen is not None else None
             if curr_max_ts is not None and self.last_max_ts is not None and curr_max_ts <= self.last_max_ts:
                 self.no_progress_cycles += 1
@@ -718,6 +836,10 @@ class GlobalTradeFetcher(threading.Thread):
                 self.last_max_ts = curr_max_ts
 
             uniq_wallets, uniq_keys = self.accum.debug_counts()
+            activity_lookups = self.age_resolver.drain_completed_count()
+            capacity_per_cycle = int(round(self.age_lookup_rate_per_sec * self.fetch_interval))
+            lookups_budget_left = max(0, capacity_per_cycle - activity_lookups)
+            pending_queue = self.age_resolver.queue_size()
 
             log_json(
                 "INFO",
@@ -728,8 +850,9 @@ class GlobalTradeFetcher(threading.Thread):
                 dropped_not_young=dropped_not_young,
                 unknown_age_allowed=unknown_age_allowed,
                 activity_lookups=activity_lookups,
-                lookups_budget_left=max(0, self.max_lookups_per_cycle - activity_lookups),
-                pending_queue=len(self._pending_wallets),
+                age_lookup_rate_per_sec=self.age_lookup_rate_per_sec,
+                lookups_budget_left=lookups_budget_left,
+                pending_queue=pending_queue,
                 dedupe_size=self.store.seen.size(),
                 first_ts=first_ts_seen,
                 last_ts=last_ts_seen,
@@ -741,6 +864,13 @@ class GlobalTradeFetcher(threading.Thread):
             )
 
             time.sleep(max(0.0, self.fetch_interval - (time.time() - cycle_t0)))
+
+        try:
+            self.age_resolver.stop()
+            if self._resolver_started:
+                self.age_resolver.join(timeout=2.5)
+        except Exception:
+            pass
 
 # ──────────────────────────────────────────────────────────────────────
 # Streamlit helpers
