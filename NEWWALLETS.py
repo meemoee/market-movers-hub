@@ -71,6 +71,8 @@ NO_PROGRESS_WARN_CYCLES = 6
 DEFAULT_ACCUM_WINDOW_SEC = 24 * 3600
 DEFAULT_ACCUM_THRESHOLD = 1000.0  # USD notional per (wallet×outcome×slug) over window
 
+UNKNOWN_WALLET_RETRY_SEC = 45  # wait before re-trying wallets whose age lookup returned None
+
 LOG_PREFIX = "[polyyoung-ui]"
 
 # ──────────────────────────────────────────────────────────────────────
@@ -158,7 +160,7 @@ def handle_feed_selection() -> None:
         placeholder = st.session_state.get("chart_slug_placeholder")
         if placeholder is None:
             placeholder = "— Select a market for the chart —"
-        st.session_state["chart_slug_select"] = slug or placeholder
+        st.session_state["chart_slug_select_from_feed"] = slug or placeholder
 
 # ──────────────────────────────────────────────────────────────────────
 # HTTP helpers (timed)
@@ -618,7 +620,13 @@ class GlobalTradeFetcher(threading.Thread):
                     earliest_ts_val: Optional[int] = rec.earliest_ts if (rec is not None) else None
 
                     # Need lookup?
-                    need_lookup = (rec is None) or (rec.earliest_ts is None)
+                    need_lookup = False
+                    if rec is None:
+                        need_lookup = True
+                    elif rec.earliest_ts is None:
+                        if (time.time() - rec.fetched_at) >= UNKNOWN_WALLET_RETRY_SEC:
+                            need_lookup = True
+
                     if need_lookup and lookups_left > 0:
                         if (taker in priority_wallets) or (lookups_left > self.max_lookups_per_cycle // 3):
                             lookups_left -= 1
@@ -988,6 +996,10 @@ def main():
             st.session_state["chart_slug_select"] = placeholder_label
         if st.session_state["chart_slug_select"] not in slug_options:
             st.session_state["chart_slug_select"] = placeholder_label
+
+        pending_slug = st.session_state.pop("chart_slug_select_from_feed", None)
+        if pending_slug is not None:
+            st.session_state["chart_slug_select"] = pending_slug if pending_slug in slug_options else placeholder_label
 
         selected_slug = st.selectbox("Chart Market (from table above):",
                                      options=slug_options,
