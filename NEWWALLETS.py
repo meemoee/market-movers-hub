@@ -36,6 +36,8 @@ import threading
 import time
 import json
 import traceback
+import inspect
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -127,6 +129,36 @@ def log_json(level: str, msg: str, **fields: Any) -> None:
     rec = {"t": now_utc().isoformat(), "lvl": level, "msg": msg}
     rec.update(fields)
     print(f"{LOG_PREFIX} {json.dumps(rec, ensure_ascii=False)}", flush=True)
+
+
+def short_wallet(addr: Optional[str]) -> str:
+    if not isinstance(addr, str) or not addr:
+        return "—"
+    addr = addr.strip()
+    if len(addr) <= 12:
+        return addr
+    return f"{addr[:6]}…{addr[-4:]}"
+
+
+def handle_feed_selection() -> None:
+    selection = st.session_state.get("live_feed_table")
+    if not selection:
+        return
+    rows = selection.get("selection", {}).get("rows") if isinstance(selection, dict) else None
+    if not rows:
+        return
+    row_idx = rows[0]
+    lookup = st.session_state.get("feed_slug_lookup")
+    if not isinstance(lookup, list) or row_idx is None:
+        return
+    if 0 <= row_idx < len(lookup):
+        slug = lookup[row_idx]
+        if isinstance(slug, float) and math.isnan(slug):
+            slug = None
+        placeholder = st.session_state.get("chart_slug_placeholder")
+        if placeholder is None:
+            placeholder = "— Select a market for the chart —"
+        st.session_state["chart_slug_select"] = slug or placeholder
 
 # ──────────────────────────────────────────────────────────────────────
 # HTTP helpers (timed)
@@ -891,17 +923,76 @@ def main():
 
         # Market activity table to choose the chart market
         st.markdown("### 🗂️ Market Activity (recent feed)")
+        placeholder_label = "— Select a market for the chart —"
+        st.session_state.setdefault("chart_slug_placeholder", placeholder_label)
+
         activity = (feed_df.groupby("slug", dropna=False)
                     .agg(trades=("tx", "nunique"),
                          notional_usd=("notional", "sum"))
                     .sort_values(["trades", "notional_usd"], ascending=[False, False]))
+
+        if not activity.empty:
+            wallet_notional = (feed_df.groupby(["slug", "taker"], dropna=False)["notional"].sum())
+            top_wallet_idx = wallet_notional.groupby(level=0).idxmax()
+            top_wallet_notional = wallet_notional.groupby(level=0).max()
+            top_wallet_lookup: Dict[Any, Optional[str]] = {}
+            for slug_key, idx in top_wallet_idx.items():
+                if isinstance(idx, tuple) and len(idx) == 2:
+                    top_wallet_lookup[slug_key] = idx[1]
+                else:
+                    top_wallet_lookup[slug_key] = None
+
+            avg_wallet_age = feed_df.groupby("slug")["wallet_age_days"].mean()
+            outcome_mix = (feed_df.groupby(["slug", "outcome"], dropna=False)["notional"].sum().unstack(fill_value=0.0))
+
+            top_wallet_series = activity.index.to_series().map(lambda slug: top_wallet_lookup.get(slug))
+            activity["Top Wallet"] = top_wallet_series.apply(short_wallet)
+            top_notional = activity.index.to_series().map(lambda slug: float(top_wallet_notional.get(slug, 0.0)))
+            with pd.option_context('mode.use_inf_as_na', True):
+                concentration = (top_notional / activity["notional_usd"].replace(0, pd.NA)).fillna(0.0)
+            activity["Top Wallet Concentration (%)"] = concentration * 100.0
+            activity["Avg Wallet Age (days)"] = activity.index.to_series().map(
+                lambda slug: float(avg_wallet_age.get(slug, float("nan")))
+            )
+
+            yes_series = outcome_mix.get("Yes") if isinstance(outcome_mix, pd.DataFrame) else None
+            no_series = outcome_mix.get("No") if isinstance(outcome_mix, pd.DataFrame) else None
+            activity["Yes ($)"] = activity.index.to_series().map(
+                lambda slug: float(yes_series.get(slug, 0.0)) if yes_series is not None else 0.0
+            )
+            activity["No ($)"] = activity.index.to_series().map(
+                lambda slug: float(no_series.get(slug, 0.0)) if no_series is not None else 0.0
+            )
+        else:
+            activity["Top Wallet"] = pd.Series(dtype=object)
+            activity["Top Wallet Concentration (%)"] = pd.Series(dtype=float)
+            activity["Avg Wallet Age (days)"] = pd.Series(dtype=float)
+            activity["Yes ($)"] = pd.Series(dtype=float)
+            activity["No ($)"] = pd.Series(dtype=float)
+
         activity_display = activity.reset_index().rename(columns={"slug": "Market (slug)"})
-        st.dataframe(activity_display, width="stretch", height=220)
+        if not activity_display.empty:
+            if "Top Wallet Concentration (%)" in activity_display:
+                activity_display["Top Wallet Concentration (%)"] = activity_display["Top Wallet Concentration (%)"].round(1)
+            if "Avg Wallet Age (days)" in activity_display:
+                activity_display["Avg Wallet Age (days)"] = activity_display["Avg Wallet Age (days)"].round(2)
+            if "Yes ($)" in activity_display:
+                activity_display["Yes ($)"] = activity_display["Yes ($)"].round(0)
+            if "No ($)" in activity_display:
+                activity_display["No ($)"] = activity_display["No ($)"].round(0)
+        st.dataframe(activity_display, width="stretch", height=240)
 
         # Market selector (chart scopes to this slug ONLY)
-        slug_options = ["— Select a market for the chart —"] + activity.index.tolist()
-        selected_slug = st.selectbox("Chart Market (from table above):", options=slug_options, index=0)
-        chart_slug = None if selected_slug == "— Select a market for the chart —" else selected_slug
+        slug_options = [placeholder_label] + activity.index.tolist()
+        if "chart_slug_select" not in st.session_state:
+            st.session_state["chart_slug_select"] = placeholder_label
+        if st.session_state["chart_slug_select"] not in slug_options:
+            st.session_state["chart_slug_select"] = placeholder_label
+
+        selected_slug = st.selectbox("Chart Market (from table above):",
+                                     options=slug_options,
+                                     key="chart_slug_select")
+        chart_slug = None if selected_slug == placeholder_label else selected_slug
 
         # Sort for live feed
         feed_sorted = feed_df.sort_values("timestamp", ascending=False)
@@ -916,8 +1007,21 @@ def main():
                 "time": "When (UTC)", "age_badge": "Age", "size_badge": "Size", "is_young": "Young?",
                 "side": "Side", "outcome": "Outcome", "price": "Price", "qty": "Qty", "notional": "Notional ($)",
                 "slug": "Market (slug)", "taker": "Wallet", "tx": "Tx", "wallet_first_iso": "Wallet First Seen"
-            })
-            st.dataframe(feed_show, width="stretch", height=520)
+            }).reset_index(drop=True)
+            st.session_state["feed_slug_lookup"] = feed_show["Market (slug)"].tolist()
+            dataframe_kwargs = {
+                "width": "stretch",
+                "height": 520,
+                "key": "live_feed_table",
+            }
+            dataframe_sig = inspect.signature(st.dataframe)
+            if "selection_mode" in dataframe_sig.parameters and "on_select" in dataframe_sig.parameters:
+                dataframe_kwargs.update({
+                    "selection_mode": "single-row",
+                    "on_select": handle_feed_selection,
+                })
+            st.dataframe(feed_show, **dataframe_kwargs)
+            handle_feed_selection()
 
             st.markdown("### 📈 Trades Over Time — Chart scoped to selected market")
             # CHART: Only show trades for the selected market
