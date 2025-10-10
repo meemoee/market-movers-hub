@@ -66,6 +66,7 @@ DEFAULT_HISTORY_MAX_ROWS = 20000
 
 DEFAULT_SEEN_TX_MAX = 50000
 DEFAULT_MAX_LOOKUPS_PER_CYCLE = 60
+PENDING_WALLET_MAX = 5000
 NO_PROGRESS_WARN_CYCLES = 6
 
 DEFAULT_ACCUM_WINDOW_SEC = 24 * 3600
@@ -558,9 +559,41 @@ class GlobalTradeFetcher(threading.Thread):
 
         self.last_max_ts: Optional[int] = None
         self.no_progress_cycles = 0
+        self._pending_wallets: deque[str] = deque()
+        self._pending_wallets_set: set[str] = set()
+        self.max_pending_wallets = PENDING_WALLET_MAX
 
     def stop(self):
         self._stop_event.set()
+
+    def _enqueue_pending_wallet(self, addr: str) -> None:
+        addr_l = (addr or "").lower()
+        if not addr_l:
+            return
+        if addr_l in self._pending_wallets_set:
+            return
+        if len(self._pending_wallets) >= self.max_pending_wallets:
+            old = self._pending_wallets.popleft()
+            self._pending_wallets_set.discard(old)
+        self._pending_wallets.append(addr_l)
+        self._pending_wallets_set.add(addr_l)
+
+    def _drain_pending_wallets(self, budget: int) -> int:
+        used = 0
+        while budget > 0 and self._pending_wallets:
+            wallet = self._pending_wallets.popleft()
+            self._pending_wallets_set.discard(wallet)
+            try:
+                rec = self.wallet_cache.get(wallet)
+            except Exception:
+                rec = None
+            if rec is not None and rec.earliest_ts is not None:
+                continue
+            ts_val = fetch_earliest_activity_ts_quick(wallet, timeout=3.8, verbose=self.verbose)
+            self.wallet_cache.set(wallet, ts_val)
+            used += 1
+            budget -= 1
+        return used
 
     def run(self):
         log_json("INFO", "global_fetcher_start",
@@ -628,11 +661,12 @@ class GlobalTradeFetcher(threading.Thread):
                             need_lookup = True
 
                     if need_lookup and lookups_left > 0:
-                        if (taker in priority_wallets) or (lookups_left > self.max_lookups_per_cycle // 3):
-                            lookups_left -= 1
-                            activity_lookups += 1
-                            earliest_ts_val = fetch_earliest_activity_ts_quick(taker, timeout=3.8, verbose=self.verbose)
-                            self.wallet_cache.set(taker, earliest_ts_val)
+                        lookups_left -= 1
+                        activity_lookups += 1
+                        earliest_ts_val = fetch_earliest_activity_ts_quick(taker, timeout=3.8, verbose=self.verbose)
+                        self.wallet_cache.set(taker, earliest_ts_val)
+                    elif need_lookup:
+                        self._enqueue_pending_wallet(taker)
 
                     if earliest_ts_val is None:
                         is_young = True
@@ -669,6 +703,11 @@ class GlobalTradeFetcher(threading.Thread):
             except Exception as e:
                 log_json("ERROR", "fetch_loop_error", err=repr(e), tb=traceback.format_exc())
 
+            if lookups_left > 0 and self._pending_wallets:
+                used = self._drain_pending_wallets(lookups_left)
+                activity_lookups += used
+                lookups_left = max(0, lookups_left - used)
+
             curr_max_ts = int(last_ts_seen) if last_ts_seen is not None else None
             if curr_max_ts is not None and self.last_max_ts is not None and curr_max_ts <= self.last_max_ts:
                 self.no_progress_cycles += 1
@@ -690,6 +729,7 @@ class GlobalTradeFetcher(threading.Thread):
                 unknown_age_allowed=unknown_age_allowed,
                 activity_lookups=activity_lookups,
                 lookups_budget_left=max(0, self.max_lookups_per_cycle - activity_lookups),
+                pending_queue=len(self._pending_wallets),
                 dedupe_size=self.store.seen.size(),
                 first_ts=first_ts_seen,
                 last_ts=last_ts_seen,
