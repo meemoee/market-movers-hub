@@ -38,6 +38,7 @@ import json
 import traceback
 import inspect
 import math
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -170,32 +171,78 @@ def handle_feed_selection() -> None:
 def http_get_json(url: str, params: Optional[Dict[str, Any]] = None,
                   timeout: int = 30, retries: int = 4,
                   tag: str = "generic") -> Any:
+    """GET helper with structured logging and resilient retry/backoff handling."""
     last_err = None
-    for i in range(retries):
+    for attempt in range(1, retries + 1):
         t0 = time.time()
+        req_url = url
         try:
             r = requests.get(url, params=params, timeout=timeout)
+            req_url = r.url
             ms = int((time.time() - t0) * 1000)
+
             if r.status_code == 429:
-                log_json("WARN", f"{tag} 429", url=url, params=params, ms=ms)
-                time.sleep(min(10.0, 1.0 + i * 1.5))
-                continue
+                retry_after_raw = r.headers.get("Retry-After")
+                wait_s: float
+                retry_after: Optional[float] = None
+                if retry_after_raw:
+                    try:
+                        retry_after = float(retry_after_raw)
+                    except ValueError:
+                        try:
+                            retry_after_dt = datetime.fromisoformat(retry_after_raw.replace("Z", "+00:00"))
+                            retry_after = max(0.0, retry_after_dt.timestamp() - time.time())
+                        except Exception:
+                            retry_after = None
+                if retry_after is not None:
+                    wait_s = min(30.0, max(0.5, retry_after))
+                else:
+                    base = 0.8 * (2 ** (attempt - 1))
+                    wait_s = min(30.0, base + random.uniform(0.3, 1.4))
+
+                last_err = f"HTTP 429 (attempt {attempt})"
+                log_json(
+                    "WARN",
+                    f"{tag}_429",
+                    attempt=attempt,
+                    retries=retries,
+                    url=req_url,
+                    params=params,
+                    ms=ms,
+                    wait_s=round(wait_s, 3),
+                    retry_after=retry_after_raw,
+                )
+                if attempt < retries:
+                    time.sleep(wait_s)
+                    continue
+                break
+
             r.raise_for_status()
             data = r.json()
             if tag == "trades":
                 rows = len(data) if isinstance(data, list) else 0
                 first_ts = parse_epoch_seconds_maybe_ms(data[0].get("timestamp")) if rows else None
-                last_ts  = parse_epoch_seconds_maybe_ms(data[-1].get("timestamp")) if rows else None
-                log_json("INFO", "trades_ok", url=r.url, ms=ms, rows=rows, first_ts=first_ts, last_ts=last_ts)
+                last_ts = parse_epoch_seconds_maybe_ms(data[-1].get("timestamp")) if rows else None
+                log_json("INFO", "trades_ok", url=req_url, ms=ms, rows=rows, first_ts=first_ts, last_ts=last_ts)
             else:
-                log_json("DEBUG", f"{tag}_ok", url=r.url, ms=ms)
+                log_json("DEBUG", f"{tag}_ok", url=req_url, ms=ms)
             return data
+
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             last_err = repr(e)
-            log_json("WARN", f"{tag}_retry", attempt=i+1, retries=retries, url=url, params=params, ms=ms, err=last_err)
-            if i < retries - 1:
-                time.sleep(min(6.0, 0.5 * (2 ** i)))
+            log_json(
+                "WARN",
+                f"{tag}_retry",
+                attempt=attempt,
+                retries=retries,
+                url=req_url,
+                params=params,
+                ms=ms,
+                err=last_err,
+            )
+            if attempt < retries:
+                time.sleep(min(10.0, 0.6 * (2 ** (attempt - 1))))
                 continue
             break
     raise RuntimeError(f"GET {url} failed after {retries} attempts: {last_err}")
@@ -211,7 +258,13 @@ def fetch_global_trades(limit: int, taker_only: bool = True, offset: int = 0) ->
     params: Dict[str, Any] = {"limit": limit, "offset": offset}
     if taker_only:
         params["takerOnly"] = "true"
-    data = http_get_json(f"{DATA_API_BASE}/trades", params=params, timeout=20, retries=2, tag="trades")
+    data = http_get_json(
+        f"{DATA_API_BASE}/trades",
+        params=params,
+        timeout=20,
+        retries=6,
+        tag="trades",
+    )
     out: List[Dict[str, Any]] = []
     if isinstance(data, list):
         for tr in data:
