@@ -4,7 +4,7 @@
 Run this script, focus any text field, and press Ctrl+Alt+V. The current
 clipboard text is typed one key at a time with realistic biomechanical timing,
 proper Shift state events, hold durations, content-aware hesitations,
-realistic typos (including uncorrected ones), and arrow/ctrl-backspace editing.
+realistic typos (including uncorrected ones), and local backspace editing.
 
 The script uses only the Python standard library. Try ``--help`` to change options.
 """
@@ -310,6 +310,15 @@ def get_key_mapping(character: str) -> tuple[int, int, bool] | None:
     return QWERTY_MAP.get(character)
 
 
+def requires_shift_state(character: str | None) -> bool:
+    if not character:
+        return False
+    mapping = get_key_mapping(character)
+    if mapping:
+        return mapping[2]
+    return False
+
+
 @dataclass(frozen=True)
 class Hotkey:
     modifiers: int
@@ -522,18 +531,19 @@ class HumanTyper:
 
         set_clipboard_text(text)
 
-        # Press Ctrl+V
+        # Press Ctrl+V with guaranteed release of Ctrl key in finally block
         ctrl_vk, ctrl_scan = VK_LCONTROL, 0x1D
         v_vk, v_scan = 0x56, 0x2F
 
         self._press_key_event(ctrl_vk, ctrl_scan, 0)
-        if not self._sleep(self.rng.uniform(0.02, 0.05)):
-            return False
+        try:
+            if not self._sleep(self.rng.uniform(0.02, 0.05)):
+                return False
 
-        if not self._press_and_release_key(v_vk, v_scan):
-            return False
-
-        self._press_key_event(ctrl_vk, ctrl_scan, KEYEVENTF_KEYUP)
+            if not self._press_and_release_key(v_vk, v_scan):
+                return False
+        finally:
+            self._press_key_event(ctrl_vk, ctrl_scan, KEYEVENTF_KEYUP)
 
         if not self._sleep(self.rng.uniform(0.04, 0.10)):
             return False
@@ -542,7 +552,7 @@ class HumanTyper:
             set_clipboard_text(orig_clip)
         return True
 
-    def _emit_character(self, character: str) -> bool:
+    def _emit_character(self, character: str, next_character: str | None = None) -> bool:
         mapping = get_key_mapping(character)
         if mapping is None:
             return self._paste_text(character)
@@ -552,7 +562,16 @@ class HumanTyper:
             return False
 
         is_ext = vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_DELETE)
-        return self._press_and_release_key(vk, scan, is_extended=is_ext)
+        res = self._press_and_release_key(vk, scan, is_extended=is_ext)
+        if not res:
+            return False
+
+        # Release Shift immediately after key press if the next character does not require Shift
+        if self.shift_held and not requires_shift_state(next_character):
+            if not self._set_shift_state(False):
+                return False
+
+        return True
 
     def _backspace(self, count: int = 1) -> bool:
         notice_delay = self.rng.lognormvariate(math.log(0.18), 0.45)
@@ -571,59 +590,6 @@ class HumanTyper:
 
         settle_delay = self.rng.lognormvariate(math.log(0.12), 0.40)
         return self._sleep(min(0.60, max(0.03, settle_delay)))
-
-    def _ctrl_backspace(self) -> bool:
-        """Word-level deletion via Ctrl+Backspace."""
-        if not self._set_shift_state(False):
-            return False
-
-        notice_delay = self.rng.lognormvariate(math.log(0.22), 0.40)
-        if not self._sleep(min(0.80, max(0.05, notice_delay))):
-            return False
-
-        ctrl_vk, ctrl_scan = VK_LCONTROL, 0x1D
-        self._press_key_event(ctrl_vk, ctrl_scan, 0)
-        if not self._sleep(self.rng.uniform(0.02, 0.05)):
-            return False
-
-        if not self._press_and_release_key(VK_BACK, 0x0E):
-            return False
-
-        self._press_key_event(ctrl_vk, ctrl_scan, KEYEVENTF_KEYUP)
-        settle_delay = self.rng.lognormvariate(math.log(0.15), 0.35)
-        return self._sleep(min(0.60, max(0.04, settle_delay)))
-
-    def _arrow_navigate_and_fix(self, steps_back: int, correct_char: str) -> bool:
-        """Move cursor left with Arrow keys, fix character, and return right/End."""
-        notice_delay = self.rng.lognormvariate(math.log(0.25), 0.40)
-        if not self._sleep(min(0.90, max(0.08, notice_delay))):
-            return False
-
-        # Move left
-        for _ in range(steps_back):
-            if not self._press_and_release_key(VK_LEFT, 0x4B, is_extended=True):
-                return False
-            if not self._sleep(self.rng.uniform(0.03, 0.08)):
-                return False
-
-        # Fix key
-        if not self._press_and_release_key(VK_DELETE, 0x53, is_extended=True):
-            return False
-        if not self._emit_character(correct_char):
-            return False
-
-        # Return to end via End or Right Arrow
-        if self.rng.random() < 0.65:
-            if not self._press_and_release_key(VK_END, 0x4F, is_extended=True):
-                return False
-        else:
-            for _ in range(steps_back):
-                if not self._press_and_release_key(VK_RIGHT, 0x4D, is_extended=True):
-                    return False
-                if not self._sleep(self.rng.uniform(0.025, 0.065)):
-                    return False
-
-        return True
 
     def _get_digraph_factor(self, c1: str, c2: str) -> float:
         """Biomechanical digraph delay multiplier based on hands and fingers."""
@@ -757,25 +723,26 @@ class HumanTyper:
 
             if make_typo:
                 leave_uncorrected = self.rng.random() < self.settings.uncorrected_typo_rate
-                typo_kind = self.rng.random()
                 wrong = self._wrong_neighbor(character)
 
                 if leave_uncorrected:
                     # Uncorrected typo: type wrong key or swap and do NOT fix it
                     wrong_char = wrong if wrong else character.swapcase()
-                    if not self._emit_character(wrong_char):
+                    if not self._emit_character(wrong_char, following):
                         return False
                 else:
-                    # Corrected typo options
-                    if typo_kind < 0.25 and wrong and following and following not in "\r\n\t":
-                        # Deferred notice: type wrong key + 1-2 more characters, notice, backspace all, retype
+                    # Corrected typo options: strictly local 1-3 backspaces
+                    typo_kind = self.rng.random()
+                    if typo_kind < 0.35 and wrong and following and following not in "\r\n\t":
+                        # Deferred notice (1-2 characters typed after wrong key, max backspace = 3)
                         lookahead = 1 if self.rng.random() < 0.60 or index + 2 >= len(text) else 2
-                        if not self._emit_character(wrong):
+                        if not self._emit_character(wrong, text[index + 1] if index + 1 < len(text) else None):
                             return False
                         for offset in range(1, lookahead + 1):
                             if not self._sleep(self.rng.uniform(0.03, 0.08)):
                                 return False
-                            if not self._emit_character(text[index + offset]):
+                            next_ch = text[index + offset + 1] if index + offset + 1 < len(text) else None
+                            if not self._emit_character(text[index + offset], next_ch):
                                 return False
 
                         if not self._backspace(lookahead + 1):
@@ -784,55 +751,25 @@ class HumanTyper:
                         for offset in range(0, lookahead + 1):
                             pos = index + offset
                             ch = text[pos]
-                            if not self._emit_character(ch):
+                            nxt = text[pos + 1] if pos + 1 < len(text) else None
+                            if not self._emit_character(ch, nxt):
                                 return False
                             if offset < lookahead:
-                                nxt = text[pos + 1] if pos + 1 < len(text) else None
                                 if not self._sleep(self._next_interkey_delay(ch, nxt)):
                                     return False
                         index += lookahead + 1
                         continue
-
-                    elif typo_kind < 0.45 and char_in_word >= 3 and self.rng.random() < 0.50:
-                        # Ctrl+Backspace whole word
-                        if wrong and not self._emit_character(wrong):
-                            return False
-                        if not self._ctrl_backspace():
-                            return False
-                        # Retype word from start
-                        start_pos = index - char_in_word + 1
-                        for pos in range(start_pos, index + 1):
-                            ch = text[pos]
-                            nxt = text[pos + 1] if pos + 1 < len(text) else None
-                            if not self._emit_character(ch):
-                                return False
-                            if pos < index:
-                                if not self._sleep(self._next_interkey_delay(ch, nxt)):
-                                    return False
-                    elif typo_kind < 0.65 and wrong and following and following not in "\r\n\t":
-                        # Arrow navigation fix
-                        if not self._emit_character(wrong):
-                            return False
-                        if not self._sleep(self.rng.uniform(0.03, 0.08)):
-                            return False
-                        if not self._emit_character(following):
-                            return False
-
-                        if not self._arrow_navigate_and_fix(1, character):
-                            return False
-                        index += 2
-                        continue
                     else:
-                        # Immediate backspace
+                        # Immediate local backspace
                         wrong_char = wrong if wrong else character.swapcase()
-                        if not self._emit_character(wrong_char):
+                        if not self._emit_character(wrong_char, character):
                             return False
                         if not self._backspace(1):
                             return False
-                        if not self._emit_character(character):
+                        if not self._emit_character(character, following):
                             return False
             else:
-                if not self._emit_character(character):
+                if not self._emit_character(character, following):
                     return False
 
             if not self._sleep(self._next_interkey_delay(character, following)):
