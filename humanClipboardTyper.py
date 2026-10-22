@@ -7,6 +7,9 @@ proper Shift state events, hold durations, key rollover (negative flight time),
 content-aware hesitations, realistic typos (including uncorrected ones), physical
 key distance delays, and local backspace editing.
 
+While typing, press F9 to pause at the current position and F9 again to resume
+from exactly where it left off; press F8 to stop.
+
 The script uses only the Python standard library. Try ``--help`` to change options.
 """
 
@@ -77,6 +80,7 @@ NUMPAD_SCAN = {
 
 HOTKEY_ID_TYPE = 1
 HOTKEY_ID_CANCEL = 2
+HOTKEY_ID_PAUSE = 3
 
 
 if ctypes.sizeof(ctypes.c_void_p) == 8:
@@ -565,9 +569,16 @@ def sleep_interruptibly(seconds: float, cancel_event: threading.Event) -> bool:
 
 
 class HumanTyper:
-    def __init__(self, settings: TypingSettings, cancel_event: threading.Event):
+    def __init__(
+        self,
+        settings: TypingSettings,
+        cancel_event: threading.Event,
+        pause_event: threading.Event | None = None,
+    ):
         self.settings = settings
         self.cancel_event = cancel_event
+        # When set, typing holds at the next character boundary until cleared.
+        self.pause_event = pause_event if pause_event is not None else threading.Event()
         self.rng = random.Random(settings.seed)
         self.shift_held = False
         self.event_log: list[dict[str, Any]] = []
@@ -592,6 +603,44 @@ class HumanTyper:
 
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
+
+    def _sleep_gap(self, seconds: float) -> bool:
+        """Sleep an inter-key gap, but abort early if paused so the caller can
+        reach the pause checkpoint quickly. Returns False only on cancel.
+
+        Built on _sleep (which the dry-run harness patches) in small chunks, so
+        a pause is noticed within ~30 ms even during a multi-second pace-guard
+        gap, without pausing in the middle of a key press.
+        """
+        if seconds <= 0:
+            return not self.cancel_event.is_set()
+        remaining = seconds
+        step = 0.03
+        while remaining > 0:
+            if self.pause_event.is_set():
+                return True
+            chunk = step if remaining > step else remaining
+            if not self._sleep(chunk):
+                return False
+            remaining -= chunk
+        return not self.cancel_event.is_set()
+
+    def _wait_if_paused(self) -> bool:
+        """If paused, release every held key and block until resumed or cancelled.
+
+        A pause can last arbitrarily long, so nothing may stay physically down:
+        release the deferred rollover key and Shift first (the next character
+        re-presses Shift as needed). Returns False if cancelled while paused.
+        """
+        if not self.pause_event.is_set():
+            return True
+        self._flush_pending_release()
+        if self.shift_held:
+            self._set_shift_state(False)
+        while self.pause_event.is_set():
+            if self.cancel_event.wait(0.05):
+                return False
+        return not self.cancel_event.is_set()
 
     def _send_input_events(self, events: list[INPUT]) -> None:
         # Record every key-DOWN's send time (keyups excluded): this is the
@@ -1008,7 +1057,7 @@ class HumanTyper:
             self._flush_pending_release()
         if self.shift_held and (seconds > 0.30 or (time.monotonic() - self._shift_down_at) > 0.90):
             self._set_shift_state(False)
-        return self._sleep(seconds)
+        return self._sleep_gap(seconds)
 
     def _wrong_neighbor(self, character: str) -> str | None:
         lower = character.lower()
@@ -1034,6 +1083,14 @@ class HumanTyper:
                     self._set_shift_state(False)
                 return False
 
+            # Pause checkpoint: hold here (with no key down) until resumed. Keeps
+            # the current position, so resuming continues at this same character.
+            if not self._wait_if_paused():
+                self._flush_pending_release()
+                if self.shift_held:
+                    self._set_shift_state(False)
+                return False
+
             progress = index / max(1, total_len)
             character = text[index]
             following = text[index + 1] if index + 1 < total_len else None
@@ -1043,7 +1100,7 @@ class HumanTyper:
                 think_pause = self._get_thinking_delay(text, word_idx, words)
                 if think_pause > 0:
                     self._flush_pending_release()
-                    if not self._sleep(think_pause):
+                    if not self._sleep_gap(think_pause):
                         return False
 
             if character == " ":
@@ -1124,12 +1181,15 @@ class HotkeyApp:
         self,
         typing_hotkey: Hotkey,
         cancel_hotkey: Hotkey,
+        pause_hotkey: Hotkey,
         settings: TypingSettings,
     ) -> None:
         self.typing_hotkey = typing_hotkey
         self.cancel_hotkey = cancel_hotkey
+        self.pause_hotkey = pause_hotkey
         self.settings = settings
         self.cancel_event = threading.Event()
+        self.pause_event = threading.Event()
         self.worker: threading.Thread | None = None
         self.worker_guard = threading.Lock()
 
@@ -1161,9 +1221,12 @@ class HotkeyApp:
             if not self._wait_for_trigger_release():
                 return
 
-            print(f"[typing] {len(text):,} clipboard characters (press {self.cancel_hotkey.display} to stop)")
+            print(
+                f"[typing] {len(text):,} clipboard characters "
+                f"({self.pause_hotkey.display} to pause/resume, {self.cancel_hotkey.display} to stop)"
+            )
             self._beep(880, 55)
-            completed = HumanTyper(self.settings, self.cancel_event).type_text(text)
+            completed = HumanTyper(self.settings, self.cancel_event, self.pause_event).type_text(text)
             if completed:
                 print("[done] Clipboard text typed successfully.")
                 self._beep(1047, 75)
@@ -1184,6 +1247,7 @@ class HotkeyApp:
                 self._beep(520, 50)
                 return
             self.cancel_event.clear()
+            self.pause_event.clear()
             self.worker = threading.Thread(
                 target=self._typing_worker,
                 name="human-clipboard-typer",
@@ -1195,7 +1259,23 @@ class HotkeyApp:
         with self.worker_guard:
             active = self.worker is not None and self.worker.is_alive()
         if active:
+            # make sure a paused worker can observe the cancel and exit
+            self.pause_event.clear()
             self.cancel_event.set()
+
+    def toggle_pause(self) -> None:
+        with self.worker_guard:
+            active = self.worker is not None and self.worker.is_alive()
+        if not active:
+            return
+        if self.pause_event.is_set():
+            self.pause_event.clear()  # resume where it left off
+            print("[resumed] Typing continues.")
+            self._beep(660, 45)
+        else:
+            self.pause_event.set()  # hold at the current character
+            print(f"[paused] Press {self.pause_hotkey.display} again to resume.")
+            self._beep(440, 45)
 
     def run(self) -> None:
         if not IS_WINDOWS or user32 is None:
@@ -1213,6 +1293,7 @@ class HotkeyApp:
             )
 
         cancel_registered = False
+        pause_registered = False
         try:
             cancel_registered = bool(
                 user32.RegisterHotKey(
@@ -1227,10 +1308,26 @@ class HotkeyApp:
                     f"could not register {self.cancel_hotkey.display}; another app may already use it"
                 )
 
+            pause_registered = bool(
+                user32.RegisterHotKey(
+                    None,
+                    HOTKEY_ID_PAUSE,
+                    self.pause_hotkey.modifiers | MOD_NOREPEAT,
+                    self.pause_hotkey.key_code,
+                )
+            )
+            if not pause_registered:
+                raise OSError(
+                    f"could not register {self.pause_hotkey.display}; another app may already use it"
+                )
+
             print(
                 f"[ready] Copy text, focus a text field, then press {self.typing_hotkey.display}."
             )
-            print(f"        Press {self.cancel_hotkey.display} to cancel. Close this window to exit.")
+            print(
+                f"        {self.pause_hotkey.display} pauses/resumes, "
+                f"{self.cancel_hotkey.display} cancels. Close this window to exit."
+            )
             message = wintypes.MSG()
             while True:
                 result = user32.GetMessageW(ctypes.byref(message), None, 0, 0)
@@ -1243,11 +1340,16 @@ class HotkeyApp:
                         self.start_typing()
                     elif message.wParam == HOTKEY_ID_CANCEL:
                         self.cancel_typing()
+                    elif message.wParam == HOTKEY_ID_PAUSE:
+                        self.toggle_pause()
         finally:
             self.cancel_event.set()
+            self.pause_event.clear()
             user32.UnregisterHotKey(None, HOTKEY_ID_TYPE)
             if cancel_registered:
                 user32.UnregisterHotKey(None, HOTKEY_ID_CANCEL)
+            if pause_registered:
+                user32.UnregisterHotKey(None, HOTKEY_ID_PAUSE)
 
 
 def positive_float(value: str) -> float:
@@ -1284,6 +1386,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--cancel-hotkey",
         default="f8",
         help="global shortcut that stops active typing (default: f8)",
+    )
+    parser.add_argument(
+        "--pause-hotkey",
+        default="f9",
+        help="global shortcut that pauses active typing and resumes where it left off (default: f9)",
     )
     parser.add_argument(
         "--wpm",
@@ -1350,14 +1457,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         typing_hotkey = parse_hotkey(args.hotkey, require_modifier=True)
         cancel_hotkey = parse_hotkey(args.cancel_hotkey, require_modifier=False)
+        pause_hotkey = parse_hotkey(args.pause_hotkey, require_modifier=False)
     except argparse.ArgumentTypeError as error:
         parser.error(str(error))
 
-    if (
-        typing_hotkey.modifiers == cancel_hotkey.modifiers
-        and typing_hotkey.key_code == cancel_hotkey.key_code
-    ):
+    def _same(a: Hotkey, b: Hotkey) -> bool:
+        return a.modifiers == b.modifiers and a.key_code == b.key_code
+
+    if _same(typing_hotkey, cancel_hotkey):
         parser.error("typing and cancel hotkeys must be different")
+    if _same(typing_hotkey, pause_hotkey):
+        parser.error("typing and pause hotkeys must be different")
+    if _same(cancel_hotkey, pause_hotkey):
+        parser.error("cancel and pause hotkeys must be different")
 
     settings = TypingSettings(
         words_per_minute=args.wpm,
@@ -1372,7 +1484,7 @@ def main(argv: list[str] | None = None) -> int:
         pace_floor=args.pace_floor,
     )
     try:
-        HotkeyApp(typing_hotkey, cancel_hotkey, settings).run()
+        HotkeyApp(typing_hotkey, cancel_hotkey, pause_hotkey, settings).run()
     except OSError as error:
         print(f"[error] {error}", file=sys.stderr)
         return 1
