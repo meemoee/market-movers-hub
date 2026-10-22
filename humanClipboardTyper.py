@@ -539,8 +539,8 @@ class HumanTyper:
         self.pace_drift = 1.0  # Cumulative non-stationary pace drift
         self.thinking_cooldown = self.rng.randint(15, 35)
 
-        # Active held key state for key rollover tracking: tuple of (vk, scan, is_extended, up_deadline) or None
-        self.pending_key_release: tuple[int, int, bool, float] | None = None
+        # Active held key state for key rollover tracking: tuple of (vk, scan, is_extended) or None
+        self.pending_key_release: tuple[int, int, bool] | None = None
 
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
@@ -567,10 +567,10 @@ class HumanTyper:
     def _flush_pending_release(self) -> None:
         """Release any pending held key from key rollover."""
         if self.pending_key_release:
-            vk, scan, is_ext, _ = self.pending_key_release
+            vk, scan, is_ext = self.pending_key_release
+            self.pending_key_release = None
             ext_flag = KEYEVENTF_EXTENDEDKEY if is_ext else 0
             self._press_key_event(vk, scan, ext_flag | KEYEVENTF_KEYUP)
-            self.pending_key_release = None
 
     def _press_and_release_key(
         self,
@@ -587,24 +587,26 @@ class HumanTyper:
 
         self._press_key_event(virtual_key, scan_code, ext_flag)
 
+        # Flush ANY previously pending key release AFTER pressing THIS key down!
+        # This produces TRUE key rollover / negative flight time (Key N+1 down BEFORE Key N up)!
+        self._flush_pending_release()
+
         # Decide key rollover (negative flight time): press next key down before releasing this key
-        # Rollover occurs on ~38% of fast letter-to-letter transitions
+        # Rollover occurs on ~50% of letter-to-letter transitions
         is_rollover = (
             next_is_rollover_candidate
             and not self.shift_held
-            and self.rng.random() < 0.38
+            and self.rng.random() < 0.50
             and virtual_key not in (VK_SPACE, VK_RETURN, VK_TAB, VK_BACK)
         )
 
         if is_rollover:
-            # Overlap time: next key will be pressed down halfway through this key's hold time
             overlap_time = hold_time * self.rng.uniform(0.35, 0.65)
-            up_deadline = time.monotonic() + (hold_time - overlap_time)
             if not self._sleep(overlap_time):
                 self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
                 return False
-            # Defer key release until after next key's keydown
-            self.pending_key_release = (virtual_key, scan_code, is_extended, up_deadline)
+            # Defer key release until after next key's keydown!
+            self.pending_key_release = (virtual_key, scan_code, is_extended)
             return True
 
         # Standard non-rollover key release
@@ -709,12 +711,6 @@ class HumanTyper:
         cur_is_letter = character.isalpha()
         rollover_candidate = cur_is_letter and next_is_letter
 
-        # Flush any existing pending key release before setting a new pending release
-        prev_pending = self.pending_key_release
-        if prev_pending and rollover_candidate:
-            self._flush_pending_release()
-            prev_pending = None
-
         if not self._set_shift_state(req_shift):
             return False
 
@@ -722,13 +718,6 @@ class HumanTyper:
         res = self._press_and_release_key(
             vk, scan, is_extended=is_ext, next_is_rollover_candidate=rollover_candidate
         )
-
-        # Release previous key now if it was in rollover state and not flushed yet
-        if prev_pending and prev_pending == self.pending_key_release:
-            p_vk, p_scan, p_ext, _ = prev_pending
-            p_flag = KEYEVENTF_EXTENDEDKEY if p_ext else 0
-            self._press_key_event(p_vk, p_scan, p_flag | KEYEVENTF_KEYUP)
-            self.pending_key_release = None
 
         # Release Shift immediately after character key press if next char does not require Shift
         if self.shift_held and not requires_shift_state(next_character):
