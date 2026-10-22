@@ -563,14 +563,17 @@ class HumanTyper:
     def _press_and_release_key(self, virtual_key: int, scan_code: int, is_extended: bool = False) -> bool:
         ext_flag = KEYEVENTF_EXTENDEDKEY if is_extended else 0
 
-        # Sample hold duration log-normally (mean ~42ms, smooth right-skewed tail)
-        hold_time = self.rng.lognormvariate(math.log(0.042), 0.25)
-        hold_time = min(0.120, max(0.018, hold_time))
+        # Guaranteed hold duration log-normally (mean ~38ms, bounded 18ms..85ms)
+        hold_time = self.rng.lognormvariate(math.log(0.038), 0.22)
+        hold_time = min(0.085, max(0.018, hold_time))
 
         self._press_key_event(virtual_key, scan_code, ext_flag)
-        if not self._sleep(hold_time):
-            return False
-        self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
+        try:
+            if not self._sleep(hold_time):
+                return False
+        finally:
+            # ALWAYS emit key-up even if sleep is interrupted or cancelled
+            self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
         return True
 
     def _set_shift_state(self, hold_shift: bool) -> bool:
@@ -583,13 +586,13 @@ class HumanTyper:
         if hold_shift:
             self._press_key_event(shift_vk, shift_scan, 0)
             self.shift_held = True
-            shift_delay = self.rng.lognormvariate(math.log(0.035), 0.28)
-            return self._sleep(min(0.090, max(0.015, shift_delay)))
+            shift_delay = self.rng.lognormvariate(math.log(0.028), 0.22)
+            return self._sleep(min(0.055, max(0.012, shift_delay)))
         else:
             self._press_key_event(shift_vk, shift_scan, KEYEVENTF_KEYUP)
             self.shift_held = False
-            shift_delay = self.rng.lognormvariate(math.log(0.025), 0.28)
-            return self._sleep(min(0.070, max(0.010, shift_delay)))
+            shift_delay = self.rng.lognormvariate(math.log(0.020), 0.22)
+            return self._sleep(min(0.045, max(0.010, shift_delay)))
 
     def _paste_text(self, text: str) -> bool:
         """Paste unicode text via Ctrl+V for non-keyboard symbols."""
@@ -606,6 +609,10 @@ class HumanTyper:
 
         ctrl_vk, ctrl_scan = VK_LCONTROL, 0x1D
         v_vk, v_scan = 0x56, 0x2F
+
+        # Hesitate briefly before paste chord as a real person does
+        if not self._sleep(self.rng.lognormvariate(math.log(0.080), 0.30)):
+            return False
 
         self._press_key_event(ctrl_vk, ctrl_scan, 0)
         try:
@@ -635,15 +642,12 @@ class HumanTyper:
 
         is_ext = vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_DELETE)
         res = self._press_and_release_key(vk, scan, is_extended=is_ext)
-        if not res:
-            return False
 
-        # Release Shift immediately after key press if next character does not require Shift
+        # ALWAYS release Shift immediately after character key-up if next char does not require Shift
         if self.shift_held and not requires_shift_state(next_character):
-            if not self._set_shift_state(False):
-                return False
+            self._set_shift_state(False)
 
-        return True
+        return res
 
     def _backspace(self, count: int = 1) -> bool:
         notice_delay = self.rng.lognormvariate(math.log(0.18), 0.45)
@@ -732,22 +736,24 @@ class HumanTyper:
         pause = self.rng.lognormvariate(mu_pause, 0.45)
         return min(8.0, max(0.20, pause))
 
-    def _next_interkey_delay(self, current_char: str, next_char: str | None) -> float:
-        """Compute smooth, right-skewed log-normal delay between keys."""
-        # Update AR(1) pace drift across words / keys
-        drift_delta = self.rng.normalvariate(0.0, 0.03)
-        self.pace_drift = 0.95 * self.pace_drift + 0.05 * (1.0 + drift_delta)
-        self.pace_drift = min(1.6, max(0.65, self.pace_drift))
+    def _next_interkey_delay(self, current_char: str, next_char: str | None, progress: float = 0.0) -> float:
+        """Compute smooth, right-skewed log-normal delay with passage pace drift."""
+        # Non-stationary passage-level drift: combines sinusoidal passage arc and AR(1) random walk
+        passage_arc = 1.35 - 0.70 * math.sin(math.pi * progress)  # Starts slow, speeds up mid-passage, slows at end
+        walk = self.rng.normalvariate(0.0, 0.06)
+        self.pace_drift = 0.992 * self.pace_drift + 0.008 * (1.0 + walk)
+
+        effective_drift = passage_arc * self.pace_drift
 
         digraph_factor = 1.0
         if next_char:
             digraph_factor = self._get_digraph_factor(current_char, next_char)
 
-        target_mean = self.base_delay * self.pace_drift * digraph_factor
+        target_mean = self.base_delay * effective_drift * digraph_factor
 
         # Word-burst structure: Spaces and boundary punctuation have much larger gaps
         if current_char == " ":
-            target_mean *= 2.1  # Clear boundary gap for space
+            target_mean *= 2.1
         elif current_char in ",;":
             target_mean *= 2.5
         elif current_char in ".!?":
@@ -779,14 +785,16 @@ class HumanTyper:
         char_in_word = 0
 
         index = 0
-        while index < len(text):
+        total_len = len(text)
+        while index < total_len:
             if self.cancel_event.is_set():
                 if self.shift_held:
                     self._set_shift_state(False)
                 return False
 
+            progress = index / max(1, total_len)
             character = text[index]
-            following = text[index + 1] if index + 1 < len(text) else None
+            following = text[index + 1] if index + 1 < total_len else None
 
             # Thinking pause before word start
             if char_in_word == 0:
@@ -818,13 +826,13 @@ class HumanTyper:
                     typo_kind = self.rng.random()
                     if typo_kind < 0.35 and wrong and following and following not in "\r\n\t":
                         # Deferred notice (1-2 characters typed after wrong key, max backspace = 3)
-                        lookahead = 1 if self.rng.random() < 0.60 or index + 2 >= len(text) else 2
-                        if not self._emit_character(wrong, text[index + 1] if index + 1 < len(text) else None):
+                        lookahead = 1 if self.rng.random() < 0.60 or index + 2 >= total_len else 2
+                        if not self._emit_character(wrong, text[index + 1] if index + 1 < total_len else None):
                             return False
                         for offset in range(1, lookahead + 1):
                             if not self._sleep(self.rng.lognormvariate(math.log(0.05), 0.30)):
                                 return False
-                            next_ch = text[index + offset + 1] if index + offset + 1 < len(text) else None
+                            next_ch = text[index + offset + 1] if index + offset + 1 < total_len else None
                             if not self._emit_character(text[index + offset], next_ch):
                                 return False
 
@@ -834,11 +842,11 @@ class HumanTyper:
                         for offset in range(0, lookahead + 1):
                             pos = index + offset
                             ch = text[pos]
-                            nxt = text[pos + 1] if pos + 1 < len(text) else None
+                            nxt = text[pos + 1] if pos + 1 < total_len else None
                             if not self._emit_character(ch, nxt):
                                 return False
                             if offset < lookahead:
-                                if not self._sleep(self._next_interkey_delay(ch, nxt)):
+                                if not self._sleep(self._next_interkey_delay(ch, nxt, progress)):
                                     return False
                         index += lookahead + 1
                         continue
@@ -855,7 +863,7 @@ class HumanTyper:
                 if not self._emit_character(character, following):
                     return False
 
-            if not self._sleep(self._next_interkey_delay(character, following)):
+            if not self._sleep(self._next_interkey_delay(character, following, progress)):
                 return False
 
             index += 1

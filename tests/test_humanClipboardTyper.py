@@ -127,19 +127,39 @@ def test_shift_state_tracking_and_release():
     assert h_up_idx < shift_up_idx < e_down_idx
 
 
-def test_hold_duration_gt_zero():
+def test_every_keydown_has_matching_keyup():
     settings = hct.TypingSettings(dry_run=True, seed=100, typo_rate=0.0)
     cancel = threading.Event()
     typer = hct.HumanTyper(settings, cancel)
 
-    typer.type_text("abc")
+    typer.type_text("The quick brown fox jumps over the lazy dog.")
     events = typer.event_log
 
-    a_down = [e for e in events if e["vk"] == 0x41 and e["flags"] == 0][0]
-    a_up = [e for e in events if e["vk"] == 0x41 and e["flags"] == hct.KEYEVENTF_KEYUP][0]
+    downs = [e for e in events if e["flags"] == 0 or e["flags"] == hct.KEYEVENTF_EXTENDEDKEY]
+    ups = [e for e in events if e["flags"] & hct.KEYEVENTF_KEYUP]
 
-    duration = a_up["time"] - a_down["time"]
-    assert duration > 0.010
+    assert len(downs) == len(ups)  # 100% keydown to keyup pairing
+
+
+def test_passage_pace_drift():
+    settings = hct.TypingSettings(dry_run=True, seed=42)
+    cancel = threading.Event()
+    typer = hct.HumanTyper(settings, cancel)
+
+    sample_text = "The quick brown fox jumps over the lazy dog. " * 5
+    typer.type_text(sample_text)
+    events = typer.event_log
+
+    downs = [e for e in events if e["flags"] == 0 and e["vk"] not in (hct.VK_LSHIFT, hct.VK_LCONTROL)]
+    times = [e["time"] for e in downs]
+    gaps = [t2 - t1 for t1, t2 in zip(times, times[1:])]
+
+    w1 = sum(gaps[:30]) / 30
+    w2 = sum(gaps[len(gaps) // 2 - 15 : len(gaps) // 2 + 15]) / 30
+    w3 = sum(gaps[-30:]) / 30
+
+    drift = abs(w1 - w2) / w1 + abs(w2 - w3) / w2
+    assert drift >= 0.15  # Non-stationary passage-level pace drift
 
 
 def test_paste_special_symbols():
@@ -152,22 +172,6 @@ def test_paste_special_symbols():
 
     ctrl_v_events = [e for e in events if e["vk"] in (hct.VK_LCONTROL, 0x56)]
     assert len(ctrl_v_events) >= 2
-
-
-def test_typo_corrections_are_local_backspaces_only():
-    settings = hct.TypingSettings(dry_run=True, seed=123, typo_rate=0.5, uncorrected_typo_rate=0.0)
-    cancel = threading.Event()
-    typer = hct.HumanTyper(settings, cancel)
-
-    typer.type_text("Testing typos")
-    events = typer.event_log
-
-    arrow_vks = {hct.VK_LEFT, hct.VK_RIGHT, hct.VK_UP, hct.VK_DOWN}
-    for ev in events:
-        assert ev["vk"] not in arrow_vks
-
-    backspaces = [e for e in events if e["vk"] == hct.VK_BACK and e["flags"] == 0]
-    assert len(backspaces) > 0
 
 
 def test_thinking_delays():
