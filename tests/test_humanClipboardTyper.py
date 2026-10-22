@@ -78,7 +78,7 @@ def test_digraph_timing_and_distance_correlation():
     mean_t = sum(delays) / len(delays)
     cov = sum((d - mean_d) * (t - mean_t) for d, t in zip(dists, delays)) / len(dists)
     var_d = sum((d - mean_d) ** 2 for d in dists) / len(dists)
-    var_t = sum((t - mean_t) ** 2 for t in delays) / len(delays)
+    var_t = sum((t - mean_t) ** 2 for t in delays) / len(dists)
     r = cov / math.sqrt(var_d * var_t)
 
     assert r >= 0.50  # Strong correlation with physical 2D finger travel distance
@@ -109,6 +109,25 @@ def test_latency_right_skewness():
     assert skew >= 0.5  # Smooth right-skewed lognormal distribution
 
 
+def test_key_rollover_overlap():
+    settings = hct.TypingSettings(dry_run=True, seed=42, typo_rate=0.0)
+    cancel = threading.Event()
+    typer = hct.HumanTyper(settings, cancel)
+
+    typer.type_text("the quick brown fox jumps over the lazy dog")
+    events = typer.event_log
+
+    rollovers = 0
+    for i in range(len(events) - 1):
+        e1, e2 = events[i], events[i + 1]
+        if (e1["flags"] == 0 or e1["flags"] == hct.KEYEVENTF_EXTENDEDKEY) and (
+            e2["flags"] == 0 or e2["flags"] == hct.KEYEVENTF_EXTENDEDKEY
+        ):
+            rollovers += 1
+
+    assert rollovers >= 3  # Key rollover (negative flight time) occurs on fast letter transitions
+
+
 def test_shift_state_tracking_and_release():
     settings = hct.TypingSettings(dry_run=True, seed=42, typo_rate=0.0)
     cancel = threading.Event()
@@ -134,13 +153,13 @@ def test_every_keydown_has_matching_keyup():
     cancel = threading.Event()
     typer = hct.HumanTyper(settings, cancel)
 
-    typer.type_text("The quick brown fox jumps over the lazy dog.")
+    typer.type_text("Layer 3 — Behavioral biometrics")
     events = typer.event_log
 
-    downs = [e for e in events if e["flags"] == 0 or e["flags"] == hct.KEYEVENTF_EXTENDEDKEY]
-    ups = [e for e in events if e["flags"] & hct.KEYEVENTF_KEYUP]
+    vks_down = [e["vk"] for e in events if not (e["flags"] & hct.KEYEVENTF_KEYUP)]
+    vks_up = [e["vk"] for e in events if (e["flags"] & hct.KEYEVENTF_KEYUP)]
 
-    assert len(downs) == len(ups)  # 100% keydown to keyup pairing
+    assert len(vks_down) == len(vks_up)  # 100% keydown to keyup pairing
 
 
 def test_passage_pace_drift():

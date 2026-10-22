@@ -3,9 +3,9 @@
 
 Run this script, focus any text field, and press Ctrl+Alt+V. The current
 clipboard text is typed one key at a time with realistic biomechanical timing,
-proper Shift state events, hold durations, content-aware hesitations,
-realistic typos (including uncorrected ones), physical key distance delays,
-and local backspace editing.
+proper Shift state events, hold durations, key rollover (negative flight time),
+content-aware hesitations, realistic typos (including uncorrected ones), physical
+key distance delays, and local backspace editing.
 
 The script uses only the Python standard library. Try ``--help`` to change options.
 """
@@ -539,6 +539,9 @@ class HumanTyper:
         self.pace_drift = 1.0  # Cumulative non-stationary pace drift
         self.thinking_cooldown = self.rng.randint(15, 35)
 
+        # Active held key state for key rollover tracking: tuple of (vk, scan, is_extended, up_deadline) or None
+        self.pending_key_release: tuple[int, int, bool, float] | None = None
+
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
 
@@ -561,24 +564,60 @@ class HumanTyper:
     def _press_key_event(self, virtual_key: int, scan_code: int, flags: int = 0) -> None:
         self._send_input_events([_keyboard_event(virtual_key=virtual_key, scan_code=scan_code, flags=flags)])
 
-    def _press_and_release_key(self, virtual_key: int, scan_code: int, is_extended: bool = False) -> bool:
+    def _flush_pending_release(self) -> None:
+        """Release any pending held key from key rollover."""
+        if self.pending_key_release:
+            vk, scan, is_ext, _ = self.pending_key_release
+            ext_flag = KEYEVENTF_EXTENDEDKEY if is_ext else 0
+            self._press_key_event(vk, scan, ext_flag | KEYEVENTF_KEYUP)
+            self.pending_key_release = None
+
+    def _press_and_release_key(
+        self,
+        virtual_key: int,
+        scan_code: int,
+        is_extended: bool = False,
+        next_is_rollover_candidate: bool = False,
+    ) -> bool:
         ext_flag = KEYEVENTF_EXTENDEDKEY if is_extended else 0
 
-        # Guaranteed hold duration log-normally (mean ~38ms, bounded 18ms..85ms)
+        # Sample hold duration log-normally (mean ~38ms, bounded 18ms..85ms)
         hold_time = self.rng.lognormvariate(math.log(0.038), 0.22)
         hold_time = min(0.085, max(0.018, hold_time))
 
         self._press_key_event(virtual_key, scan_code, ext_flag)
+
+        # Decide key rollover (negative flight time): press next key down before releasing this key
+        # Rollover occurs on ~38% of fast letter-to-letter transitions
+        is_rollover = (
+            next_is_rollover_candidate
+            and not self.shift_held
+            and self.rng.random() < 0.38
+            and virtual_key not in (VK_SPACE, VK_RETURN, VK_TAB, VK_BACK)
+        )
+
+        if is_rollover:
+            # Overlap time: next key will be pressed down halfway through this key's hold time
+            overlap_time = hold_time * self.rng.uniform(0.35, 0.65)
+            up_deadline = time.monotonic() + (hold_time - overlap_time)
+            if not self._sleep(overlap_time):
+                self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
+                return False
+            # Defer key release until after next key's keydown
+            self.pending_key_release = (virtual_key, scan_code, is_extended, up_deadline)
+            return True
+
+        # Standard non-rollover key release
         try:
             if not self._sleep(hold_time):
                 return False
         finally:
-            # ALWAYS emit key-up even if sleep is interrupted or cancelled
             self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
         return True
 
     def _send_unicode_key(self, character: str) -> bool:
         """Send non-keyboard character as Unicode keydown and keyup with hold time."""
+        self._flush_pending_release()
         if not self._set_shift_state(False):
             return False
 
@@ -598,6 +637,7 @@ class HumanTyper:
         if self.shift_held == hold_shift:
             return True
 
+        self._flush_pending_release()
         shift_vk = VK_LSHIFT
         shift_scan = 0x2A
 
@@ -614,6 +654,7 @@ class HumanTyper:
 
     def _paste_text(self, text: str) -> bool:
         """Paste unicode text via Ctrl+V for non-keyboard symbols."""
+        self._flush_pending_release()
         if not self._set_shift_state(False):
             return False
 
@@ -655,25 +696,48 @@ class HumanTyper:
     def _emit_character(self, character: str, next_character: str | None = None) -> bool:
         mapping = get_key_mapping(character)
         if mapping is None:
+            self._flush_pending_release()
             if self.settings.unicode_mode == "unicode":
                 return self._send_unicode_key(character)
             else:
                 return self._paste_text(character)
 
         vk, scan, req_shift = mapping
+
+        # Check if next character is candidate for key rollover (both letters)
+        next_is_letter = bool(next_character and next_character.isalpha())
+        cur_is_letter = character.isalpha()
+        rollover_candidate = cur_is_letter and next_is_letter
+
+        # Flush any existing pending key release before setting a new pending release
+        prev_pending = self.pending_key_release
+        if prev_pending and rollover_candidate:
+            self._flush_pending_release()
+            prev_pending = None
+
         if not self._set_shift_state(req_shift):
             return False
 
         is_ext = vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_DELETE)
-        res = self._press_and_release_key(vk, scan, is_extended=is_ext)
+        res = self._press_and_release_key(
+            vk, scan, is_extended=is_ext, next_is_rollover_candidate=rollover_candidate
+        )
 
-        # ALWAYS release Shift immediately after character key-up if next char does not require Shift
+        # Release previous key now if it was in rollover state and not flushed yet
+        if prev_pending and prev_pending == self.pending_key_release:
+            p_vk, p_scan, p_ext, _ = prev_pending
+            p_flag = KEYEVENTF_EXTENDEDKEY if p_ext else 0
+            self._press_key_event(p_vk, p_scan, p_flag | KEYEVENTF_KEYUP)
+            self.pending_key_release = None
+
+        # Release Shift immediately after character key press if next char does not require Shift
         if self.shift_held and not requires_shift_state(next_character):
             self._set_shift_state(False)
 
         return res
 
     def _backspace(self, count: int = 1) -> bool:
+        self._flush_pending_release()
         notice_delay = self.rng.lognormvariate(math.log(0.18), 0.45)
         if not self._sleep(min(0.80, max(0.04, notice_delay))):
             return False
@@ -814,6 +878,7 @@ class HumanTyper:
         total_len = len(text)
         while index < total_len:
             if self.cancel_event.is_set():
+                self._flush_pending_release()
                 if self.shift_held:
                     self._set_shift_state(False)
                 return False
@@ -826,6 +891,7 @@ class HumanTyper:
             if char_in_word == 0:
                 think_pause = self._get_thinking_delay(text, word_idx, words)
                 if think_pause > 0:
+                    self._flush_pending_release()
                     if not self._sleep(think_pause):
                         return False
 
@@ -839,6 +905,7 @@ class HumanTyper:
             make_typo = typo_eligible and (self.rng.random() < self.settings.typo_rate)
 
             if make_typo:
+                self._flush_pending_release()
                 leave_uncorrected = self.rng.random() < self.settings.uncorrected_typo_rate
                 wrong = self._wrong_neighbor(character)
 
@@ -894,6 +961,7 @@ class HumanTyper:
 
             index += 1
 
+        self._flush_pending_release()
         if self.shift_held:
             self._set_shift_state(False)
 
