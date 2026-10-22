@@ -210,12 +210,15 @@ QWERTY_MAP: dict[str, tuple[int, int, bool]] = {
 
     "`": (0xC0, 0x29, False), "~": (0xC0, 0x29, True),
     "-": (0xBD, 0x0C, False), "_": (0xBD, 0x0C, True),
+    "—": (0xBD, 0x0C, False), "–": (0xBD, 0x0C, False),
     "=": (0xBB, 0x0D, False), "+": (0xBB, 0x0D, True),
     "[": (0xDB, 0x1A, False), "{": (0xDB, 0x1A, True),
     "]": (0xDD, 0x1B, False), "}": (0xDD, 0x1B, True),
     "\\": (0xDC, 0x2B, False), "|": (0xDC, 0x2B, True),
     ";": (0xBA, 0x27, False), ":": (0xBA, 0x27, True),
     "'": (0xDE, 0x28, False), '"': (0xDE, 0x28, True),
+    "‘": (0xDE, 0x28, False), "’": (0xDE, 0x28, False),
+    "“": (0xDE, 0x28, True), "”": (0xDE, 0x28, True),
     ",": (0xBC, 0x33, False), "<": (0xBC, 0x33, True),
     ".": (0xBE, 0x34, False), ">": (0xBE, 0x34, True),
     "/": (0xBF, 0x35, False), "?": (0xBF, 0x35, True),
@@ -238,7 +241,7 @@ KEY_POSITIONS: dict[str, tuple[float, float]] = {
     "8": (0.0, 8.0), "*": (0.0, 8.0),
     "9": (0.0, 9.0), "(": (0.0, 9.0),
     "0": (0.0, 10.0), ")": (0.0, 10.0),
-    "-": (0.0, 11.0), "_": (0.0, 11.0),
+    "-": (0.0, 11.0), "_": (0.0, 11.0), "—": (0.0, 11.0), "–": (0.0, 11.0),
     "=": (0.0, 12.0), "+": (0.0, 12.0),
 
     "q": (1.0, 1.5), "Q": (1.0, 1.5),
@@ -266,6 +269,8 @@ KEY_POSITIONS: dict[str, tuple[float, float]] = {
     "l": (2.0, 9.8), "L": (2.0, 9.8),
     ";": (2.0, 10.8), ":": (2.0, 10.8),
     "'": (2.0, 11.8), '"': (2.0, 11.8),
+    "‘": (2.0, 11.8), "’": (2.0, 11.8),
+    "“": (2.0, 11.8), "”": (2.0, 11.8),
     "\n": (2.0, 12.8),
 
     "z": (3.0, 2.3), "Z": (3.0, 2.3),
@@ -321,8 +326,10 @@ FINGER_MAP: dict[str, tuple[str, int]] = {
     "i": ("R", 3), "k": ("R", 3), ",": ("R", 3), "<": ("R", 3), "9": ("R", 3),
     "o": ("R", 2), "l": ("R", 2), ".": ("R", 2), ">": ("R", 2), "0": ("R", 2),
     "p": ("R", 1), ";": ("R", 1), ":": ("R", 1), "'": ("R", 1), '"': ("R", 1),
+    "‘": ("R", 1), "’": ("R", 1), "“": ("R", 1), "”": ("R", 1),
     "/": ("R", 1), "?": ("R", 1), "[": ("R", 1), "{": ("R", 1), "]": ("R", 1),
-    "}": ("R", 1), "-": ("R", 1), "_": ("R", 1), "=": ("R", 1), "+": ("R", 1),
+    "}": ("R", 1), "-": ("R", 1), "_": ("R", 1), "—": ("R", 1), "–": ("R", 1),
+    "=": ("R", 1), "+": ("R", 1),
     "\\": ("R", 1), "|": ("R", 1), "\n": ("R", 1),
 }
 
@@ -605,7 +612,8 @@ class HumanTyper:
             if not self._sleep(overlap_time):
                 self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
                 return False
-            # Defer key release until after next key's keydown!
+            # Defer key release until AFTER next key's keydown!
+            # This produces true key rollover (Key N+1 down BEFORE Key N up).
             self.pending_key_release = (virtual_key, scan_code, is_extended)
             return True
 
