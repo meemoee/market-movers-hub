@@ -7,6 +7,9 @@ proper Shift state events, hold durations, key rollover (negative flight time),
 content-aware hesitations, realistic typos (including uncorrected ones), physical
 key distance delays, and local backspace editing.
 
+While typing, press F9 to pause at the current position and F9 again to resume
+from exactly where it left off; press F8 to stop.
+
 The script uses only the Python standard library. Try ``--help`` to change options.
 """
 
@@ -67,8 +70,17 @@ VK_RSHIFT = 0xA1
 VK_LCONTROL = 0xA2
 VK_RCONTROL = 0xA3
 
+VK_NUMPAD0 = 0x60  # VK_NUMPAD0..VK_NUMPAD9 are 0x60..0x69
+
+# Set-1 scan codes for the numeric keypad digits (used for Alt+numpad entry).
+NUMPAD_SCAN = {
+    0: 0x52, 1: 0x4F, 2: 0x50, 3: 0x51, 4: 0x4B,
+    5: 0x4C, 6: 0x4D, 7: 0x47, 8: 0x48, 9: 0x49,
+}
+
 HOTKEY_ID_TYPE = 1
 HOTKEY_ID_CANCEL = 2
+HOTKEY_ID_PAUSE = 3
 
 
 if ctypes.sizeof(ctypes.c_void_p) == 8:
@@ -305,6 +317,36 @@ SHIFT_VARIANTS = {
     **{shifted: plain for plain, shifted in SHIFT_KEY_PAIRS.items()},
 }
 
+# Windows Alt+numpad decimal codes for common characters that have no physical
+# key on a US layout. Typing these via the numeric keypad uses only real key
+# events, so it emits no clipboard paste event and no Unicode/VK_PACKET keydown
+# (both of which forensics tools flag). Codes are the leading-zero decimal form
+# (Alt+0151 -> em dash), which resolves through the active code page / Unicode.
+ALT_CODES: dict[str, str] = {
+    "—": "0151",  # — em dash
+    "–": "0150",  # – en dash
+    "‘": "0145",  # ' left single quote
+    "’": "0146",  # ' right single quote / apostrophe
+    "“": "0147",  # " left double quote
+    "”": "0148",  # " right double quote
+    "…": "0133",  # … horizontal ellipsis
+    "•": "0149",  # • bullet
+    "©": "0169",  # © copyright
+    "®": "0174",  # ® registered
+    "™": "0153",  # ™ trademark
+    "°": "0176",  # ° degree
+    "½": "0189",  # ½
+    "¼": "0188",  # ¼
+    "¾": "0190",  # ¾
+    "é": "0233",  # é
+    "è": "0232",  # è
+    "ê": "0234",  # ê
+    "ñ": "0241",  # ñ
+    "€": "0128",  # € euro
+    "£": "0163",  # £ pound
+    "¢": "0162",  # ¢ cent
+}
+
 # Biomechanical hand and finger assignments
 FINGER_MAP: dict[str, tuple[str, int]] = {
     # Left hand
@@ -411,6 +453,7 @@ class TypingSettings:
     thinking_pause_scale: float = 1.0
     dry_run: bool = False
     unicode_mode: str = "paste"
+    pace_floor: float = 0.22
 
 
 def parse_hotkey(value: str, *, require_modifier: bool) -> Hotkey:
@@ -526,9 +569,16 @@ def sleep_interruptibly(seconds: float, cancel_event: threading.Event) -> bool:
 
 
 class HumanTyper:
-    def __init__(self, settings: TypingSettings, cancel_event: threading.Event):
+    def __init__(
+        self,
+        settings: TypingSettings,
+        cancel_event: threading.Event,
+        pause_event: threading.Event | None = None,
+    ):
         self.settings = settings
         self.cancel_event = cancel_event
+        # When set, typing holds at the next character boundary until cleared.
+        self.pause_event = pause_event if pause_event is not None else threading.Event()
         self.rng = random.Random(settings.seed)
         self.shift_held = False
         self.event_log: list[dict[str, Any]] = []
@@ -542,10 +592,65 @@ class HumanTyper:
         # Active held key state for key rollover tracking: tuple of (vk, scan, is_extended) or None
         self.pending_key_release: tuple[int, int, bool] | None = None
 
+        # Monotonic timestamps of recent key-DOWN events (every key the OS/browser
+        # would see, including Shift/Ctrl/numpad). Used by the pace guard to keep
+        # the rolling inter-keydown gap mean above the no-rollover floor.
+        self._down_times: list[float] = []
+
+        # When the currently-held Shift was pressed, to bound how long it stays
+        # down across a run of shifted characters (a long hold reads as a stuck key).
+        self._shift_down_at: float = 0.0
+
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
 
+    def _sleep_gap(self, seconds: float) -> bool:
+        """Sleep an inter-key gap, but abort early if paused so the caller can
+        reach the pause checkpoint quickly. Returns False only on cancel.
+
+        Built on _sleep (which the dry-run harness patches) in small chunks, so
+        a pause is noticed within ~30 ms even during a multi-second pace-guard
+        gap, without pausing in the middle of a key press.
+        """
+        if seconds <= 0:
+            return not self.cancel_event.is_set()
+        remaining = seconds
+        step = 0.03
+        while remaining > 0:
+            if self.pause_event.is_set():
+                return True
+            chunk = step if remaining > step else remaining
+            if not self._sleep(chunk):
+                return False
+            remaining -= chunk
+        return not self.cancel_event.is_set()
+
+    def _wait_if_paused(self) -> bool:
+        """If paused, release every held key and block until resumed or cancelled.
+
+        A pause can last arbitrarily long, so nothing may stay physically down:
+        release the deferred rollover key and Shift first (the next character
+        re-presses Shift as needed). Returns False if cancelled while paused.
+        """
+        if not self.pause_event.is_set():
+            return True
+        self._flush_pending_release()
+        if self.shift_held:
+            self._set_shift_state(False)
+        while self.pause_event.is_set():
+            if self.cancel_event.wait(0.05):
+                return False
+        return not self.cancel_event.is_set()
+
     def _send_input_events(self, events: list[INPUT]) -> None:
+        # Record every key-DOWN's send time (keyups excluded): this is the
+        # inter-keydown gap stream the forensics rollover check measures.
+        for ev in events:
+            if ev.type == INPUT_KEYBOARD and not (ev.ki.dwFlags & KEYEVENTF_KEYUP):
+                self._down_times.append(time.monotonic())
+                if len(self._down_times) > 64:
+                    del self._down_times[:-64]
+
         if self.settings.dry_run or not IS_WINDOWS or user32 is None:
             for ev in events:
                 self.event_log.append({
@@ -635,6 +740,59 @@ class HumanTyper:
             self._send_input_events([_keyboard_event(scan_code=code_unit, flags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)])
         return True
 
+    def _send_alt_code(self, digits: str) -> bool:
+        """Type an unmapped character via a Windows Alt+numpad code (e.g. Alt+0151
+        -> em dash).
+
+        This holds Left Alt, taps the decimal code on the numeric keypad, and
+        releases Alt, which commits the character. Every event is a real key with
+        a physical scan code, so -- unlike Ctrl+V paste or Unicode/VK_PACKET
+        injection -- it fires no `paste` event and no empty-`code` keydown. The
+        final digit -> Alt-release gap is kept short so the resulting insertText
+        lands within the detector's 60 ms "text with no keystroke" window.
+        """
+        self._flush_pending_release()
+        if not self._set_shift_state(False):
+            return False
+
+        alt_vk, alt_scan = VK_MENU, 0x38
+
+        self._press_key_event(alt_vk, alt_scan, 0)  # Alt down, held for the code
+        if not self._sleep(min(0.080, max(0.020, self.rng.lognormvariate(math.log(0.045), 0.25)))):
+            self._press_key_event(alt_vk, alt_scan, KEYEVENTF_KEYUP)
+            return False
+
+        last = len(digits) - 1
+        for i, ch in enumerate(digits):
+            n = int(ch)
+            vk = VK_NUMPAD0 + n
+            scan = NUMPAD_SCAN[n]
+            if i == last:
+                hold = min(0.030, max(0.016, self.rng.lognormvariate(math.log(0.022), 0.20)))
+            else:
+                hold = min(0.070, max(0.020, self.rng.lognormvariate(math.log(0.040), 0.22)))
+
+            self._press_key_event(vk, scan, 0)
+            if not self._sleep(hold):
+                self._press_key_event(vk, scan, KEYEVENTF_KEYUP)
+                self._press_key_event(alt_vk, alt_scan, KEYEVENTF_KEYUP)
+                return False
+            self._press_key_event(vk, scan, KEYEVENTF_KEYUP)
+
+            if i < last:
+                gap = min(0.12, max(0.030, self.rng.lognormvariate(math.log(0.060), 0.30)))
+                if not self._sleep(gap):
+                    self._press_key_event(alt_vk, alt_scan, KEYEVENTF_KEYUP)
+                    return False
+
+        # tight pause then release Alt -> character is committed on this keyup
+        if not self._sleep(self.rng.uniform(0.008, 0.018)):
+            self._press_key_event(alt_vk, alt_scan, KEYEVENTF_KEYUP)
+            return False
+        self._press_key_event(alt_vk, alt_scan, KEYEVENTF_KEYUP)
+
+        return self._sleep(min(0.20, max(0.030, self.rng.lognormvariate(math.log(0.080), 0.30))))
+
     def _set_shift_state(self, hold_shift: bool) -> bool:
         if self.shift_held == hold_shift:
             return True
@@ -646,6 +804,7 @@ class HumanTyper:
         if hold_shift:
             self._press_key_event(shift_vk, shift_scan, 0)
             self.shift_held = True
+            self._shift_down_at = time.monotonic()
             shift_delay = self.rng.lognormvariate(math.log(0.028), 0.22)
             return self._sleep(min(0.055, max(0.012, shift_delay)))
         else:
@@ -699,10 +858,13 @@ class HumanTyper:
         mapping = get_key_mapping(character)
         if mapping is None:
             self._flush_pending_release()
-            if self.settings.unicode_mode == "unicode":
+            mode = self.settings.unicode_mode
+            if mode == "altcode" and character in ALT_CODES:
+                return self._send_alt_code(ALT_CODES[character])
+            if mode == "unicode":
                 return self._send_unicode_key(character)
-            else:
-                return self._paste_text(character)
+            # "paste", or "altcode" with no known code for this symbol
+            return self._paste_text(character)
 
         vk, scan, req_shift = mapping
 
@@ -846,7 +1008,56 @@ class HumanTyper:
         mu = math.log(max(0.008, target_mean)) - (sigma ** 2) / 2.0
         delay = self.rng.lognormvariate(mu, sigma)
 
+        delay = self._apply_pace_guard(delay)
         return min(4.0, max(0.010, delay))
+
+    def _apply_pace_guard(self, delay: float) -> float:
+        """Keep the rolling mean of recent inter-keydown gaps above a floor.
+
+        The forensics 'no-rollover' detector trips whenever the mean of the last
+        30 inter-keydown gaps falls below ~180 ms. (Its negative-flight test can
+        never fire in a real-time event stream, so that rolling mean is all it
+        actually checks.) Fast runs -- long words with no spaces, and the low
+        points of the pace-drift / fatigue arc -- dip under that threshold.
+
+        This stretches ONLY the gaps that would otherwise pull the 30-key window
+        below the floor, by exactly enough to hold the window's mean at it. Every
+        other gap keeps its natural value, so burst structure, drift, and timing
+        spread are preserved. Set pace_floor to 0 to disable.
+        """
+        floor = self.settings.pace_floor
+        if floor <= 0.0 or len(self._down_times) < 2:
+            return delay
+
+        times = self._down_times
+        # the detector's window is the last 30 gaps; this sleep becomes the next
+        # one, so look at up to the last 29 and require window-of-(k+1) mean >= floor
+        recent = [times[i] - times[i - 1] for i in range(max(1, len(times) - 29), len(times))]
+        k = len(recent)
+        needed = floor * (k + 1) - sum(recent)
+        if delay < needed:
+            # a little jitter so the stretched gaps are not a constant value
+            delay = needed * self.rng.uniform(1.00, 1.08)
+        return delay
+
+    def _interkey_sleep(self, seconds: float) -> bool:
+        """Sleep an inter-key gap, first releasing any key that would otherwise be
+        held across the pause.
+
+        Two keys can be left physically down between characters: a rollover-
+        deferred key (released at the next keydown) and Shift (held across a run
+        of consecutive shifted characters). The pace guard can stretch a gap to
+        over a second after a fast run; holding either key that long reads as a
+        stuck key (keydown with no keyup). So release the rollover key before any
+        non-trivial pause, and drop Shift before a longer one -- a human doesn't
+        hold Shift through a pause, and the next shifted character re-presses it.
+        Brief overlaps (<=120 ms) still keep their rollover.
+        """
+        if self.pending_key_release is not None and seconds > 0.12:
+            self._flush_pending_release()
+        if self.shift_held and (seconds > 0.30 or (time.monotonic() - self._shift_down_at) > 0.90):
+            self._set_shift_state(False)
+        return self._sleep_gap(seconds)
 
     def _wrong_neighbor(self, character: str) -> str | None:
         lower = character.lower()
@@ -872,6 +1083,14 @@ class HumanTyper:
                     self._set_shift_state(False)
                 return False
 
+            # Pause checkpoint: hold here (with no key down) until resumed. Keeps
+            # the current position, so resuming continues at this same character.
+            if not self._wait_if_paused():
+                self._flush_pending_release()
+                if self.shift_held:
+                    self._set_shift_state(False)
+                return False
+
             progress = index / max(1, total_len)
             character = text[index]
             following = text[index + 1] if index + 1 < total_len else None
@@ -881,7 +1100,7 @@ class HumanTyper:
                 think_pause = self._get_thinking_delay(text, word_idx, words)
                 if think_pause > 0:
                     self._flush_pending_release()
-                    if not self._sleep(think_pause):
+                    if not self._sleep_gap(think_pause):
                         return False
 
             if character == " ":
@@ -928,7 +1147,7 @@ class HumanTyper:
                             if not self._emit_character(ch, nxt):
                                 return False
                             if offset < lookahead:
-                                if not self._sleep(self._next_interkey_delay(ch, nxt, progress)):
+                                if not self._interkey_sleep(self._next_interkey_delay(ch, nxt, progress)):
                                     return False
                         index += lookahead + 1
                         continue
@@ -945,7 +1164,7 @@ class HumanTyper:
                 if not self._emit_character(character, following):
                     return False
 
-            if not self._sleep(self._next_interkey_delay(character, following, progress)):
+            if not self._interkey_sleep(self._next_interkey_delay(character, following, progress)):
                 return False
 
             index += 1
@@ -962,12 +1181,15 @@ class HotkeyApp:
         self,
         typing_hotkey: Hotkey,
         cancel_hotkey: Hotkey,
+        pause_hotkey: Hotkey,
         settings: TypingSettings,
     ) -> None:
         self.typing_hotkey = typing_hotkey
         self.cancel_hotkey = cancel_hotkey
+        self.pause_hotkey = pause_hotkey
         self.settings = settings
         self.cancel_event = threading.Event()
+        self.pause_event = threading.Event()
         self.worker: threading.Thread | None = None
         self.worker_guard = threading.Lock()
 
@@ -999,9 +1221,12 @@ class HotkeyApp:
             if not self._wait_for_trigger_release():
                 return
 
-            print(f"[typing] {len(text):,} clipboard characters (press {self.cancel_hotkey.display} to stop)")
+            print(
+                f"[typing] {len(text):,} clipboard characters "
+                f"({self.pause_hotkey.display} to pause/resume, {self.cancel_hotkey.display} to stop)"
+            )
             self._beep(880, 55)
-            completed = HumanTyper(self.settings, self.cancel_event).type_text(text)
+            completed = HumanTyper(self.settings, self.cancel_event, self.pause_event).type_text(text)
             if completed:
                 print("[done] Clipboard text typed successfully.")
                 self._beep(1047, 75)
@@ -1022,6 +1247,7 @@ class HotkeyApp:
                 self._beep(520, 50)
                 return
             self.cancel_event.clear()
+            self.pause_event.clear()
             self.worker = threading.Thread(
                 target=self._typing_worker,
                 name="human-clipboard-typer",
@@ -1033,7 +1259,23 @@ class HotkeyApp:
         with self.worker_guard:
             active = self.worker is not None and self.worker.is_alive()
         if active:
+            # make sure a paused worker can observe the cancel and exit
+            self.pause_event.clear()
             self.cancel_event.set()
+
+    def toggle_pause(self) -> None:
+        with self.worker_guard:
+            active = self.worker is not None and self.worker.is_alive()
+        if not active:
+            return
+        if self.pause_event.is_set():
+            self.pause_event.clear()  # resume where it left off
+            print("[resumed] Typing continues.")
+            self._beep(660, 45)
+        else:
+            self.pause_event.set()  # hold at the current character
+            print(f"[paused] Press {self.pause_hotkey.display} again to resume.")
+            self._beep(440, 45)
 
     def run(self) -> None:
         if not IS_WINDOWS or user32 is None:
@@ -1051,6 +1293,7 @@ class HotkeyApp:
             )
 
         cancel_registered = False
+        pause_registered = False
         try:
             cancel_registered = bool(
                 user32.RegisterHotKey(
@@ -1065,10 +1308,26 @@ class HotkeyApp:
                     f"could not register {self.cancel_hotkey.display}; another app may already use it"
                 )
 
+            pause_registered = bool(
+                user32.RegisterHotKey(
+                    None,
+                    HOTKEY_ID_PAUSE,
+                    self.pause_hotkey.modifiers | MOD_NOREPEAT,
+                    self.pause_hotkey.key_code,
+                )
+            )
+            if not pause_registered:
+                raise OSError(
+                    f"could not register {self.pause_hotkey.display}; another app may already use it"
+                )
+
             print(
                 f"[ready] Copy text, focus a text field, then press {self.typing_hotkey.display}."
             )
-            print(f"        Press {self.cancel_hotkey.display} to cancel. Close this window to exit.")
+            print(
+                f"        {self.pause_hotkey.display} pauses/resumes, "
+                f"{self.cancel_hotkey.display} cancels. Close this window to exit."
+            )
             message = wintypes.MSG()
             while True:
                 result = user32.GetMessageW(ctypes.byref(message), None, 0, 0)
@@ -1081,11 +1340,16 @@ class HotkeyApp:
                         self.start_typing()
                     elif message.wParam == HOTKEY_ID_CANCEL:
                         self.cancel_typing()
+                    elif message.wParam == HOTKEY_ID_PAUSE:
+                        self.toggle_pause()
         finally:
             self.cancel_event.set()
+            self.pause_event.clear()
             user32.UnregisterHotKey(None, HOTKEY_ID_TYPE)
             if cancel_registered:
                 user32.UnregisterHotKey(None, HOTKEY_ID_CANCEL)
+            if pause_registered:
+                user32.UnregisterHotKey(None, HOTKEY_ID_PAUSE)
 
 
 def positive_float(value: str) -> float:
@@ -1124,6 +1388,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="global shortcut that stops active typing (default: f8)",
     )
     parser.add_argument(
+        "--pause-hotkey",
+        default="f9",
+        help="global shortcut that pauses active typing and resumes where it left off (default: f9)",
+    )
+    parser.add_argument(
         "--wpm",
         type=positive_float,
         default=38.0,
@@ -1155,9 +1424,22 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--unicode-mode",
-        choices=["paste", "unicode"],
+        choices=["paste", "altcode", "unicode"],
         default="paste",
-        help="how non-keyboard symbols are typed: 'paste' via Ctrl+V, or 'unicode' via SendInput (default: paste)",
+        help="how non-keyboard symbols (em dash, curly quotes, math signs) are typed. "
+             "'paste' via Ctrl+V (fires a 'paste' event but no empty-code keydown); "
+             "'altcode' via Alt+numpad for symbols with a Windows code, paste otherwise "
+             "(real keys, best in native Windows apps, but the commit can land >60 ms after "
+             "the last keydown and trip a browser's ghost-input check); "
+             "'unicode' via VK_PACKET SendInput (empty key code -- browsers flag it). "
+             "Default: paste",
+    )
+    parser.add_argument(
+        "--pace-floor",
+        type=nonnegative_float,
+        default=0.22,
+        help="minimum rolling mean (seconds) for the last 30 inter-keydown gaps; holds "
+             "fast runs above the no-rollover detector floor. 0 disables (default: 0.22)",
     )
     parser.add_argument(
         "--seed",
@@ -1175,14 +1457,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         typing_hotkey = parse_hotkey(args.hotkey, require_modifier=True)
         cancel_hotkey = parse_hotkey(args.cancel_hotkey, require_modifier=False)
+        pause_hotkey = parse_hotkey(args.pause_hotkey, require_modifier=False)
     except argparse.ArgumentTypeError as error:
         parser.error(str(error))
 
-    if (
-        typing_hotkey.modifiers == cancel_hotkey.modifiers
-        and typing_hotkey.key_code == cancel_hotkey.key_code
-    ):
+    def _same(a: Hotkey, b: Hotkey) -> bool:
+        return a.modifiers == b.modifiers and a.key_code == b.key_code
+
+    if _same(typing_hotkey, cancel_hotkey):
         parser.error("typing and cancel hotkeys must be different")
+    if _same(typing_hotkey, pause_hotkey):
+        parser.error("typing and pause hotkeys must be different")
+    if _same(cancel_hotkey, pause_hotkey):
+        parser.error("cancel and pause hotkeys must be different")
 
     settings = TypingSettings(
         words_per_minute=args.wpm,
@@ -1194,9 +1481,10 @@ def main(argv: list[str] | None = None) -> int:
         thinking_pause_scale=args.thinking_pauses,
         dry_run=args.dry_run,
         unicode_mode=args.unicode_mode,
+        pace_floor=args.pace_floor,
     )
     try:
-        HotkeyApp(typing_hotkey, cancel_hotkey, settings).run()
+        HotkeyApp(typing_hotkey, cancel_hotkey, pause_hotkey, settings).run()
     except OSError as error:
         print(f"[error] {error}", file=sys.stderr)
         return 1
