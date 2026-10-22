@@ -448,7 +448,7 @@ class TypingSettings:
     quiet: bool = False
     thinking_pause_scale: float = 1.0
     dry_run: bool = False
-    unicode_mode: str = "altcode"
+    unicode_mode: str = "paste"
     pace_floor: float = 0.22
 
 
@@ -585,6 +585,10 @@ class HumanTyper:
         # would see, including Shift/Ctrl/numpad). Used by the pace guard to keep
         # the rolling inter-keydown gap mean above the no-rollover floor.
         self._down_times: list[float] = []
+
+        # When the currently-held Shift was pressed, to bound how long it stays
+        # down across a run of shifted characters (a long hold reads as a stuck key).
+        self._shift_down_at: float = 0.0
 
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
@@ -751,6 +755,7 @@ class HumanTyper:
         if hold_shift:
             self._press_key_event(shift_vk, shift_scan, 0)
             self.shift_held = True
+            self._shift_down_at = time.monotonic()
             shift_delay = self.rng.lognormvariate(math.log(0.028), 0.22)
             return self._sleep(min(0.055, max(0.012, shift_delay)))
         else:
@@ -986,6 +991,25 @@ class HumanTyper:
             delay = needed * self.rng.uniform(1.00, 1.08)
         return delay
 
+    def _interkey_sleep(self, seconds: float) -> bool:
+        """Sleep an inter-key gap, first releasing any key that would otherwise be
+        held across the pause.
+
+        Two keys can be left physically down between characters: a rollover-
+        deferred key (released at the next keydown) and Shift (held across a run
+        of consecutive shifted characters). The pace guard can stretch a gap to
+        over a second after a fast run; holding either key that long reads as a
+        stuck key (keydown with no keyup). So release the rollover key before any
+        non-trivial pause, and drop Shift before a longer one -- a human doesn't
+        hold Shift through a pause, and the next shifted character re-presses it.
+        Brief overlaps (<=120 ms) still keep their rollover.
+        """
+        if self.pending_key_release is not None and seconds > 0.12:
+            self._flush_pending_release()
+        if self.shift_held and (seconds > 0.30 or (time.monotonic() - self._shift_down_at) > 0.90):
+            self._set_shift_state(False)
+        return self._sleep(seconds)
+
     def _wrong_neighbor(self, character: str) -> str | None:
         lower = character.lower()
         choices = NEIGHBORS.get(lower)
@@ -1066,7 +1090,7 @@ class HumanTyper:
                             if not self._emit_character(ch, nxt):
                                 return False
                             if offset < lookahead:
-                                if not self._sleep(self._next_interkey_delay(ch, nxt, progress)):
+                                if not self._interkey_sleep(self._next_interkey_delay(ch, nxt, progress)):
                                     return False
                         index += lookahead + 1
                         continue
@@ -1083,7 +1107,7 @@ class HumanTyper:
                 if not self._emit_character(character, following):
                     return False
 
-            if not self._sleep(self._next_interkey_delay(character, following, progress)):
+            if not self._interkey_sleep(self._next_interkey_delay(character, following, progress)):
                 return False
 
             index += 1
@@ -1293,11 +1317,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--unicode-mode",
-        choices=["altcode", "paste", "unicode"],
-        default="altcode",
-        help="how non-keyboard symbols are typed: 'altcode' via Alt+numpad (real keys, no "
-             "paste/VK_PACKET tell; falls back to paste for symbols with no known code), "
-             "'paste' via Ctrl+V, or 'unicode' via SendInput (default: altcode)",
+        choices=["paste", "altcode", "unicode"],
+        default="paste",
+        help="how non-keyboard symbols (em dash, curly quotes, math signs) are typed. "
+             "'paste' via Ctrl+V (fires a 'paste' event but no empty-code keydown); "
+             "'altcode' via Alt+numpad for symbols with a Windows code, paste otherwise "
+             "(real keys, best in native Windows apps, but the commit can land >60 ms after "
+             "the last keydown and trip a browser's ghost-input check); "
+             "'unicode' via VK_PACKET SendInput (empty key code -- browsers flag it). "
+             "Default: paste",
     )
     parser.add_argument(
         "--pace-floor",
