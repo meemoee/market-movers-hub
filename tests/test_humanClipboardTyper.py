@@ -89,11 +89,11 @@ def test_word_burst_structure():
     cancel = threading.Event()
     typer = hct.HumanTyper(settings, cancel)
 
-    space_delays = [typer._next_interkey_delay(" ", c) for c in "abcde"]
-    letter_delays = [typer._next_interkey_delay("a", c) for c in "bcde"]
+    boundary_gaps = [typer._next_interkey_delay(c, "a") for c in [" ", ",", ".", "—"]]
+    letter_gaps = [typer._next_interkey_delay(c, "b") for c in ["a", "b", "c", "d"]]
 
-    ratio = (sum(space_delays) / len(space_delays)) / (sum(letter_delays) / len(letter_delays))
-    assert ratio >= 1.5  # Boundary gap ratio is significantly larger than mid-word letters
+    ratio = (sum(boundary_gaps) / len(boundary_gaps)) / (sum(letter_gaps) / len(letter_gaps))
+    assert ratio >= 2.5  # Boundary gap ratio is significantly larger than mid-word letters
 
 
 def test_latency_right_skewness():
@@ -148,7 +148,7 @@ def test_passage_pace_drift():
     cancel = threading.Event()
     typer = hct.HumanTyper(settings, cancel)
 
-    sample_text = "The quick brown fox jumps over the lazy dog. " * 5
+    sample_text = "Layer 3 — Behavioral biometrics. " * 5
     typer.type_text(sample_text)
     events = typer.event_log
 
@@ -156,9 +156,9 @@ def test_passage_pace_drift():
     times = [e["time"] for e in downs]
     gaps = [t2 - t1 for t1, t2 in zip(times, times[1:])]
 
-    w1 = sum(gaps[:30]) / 30
-    w2 = sum(gaps[len(gaps) // 2 - 15 : len(gaps) // 2 + 15]) / 30
-    w3 = sum(gaps[-30:]) / 30
+    w1 = sum(gaps[:20]) / 20
+    w2 = sum(gaps[len(gaps) // 2 - 10 : len(gaps) // 2 + 10]) / 20
+    w3 = sum(gaps[-20:]) / 20
 
     drift = abs(w1 - w2) / w1 + abs(w2 - w3) / w2
     assert drift >= 0.20  # Significant passage pace drift

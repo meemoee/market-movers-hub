@@ -761,11 +761,11 @@ class HumanTyper:
 
     def _next_interkey_delay(self, current_char: str, next_char: str | None, progress: float = 0.0) -> float:
         """Compute smooth, right-skewed log-normal delay with non-stationary passage pace drift."""
-        # Cumulative persistent random walk + progressive fatigue
-        walk_step = self.rng.normalvariate(0.0, 0.025)
-        self.pace_drift = max(0.50, min(2.20, self.pace_drift + walk_step))
-        fatigue = 1.0 + 0.40 * progress
-        effective_drift = self.pace_drift * fatigue
+        # Non-stationary cumulative passage-level pace drift + fatigue arc
+        walk_step = self.rng.normalvariate(0.0, 0.03)
+        self.pace_drift = max(0.50, min(2.50, self.pace_drift + walk_step))
+        fatigue_arc = 1.50 - 0.80 * math.sin(math.pi * progress)
+        effective_drift = self.pace_drift * fatigue_arc
 
         digraph_factor = 1.0
         if next_char:
@@ -773,21 +773,21 @@ class HumanTyper:
 
         target_mean = self.base_delay * effective_drift * digraph_factor
 
-        # Word-burst structure: Spaces and boundary punctuation have larger gaps
+        # Word-burst structure: Spaces and boundary punctuation have much larger gaps
         if current_char == " ":
-            target_mean *= 2.2
+            target_mean *= 2.80
             sigma = 0.35
-        elif current_char in ",;":
-            target_mean *= 2.6
+        elif current_char in ",;—":
+            target_mean *= 3.80
             sigma = 0.35
         elif current_char in ".!?":
-            target_mean *= 3.8
+            target_mean *= 5.20
             sigma = 0.40
         elif current_char in "\n\t":
-            target_mean *= 4.2
+            target_mean *= 5.50
             sigma = 0.40
         else:
-            target_mean *= 0.85
+            target_mean *= 0.42  # Fast mid-word letter gap
             sigma = 0.22  # Tight sigma for standard letters so physical key distance signal dominates
 
         mu = math.log(max(0.008, target_mean)) - (sigma ** 2) / 2.0
