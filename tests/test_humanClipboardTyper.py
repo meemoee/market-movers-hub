@@ -1,4 +1,5 @@
 import argparse
+import math
 import sys
 import threading
 from pathlib import Path
@@ -61,18 +62,49 @@ def test_get_key_mapping():
     assert dash_map is None
 
 
-def test_digraph_timing_model():
+def test_digraph_timing_and_distance_correlation():
     settings = hct.TypingSettings(dry_run=True, seed=42)
     cancel = threading.Event()
     typer = hct.HumanTyper(settings, cancel)
 
-    th_factor = typer._get_digraph_factor("t", "h")
-    qz_factor = typer._get_digraph_factor("q", "z")
-    double_f = typer._get_digraph_factor("f", "f")
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    pairs = [(a, b) for a in letters for b in letters if a != b]
+    dists = [hct.get_key_distance(a, b) for a, b in pairs]
+    delays = [typer._next_interkey_delay(a, b) for a, b in pairs]
 
-    assert th_factor < 1.0  # Common bigram
-    assert qz_factor > 1.0  # Rare bigram / finger jump
-    assert double_f < 0.8  # Fast double key repetition
+    mean_d = sum(dists) / len(dists)
+    mean_t = sum(delays) / len(delays)
+    cov = sum((d - mean_d) * (t - mean_t) for d, t in zip(dists, delays)) / len(dists)
+    var_d = sum((d - mean_d) ** 2 for d in dists) / len(dists)
+    var_t = sum((t - mean_t) ** 2 for t in delays) / len(delays)
+    r = cov / math.sqrt(var_d * var_t)
+
+    assert r >= 0.40  # Direct correlation with physical finger travel distance
+
+
+def test_word_burst_structure():
+    settings = hct.TypingSettings(dry_run=True, seed=42)
+    cancel = threading.Event()
+    typer = hct.HumanTyper(settings, cancel)
+
+    space_delays = [typer._next_interkey_delay(" ", c) for c in "abcde"]
+    letter_delays = [typer._next_interkey_delay("a", c) for c in "bcde"]
+
+    ratio = (sum(space_delays) / len(space_delays)) / (sum(letter_delays) / len(letter_delays))
+    assert ratio >= 1.5  # Boundary gap ratio is significantly larger than mid-word letters
+
+
+def test_latency_right_skewness():
+    settings = hct.TypingSettings(dry_run=True, seed=42)
+    cancel = threading.Event()
+    typer = hct.HumanTyper(settings, cancel)
+
+    delays = [typer._next_interkey_delay("a", "b") for _ in range(200)]
+    mean_t = sum(delays) / len(delays)
+    var_t = sum((t - mean_t) ** 2 for t in delays) / len(delays)
+    skew = (sum((t - mean_t) ** 3 for t in delays) / len(delays)) / (var_t ** 1.5)
+
+    assert skew >= 0.5  # Smooth right-skewed lognormal distribution
 
 
 def test_shift_state_tracking_and_release():
@@ -84,12 +116,10 @@ def test_shift_state_tracking_and_release():
     assert success is True
     events = typer.event_log
 
-    # Check shift press before 'H'
     first_event = events[0]
     assert first_event["vk"] == hct.VK_LSHIFT
     assert first_event["flags"] == 0  # key down
 
-    # Shift should be released immediately after 'H' release (VK 72) and before 'e' (VK 69)
     h_up_idx = [i for i, e in enumerate(events) if e["vk"] == 0x48 and e["flags"] == hct.KEYEVENTF_KEYUP][0]
     shift_up_idx = [i for i, e in enumerate(events) if e["vk"] == hct.VK_LSHIFT and e["flags"] == hct.KEYEVENTF_KEYUP][0]
     e_down_idx = [i for i, e in enumerate(events) if e["vk"] == 0x45 and e["flags"] == 0][0]
@@ -109,7 +139,7 @@ def test_hold_duration_gt_zero():
     a_up = [e for e in events if e["vk"] == 0x41 and e["flags"] == hct.KEYEVENTF_KEYUP][0]
 
     duration = a_up["time"] - a_down["time"]
-    assert duration > 0.010  # Hold duration must be at least 10ms
+    assert duration > 0.010
 
 
 def test_paste_special_symbols():
@@ -132,20 +162,12 @@ def test_typo_corrections_are_local_backspaces_only():
     typer.type_text("Testing typos")
     events = typer.event_log
 
-    # Ensure no Ctrl+Backspace or Arrow keys were used
-    ctrl_vks = {hct.VK_CONTROL, hct.VK_LCONTROL, hct.VK_RCONTROL}
     arrow_vks = {hct.VK_LEFT, hct.VK_RIGHT, hct.VK_UP, hct.VK_DOWN}
-
     for ev in events:
         assert ev["vk"] not in arrow_vks
-        # Ctrl is only used during paste simulation for non-keyboard symbols
-        if ev["vk"] in ctrl_vks:
-            # Confirm no backspaces occurred while Ctrl was held
-            pass
 
-    # Verify backspace events are emitted singly or in short runs (<=3)
     backspaces = [e for e in events if e["vk"] == hct.VK_BACK and e["flags"] == 0]
-    assert len(backspaces) > 0  # Typos occurred and were corrected via backspace
+    assert len(backspaces) > 0
 
 
 def test_thinking_delays():

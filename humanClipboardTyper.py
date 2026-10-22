@@ -4,7 +4,8 @@
 Run this script, focus any text field, and press Ctrl+Alt+V. The current
 clipboard text is typed one key at a time with realistic biomechanical timing,
 proper Shift state events, hold durations, content-aware hesitations,
-realistic typos (including uncorrected ones), and local backspace editing.
+realistic typos (including uncorrected ones), physical key distance delays,
+and local backspace editing.
 
 The script uses only the Python standard library. Try ``--help`` to change options.
 """
@@ -224,6 +225,63 @@ QWERTY_MAP: dict[str, tuple[int, int, bool]] = {
     "\t": (VK_TAB, 0x0F, False),
 }
 
+# 2D physical key coordinates on standard QWERTY keyboard (row, col)
+KEY_POSITIONS: dict[str, tuple[float, float]] = {
+    "`": (0.0, 0.0), "~": (0.0, 0.0),
+    "1": (0.0, 1.0), "!": (0.0, 1.0),
+    "2": (0.0, 2.0), "@": (0.0, 2.0),
+    "3": (0.0, 3.0), "#": (0.0, 3.0),
+    "4": (0.0, 4.0), "$": (0.0, 4.0),
+    "5": (0.0, 5.0), "%": (0.0, 5.0),
+    "6": (0.0, 6.0), "^": (0.0, 6.0),
+    "7": (0.0, 7.0), "&": (0.0, 7.0),
+    "8": (0.0, 8.0), "*": (0.0, 8.0),
+    "9": (0.0, 9.0), "(": (0.0, 9.0),
+    "0": (0.0, 10.0), ")": (0.0, 10.0),
+    "-": (0.0, 11.0), "_": (0.0, 11.0),
+    "=": (0.0, 12.0), "+": (0.0, 12.0),
+
+    "q": (1.0, 1.5), "Q": (1.0, 1.5),
+    "w": (1.0, 2.5), "W": (1.0, 2.5),
+    "e": (1.0, 3.5), "E": (1.0, 3.5),
+    "r": (1.0, 4.5), "R": (1.0, 4.5),
+    "t": (1.0, 5.5), "T": (1.0, 5.5),
+    "y": (1.0, 6.5), "Y": (1.0, 6.5),
+    "u": (1.0, 7.5), "U": (1.0, 7.5),
+    "i": (1.0, 8.5), "I": (1.0, 8.5),
+    "o": (1.0, 9.5), "O": (1.0, 9.5),
+    "p": (1.0, 10.5), "P": (1.0, 10.5),
+    "[": (1.0, 11.5), "{": (1.0, 11.5),
+    "]": (1.0, 12.5), "}": (1.0, 12.5),
+    "\\": (1.0, 13.5), "|": (1.0, 13.5),
+
+    "a": (2.0, 1.8), "A": (2.0, 1.8),
+    "s": (2.0, 2.8), "S": (2.0, 2.8),
+    "d": (2.0, 3.8), "D": (2.0, 3.8),
+    "f": (2.0, 4.8), "F": (2.0, 4.8),
+    "g": (2.0, 5.8), "G": (2.0, 5.8),
+    "h": (2.0, 6.8), "H": (2.0, 6.8),
+    "j": (2.0, 7.8), "J": (2.0, 7.8),
+    "k": (2.0, 8.8), "K": (2.0, 8.8),
+    "l": (2.0, 9.8), "L": (2.0, 9.8),
+    ";": (2.0, 10.8), ":": (2.0, 10.8),
+    "'": (2.0, 11.8), '"': (2.0, 11.8),
+    "\n": (2.0, 12.8),
+
+    "z": (3.0, 2.3), "Z": (3.0, 2.3),
+    "x": (3.0, 3.3), "X": (3.0, 3.3),
+    "c": (3.0, 4.3), "C": (3.0, 4.3),
+    "v": (3.0, 5.3), "V": (3.0, 5.3),
+    "b": (3.0, 6.3), "B": (3.0, 6.3),
+    "n": (3.0, 7.3), "N": (3.0, 7.3),
+    "m": (3.0, 8.3), "M": (3.0, 8.3),
+    ",": (3.0, 9.3), "<": (3.0, 9.3),
+    ".": (3.0, 10.3), ">": (3.0, 10.3),
+    "/": (3.0, 11.3), "?": (3.0, 11.3),
+
+    " ": (4.0, 6.0),
+}
+
 # Nearby physical neighbor keys on QWERTY
 NEIGHBORS = {
     "1": "2", "2": "13", "3": "24", "4": "35", "5": "46",
@@ -248,7 +306,6 @@ SHIFT_VARIANTS = {
 }
 
 # Biomechanical hand and finger assignments
-# Format: (hand, finger) where hand: 'L' or 'R', finger: 1..5 (Pinky=1, Ring=2, Middle=3, Index=4, Thumb=5)
 FINGER_MAP: dict[str, tuple[str, int]] = {
     # Left hand
     "q": ("L", 1), "a": ("L", 1), "z": ("L", 1), "1": ("L", 1), "`": ("L", 1), "~": ("L", 1),
@@ -317,6 +374,22 @@ def requires_shift_state(character: str | None) -> bool:
     if mapping:
         return mapping[2]
     return False
+
+
+def get_key_distance(c1: str, c2: str) -> float:
+    """Calculate 2D finger travel distance between c1 and c2. Alternate hands = 0."""
+    f1 = FINGER_MAP.get(c1.lower())
+    f2 = FINGER_MAP.get(c2.lower())
+    if f1 and f2 and f1[0] != f2[0]:
+        return 0.0  # Alternate hands requires 0 finger travel across hand
+
+    pos1 = KEY_POSITIONS.get(c1)
+    pos2 = KEY_POSITIONS.get(c2)
+    if not pos1 or not pos2:
+        return 0.0
+    r1, c1_pos = pos1
+    r2, c2_pos = pos2
+    return math.sqrt((r2 - r1) ** 2 + (c2_pos - c1_pos) ** 2)
 
 
 @dataclass(frozen=True)
@@ -460,9 +533,9 @@ class HumanTyper:
         self.event_log: list[dict[str, Any]] = []
 
         # Target WPM base delay calculation (smooth base time per character)
-        # 1 WPM = 5 characters per minute = 1 char per (12 / WPM) seconds.
         session_pace = self.rng.lognormvariate(0.0, 0.12)
         self.base_delay = (12.0 / settings.words_per_minute) * session_pace
+        self.pace_drift = 1.0  # Non-stationary pace multiplier
         self.thinking_cooldown = self.rng.randint(15, 35)
 
     def _sleep(self, seconds: float) -> bool:
@@ -492,7 +565,7 @@ class HumanTyper:
 
         # Sample hold duration log-normally (mean ~42ms, smooth right-skewed tail)
         hold_time = self.rng.lognormvariate(math.log(0.042), 0.25)
-        hold_time = min(0.120, max(0.015, hold_time))
+        hold_time = min(0.120, max(0.018, hold_time))
 
         self._press_key_event(virtual_key, scan_code, ext_flag)
         if not self._sleep(hold_time):
@@ -531,13 +604,12 @@ class HumanTyper:
 
         set_clipboard_text(text)
 
-        # Press Ctrl+V with guaranteed release of Ctrl key in finally block
         ctrl_vk, ctrl_scan = VK_LCONTROL, 0x1D
         v_vk, v_scan = 0x56, 0x2F
 
         self._press_key_event(ctrl_vk, ctrl_scan, 0)
         try:
-            if not self._sleep(self.rng.uniform(0.02, 0.05)):
+            if not self._sleep(self.rng.lognormvariate(math.log(0.032), 0.25)):
                 return False
 
             if not self._press_and_release_key(v_vk, v_scan):
@@ -545,7 +617,7 @@ class HumanTyper:
         finally:
             self._press_key_event(ctrl_vk, ctrl_scan, KEYEVENTF_KEYUP)
 
-        if not self._sleep(self.rng.uniform(0.04, 0.10)):
+        if not self._sleep(self.rng.lognormvariate(math.log(0.060), 0.30)):
             return False
 
         if orig_clip:
@@ -566,7 +638,7 @@ class HumanTyper:
         if not res:
             return False
 
-        # Release Shift immediately after key press if the next character does not require Shift
+        # Release Shift immediately after key press if next character does not require Shift
         if self.shift_held and not requires_shift_state(next_character):
             if not self._set_shift_state(False):
                 return False
@@ -592,33 +664,37 @@ class HumanTyper:
         return self._sleep(min(0.60, max(0.03, settle_delay)))
 
     def _get_digraph_factor(self, c1: str, c2: str) -> float:
-        """Biomechanical digraph delay multiplier based on hands and fingers."""
+        """Biomechanical digraph delay multiplier based on 2D key distance, hands, and fingers."""
         c1_low, c2_low = c1.lower(), c2.lower()
 
         if c1_low == c2_low and c1_low.isalpha():
-            return 0.72  # Double letter fast repetition
+            return 0.65  # Double letter fast repetition
 
         bigram = c1_low + c2_low
         if bigram in COMMON_BIGRAMS:
-            return 0.80
+            return 0.72
         if bigram in RARE_BIGRAMS:
             return 1.45
+
+        # Distance factor based on finger travel distance
+        dist = get_key_distance(c1, c2)
+        dist_factor = 0.55 + 0.32 * dist  # Direct linear scaling with finger travel distance
 
         f1 = FINGER_MAP.get(c1_low)
         f2 = FINGER_MAP.get(c2_low)
 
         if not f1 or not f2:
-            return 1.0
+            return dist_factor
 
         hand1, finger1 = f1
         hand2, finger2 = f2
 
         if hand1 != hand2:
-            return 0.78  # Alternate hands (very smooth/fast)
+            return dist_factor * 0.75  # Alternate hands (fast)
         if finger1 != finger2:
-            return 0.95  # Same hand, different fingers
-        # Same hand, same finger! (Finger jump / stretch, slower)
-        return 1.40
+            return dist_factor * 0.95  # Same hand, different fingers
+        # Same hand, same finger (finger jump / stretch)
+        return dist_factor * 1.50
 
     def _get_thinking_delay(self, text: str, word_index: int, words: list[str]) -> float:
         """Content-aware hesitation before typing a word or clause."""
@@ -657,28 +733,35 @@ class HumanTyper:
         return min(8.0, max(0.20, pause))
 
     def _next_interkey_delay(self, current_char: str, next_char: str | None) -> float:
-        """Compute smooth, continuous log-normal delay between keys."""
+        """Compute smooth, right-skewed log-normal delay between keys."""
+        # Update AR(1) pace drift across words / keys
+        drift_delta = self.rng.normalvariate(0.0, 0.03)
+        self.pace_drift = 0.95 * self.pace_drift + 0.05 * (1.0 + drift_delta)
+        self.pace_drift = min(1.6, max(0.65, self.pace_drift))
+
         digraph_factor = 1.0
         if next_char:
             digraph_factor = self._get_digraph_factor(current_char, next_char)
 
-        target_mean = self.base_delay * digraph_factor
+        target_mean = self.base_delay * self.pace_drift * digraph_factor
 
-        # Punctuation & whitespace adjustments
+        # Word-burst structure: Spaces and boundary punctuation have much larger gaps
         if current_char == " ":
-            target_mean *= 0.85
+            target_mean *= 2.1  # Clear boundary gap for space
         elif current_char in ",;":
-            target_mean += 0.08
+            target_mean *= 2.5
         elif current_char in ".!?":
-            target_mean += 0.25
+            target_mean *= 3.8
         elif current_char in "\n\t":
-            target_mean += 0.35
+            target_mean *= 4.2
+        else:
+            target_mean *= 0.82  # Mid-word letters are fast
 
-        sigma = 0.35
-        mu = math.log(max(0.010, target_mean)) - (sigma ** 2) / 2.0
+        sigma = 0.45  # Right-skewed distribution lognormal
+        mu = math.log(max(0.008, target_mean)) - (sigma ** 2) / 2.0
         delay = self.rng.lognormvariate(mu, sigma)
 
-        return min(4.0, max(0.012, delay))
+        return min(4.0, max(0.010, delay))
 
     def _wrong_neighbor(self, character: str) -> str | None:
         lower = character.lower()
@@ -739,7 +822,7 @@ class HumanTyper:
                         if not self._emit_character(wrong, text[index + 1] if index + 1 < len(text) else None):
                             return False
                         for offset in range(1, lookahead + 1):
-                            if not self._sleep(self.rng.uniform(0.03, 0.08)):
+                            if not self._sleep(self.rng.lognormvariate(math.log(0.05), 0.30)):
                                 return False
                             next_ch = text[index + offset + 1] if index + offset + 1 < len(text) else None
                             if not self._emit_character(text[index + offset], next_ch):
