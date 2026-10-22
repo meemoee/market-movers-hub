@@ -410,7 +410,7 @@ class TypingSettings:
     quiet: bool = False
     thinking_pause_scale: float = 1.0
     dry_run: bool = False
-    unicode_mode: str = "paste"
+    unicode_mode: str = "unicode"
 
 
 def parse_hotkey(value: str, *, require_modifier: bool) -> Hotkey:
@@ -840,7 +840,7 @@ class HumanTyper:
             target_mean *= 5.50
             sigma = 0.40
         else:
-            target_mean *= 0.42  # Fast mid-word letter gap
+            target_mean *= 0.58  # Fast mid-word letter gap
             sigma = 0.22  # Tight sigma for standard letters so physical key distance signal dominates
 
         mu = math.log(max(0.008, target_mean)) - (sigma ** 2) / 2.0
@@ -1156,8 +1156,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--unicode-mode",
         choices=["paste", "unicode"],
-        default="paste",
-        help="how non-keyboard symbols are typed: 'paste' via Ctrl+V, or 'unicode' via SendInput (default: paste)",
+        default="unicode",
+        help="how non-keyboard symbols are typed: 'paste' via Ctrl+V, or 'unicode' via SendInput (default: unicode)",
     )
     parser.add_argument(
         "--seed",
