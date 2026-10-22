@@ -20,6 +20,7 @@ def test_cli_argument_parsing():
         "--typo-rate", "0.05",
         "--uncorrected-typo-rate", "0.10",
         "--thinking-pauses", "1.5",
+        "--unicode-mode", "unicode",
         "--seed", "123",
         "--dry-run",
     ])
@@ -27,6 +28,7 @@ def test_cli_argument_parsing():
     assert args.typo_rate == 0.05
     assert args.uncorrected_typo_rate == 0.10
     assert args.thinking_pauses == 1.5
+    assert args.unicode_mode == "unicode"
     assert args.seed == 123
     assert args.dry_run is True
 
@@ -79,7 +81,7 @@ def test_digraph_timing_and_distance_correlation():
     var_t = sum((t - mean_t) ** 2 for t in delays) / len(delays)
     r = cov / math.sqrt(var_d * var_t)
 
-    assert r >= 0.40  # Direct correlation with physical finger travel distance
+    assert r >= 0.50  # Strong correlation with physical 2D finger travel distance
 
 
 def test_word_burst_structure():
@@ -159,11 +161,11 @@ def test_passage_pace_drift():
     w3 = sum(gaps[-30:]) / 30
 
     drift = abs(w1 - w2) / w1 + abs(w2 - w3) / w2
-    assert drift >= 0.15  # Non-stationary passage-level pace drift
+    assert drift >= 0.20  # Significant passage pace drift
 
 
 def test_paste_special_symbols():
-    settings = hct.TypingSettings(dry_run=True, seed=200, typo_rate=0.0)
+    settings = hct.TypingSettings(dry_run=True, seed=200, typo_rate=0.0, unicode_mode="paste")
     cancel = threading.Event()
     typer = hct.HumanTyper(settings, cancel)
 
@@ -172,6 +174,18 @@ def test_paste_special_symbols():
 
     ctrl_v_events = [e for e in events if e["vk"] in (hct.VK_LCONTROL, 0x56)]
     assert len(ctrl_v_events) >= 2
+
+
+def test_unicode_mode_key_events():
+    settings = hct.TypingSettings(dry_run=True, seed=200, typo_rate=0.0, unicode_mode="unicode")
+    cancel = threading.Event()
+    typer = hct.HumanTyper(settings, cancel)
+
+    typer.type_text("a—b")
+    events = typer.event_log
+
+    unicode_events = [e for e in events if e["scan"] == ord("—")]
+    assert len(unicode_events) == 2  # Unicode keydown and keyup
 
 
 def test_thinking_delays():

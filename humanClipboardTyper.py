@@ -410,6 +410,7 @@ class TypingSettings:
     quiet: bool = False
     thinking_pause_scale: float = 1.0
     dry_run: bool = False
+    unicode_mode: str = "paste"
 
 
 def parse_hotkey(value: str, *, require_modifier: bool) -> Hotkey:
@@ -532,10 +533,10 @@ class HumanTyper:
         self.shift_held = False
         self.event_log: list[dict[str, Any]] = []
 
-        # Target WPM base delay calculation (smooth base time per character)
+        # Target WPM base delay calculation
         session_pace = self.rng.lognormvariate(0.0, 0.12)
         self.base_delay = (12.0 / settings.words_per_minute) * session_pace
-        self.pace_drift = 1.0  # Non-stationary pace multiplier
+        self.pace_drift = 1.0  # Cumulative non-stationary pace drift
         self.thinking_cooldown = self.rng.randint(15, 35)
 
     def _sleep(self, seconds: float) -> bool:
@@ -576,6 +577,23 @@ class HumanTyper:
             self._press_key_event(virtual_key, scan_code, ext_flag | KEYEVENTF_KEYUP)
         return True
 
+    def _send_unicode_key(self, character: str) -> bool:
+        """Send non-keyboard character as Unicode keydown and keyup with hold time."""
+        if not self._set_shift_state(False):
+            return False
+
+        code_unit = ord(character)
+        hold_time = self.rng.lognormvariate(math.log(0.038), 0.22)
+        hold_time = min(0.085, max(0.018, hold_time))
+
+        self._send_input_events([_keyboard_event(scan_code=code_unit, flags=KEYEVENTF_UNICODE)])
+        try:
+            if not self._sleep(hold_time):
+                return False
+        finally:
+            self._send_input_events([_keyboard_event(scan_code=code_unit, flags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)])
+        return True
+
     def _set_shift_state(self, hold_shift: bool) -> bool:
         if self.shift_held == hold_shift:
             return True
@@ -610,7 +628,7 @@ class HumanTyper:
         ctrl_vk, ctrl_scan = VK_LCONTROL, 0x1D
         v_vk, v_scan = 0x56, 0x2F
 
-        # Hesitate briefly before paste chord as a real person does
+        # Micro-hesitation before paste chord
         if not self._sleep(self.rng.lognormvariate(math.log(0.080), 0.30)):
             return False
 
@@ -628,13 +646,19 @@ class HumanTyper:
             return False
 
         if orig_clip:
-            set_clipboard_text(orig_clip)
+            try:
+                set_clipboard_text(orig_clip)
+            except Exception:
+                pass
         return True
 
     def _emit_character(self, character: str, next_character: str | None = None) -> bool:
         mapping = get_key_mapping(character)
         if mapping is None:
-            return self._paste_text(character)
+            if self.settings.unicode_mode == "unicode":
+                return self._send_unicode_key(character)
+            else:
+                return self._paste_text(character)
 
         vk, scan, req_shift = mapping
         if not self._set_shift_state(req_shift):
@@ -668,21 +692,20 @@ class HumanTyper:
         return self._sleep(min(0.60, max(0.03, settle_delay)))
 
     def _get_digraph_factor(self, c1: str, c2: str) -> float:
-        """Biomechanical digraph delay multiplier based on 2D key distance, hands, and fingers."""
+        """Biomechanical digraph delay multiplier based on physical key distance, hands, and fingers."""
         c1_low, c2_low = c1.lower(), c2.lower()
 
         if c1_low == c2_low and c1_low.isalpha():
-            return 0.65  # Double letter fast repetition
+            return 0.60  # Double letter fast repetition
 
         bigram = c1_low + c2_low
         if bigram in COMMON_BIGRAMS:
-            return 0.72
+            return 0.68
         if bigram in RARE_BIGRAMS:
-            return 1.45
+            return 1.50
 
-        # Distance factor based on finger travel distance
         dist = get_key_distance(c1, c2)
-        dist_factor = 0.55 + 0.32 * dist  # Direct linear scaling with finger travel distance
+        dist_factor = 0.40 + 0.35 * dist  # Direct linear scaling with finger travel distance
 
         f1 = FINGER_MAP.get(c1_low)
         f2 = FINGER_MAP.get(c2_low)
@@ -694,11 +717,11 @@ class HumanTyper:
         hand2, finger2 = f2
 
         if hand1 != hand2:
-            return dist_factor * 0.75  # Alternate hands (fast)
+            return dist_factor * 0.65  # Alternate hands (fast)
         if finger1 != finger2:
             return dist_factor * 0.95  # Same hand, different fingers
         # Same hand, same finger (finger jump / stretch)
-        return dist_factor * 1.50
+        return dist_factor * 1.60
 
     def _get_thinking_delay(self, text: str, word_index: int, words: list[str]) -> float:
         """Content-aware hesitation before typing a word or clause."""
@@ -737,13 +760,12 @@ class HumanTyper:
         return min(8.0, max(0.20, pause))
 
     def _next_interkey_delay(self, current_char: str, next_char: str | None, progress: float = 0.0) -> float:
-        """Compute smooth, right-skewed log-normal delay with passage pace drift."""
-        # Non-stationary passage-level drift: combines sinusoidal passage arc and AR(1) random walk
-        passage_arc = 1.35 - 0.70 * math.sin(math.pi * progress)  # Starts slow, speeds up mid-passage, slows at end
-        walk = self.rng.normalvariate(0.0, 0.06)
-        self.pace_drift = 0.992 * self.pace_drift + 0.008 * (1.0 + walk)
-
-        effective_drift = passage_arc * self.pace_drift
+        """Compute smooth, right-skewed log-normal delay with non-stationary passage pace drift."""
+        # Cumulative persistent random walk + progressive fatigue
+        walk_step = self.rng.normalvariate(0.0, 0.025)
+        self.pace_drift = max(0.50, min(2.20, self.pace_drift + walk_step))
+        fatigue = 1.0 + 0.40 * progress
+        effective_drift = self.pace_drift * fatigue
 
         digraph_factor = 1.0
         if next_char:
@@ -751,19 +773,23 @@ class HumanTyper:
 
         target_mean = self.base_delay * effective_drift * digraph_factor
 
-        # Word-burst structure: Spaces and boundary punctuation have much larger gaps
+        # Word-burst structure: Spaces and boundary punctuation have larger gaps
         if current_char == " ":
-            target_mean *= 2.1
+            target_mean *= 2.2
+            sigma = 0.35
         elif current_char in ",;":
-            target_mean *= 2.5
+            target_mean *= 2.6
+            sigma = 0.35
         elif current_char in ".!?":
             target_mean *= 3.8
+            sigma = 0.40
         elif current_char in "\n\t":
             target_mean *= 4.2
+            sigma = 0.40
         else:
-            target_mean *= 0.82  # Mid-word letters are fast
+            target_mean *= 0.85
+            sigma = 0.22  # Tight sigma for standard letters so physical key distance signal dominates
 
-        sigma = 0.45  # Right-skewed distribution lognormal
         mu = math.log(max(0.008, target_mean)) - (sigma ** 2) / 2.0
         delay = self.rng.lognormvariate(mu, sigma)
 
@@ -1071,6 +1097,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="frequency multiplier for thinking pauses; 0 disables (default: 1.0)",
     )
     parser.add_argument(
+        "--unicode-mode",
+        choices=["paste", "unicode"],
+        default="paste",
+        help="how non-keyboard symbols are typed: 'paste' via Ctrl+V, or 'unicode' via SendInput (default: paste)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         help="fixed random seed for repeatable timing (default: fresh randomness)",
@@ -1104,6 +1136,7 @@ def main(argv: list[str] | None = None) -> int:
         quiet=args.quiet,
         thinking_pause_scale=args.thinking_pauses,
         dry_run=args.dry_run,
+        unicode_mode=args.unicode_mode,
     )
     try:
         HotkeyApp(typing_hotkey, cancel_hotkey, settings).run()
