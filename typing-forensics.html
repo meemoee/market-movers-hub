@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="description" content="Live client-side console that flags automated / synthetic typing in real time.">
+<style>
+  /* Minimal reset mirroring the artifact host, so the page renders identically
+     when served as a plain static file. */
+  :root { color-scheme: light; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; font: 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<title>Keystroke Forensics</title>
+<style>
+  /* Layout: a forensics console. Top: verdict + weighted risk meter. Left:
+     live input + statistics. Right: detectors grouped into four layers, each
+     stating what it watches for and lighting up when its signal appears.
+     Bottom: the raw event stream. Collapses to one column on phones. */
+  :root {
+    --bg: #f3f4f1;
+    --panel: #ffffff;
+    --panel-2: #f7f8f5;
+    --ink: #1a1d1a;
+    --ink-soft: #565b54;
+    --ink-faint: #8a8f85;
+    --line: #d9dcd3;
+    --line-strong: #c3c7bb;
+    --accent: #2f6f4f;        /* forensic green */
+    --accent-soft: #e4efe7;
+    --watch: #8a8f85;
+    --trip: #b4341f;          /* hard tell fired */
+    --trip-soft: #f6e2dd;
+    --warn: #9a6b12;          /* soft signal fired */
+    --warn-soft: #f6ecd6;
+    --clear: #2f6f4f;
+    --shadow: 0 1px 2px rgba(20,25,20,.06), 0 8px 24px rgba(20,25,20,.05);
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e110e; --panel: #171b16; --panel-2: #121511;
+      --ink: #e6e9e2; --ink-soft: #a6ab9f; --ink-faint: #6d7268;
+      --line: #272c25; --line-strong: #353b32;
+      --accent: #6fd39b; --accent-soft: #16241b;
+      --watch: #6d7268; --trip: #ff6f5a; --trip-soft: #2a1613;
+      --warn: #e0b553; --warn-soft: #27210f; --clear: #6fd39b;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e110e; --panel: #171b16; --panel-2: #121511;
+    --ink: #e6e9e2; --ink-soft: #a6ab9f; --ink-faint: #6d7268;
+    --line: #272c25; --line-strong: #353b32;
+    --accent: #6fd39b; --accent-soft: #16241b;
+    --watch: #6d7268; --trip: #ff6f5a; --trip-soft: #2a1613;
+    --warn: #e0b553; --warn-soft: #27210f; --clear: #6fd39b;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap {
+    max-width: 1240px; margin: 0 auto;
+    padding-block: 28px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  header { margin-bottom: 20px; }
+  .kicker { font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .kicker .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  h1 { font-size: clamp(26px, 5vw, 40px); line-height: 1.04; margin: 0 0 10px; letter-spacing: -.02em; text-wrap: balance; font-weight: 600; }
+  .lede { color: var(--ink-soft); max-width: 66ch; margin: 0; font-size: 15px; }
+
+  /* verdict + meter */
+  .verdict { margin: 20px 0 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow); padding: 16px 18px; display: grid; gap: 14px; }
+  .verdict-top { display: grid; grid-template-columns: auto 1fr auto; gap: 16px 20px; align-items: center; }
+  .verdict-badge { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .04em; padding: 9px 14px; border-radius: 9px; white-space: nowrap; border: 1px solid transparent; }
+  .verdict-badge[data-state="idle"]  { color: var(--ink-soft); background: var(--panel-2); border-color: var(--line); }
+  .verdict-badge[data-state="clear"] { color: var(--clear); background: var(--accent-soft); border-color: color-mix(in srgb, var(--clear) 35%, transparent); }
+  .verdict-badge[data-state="warn"]  { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .verdict-badge[data-state="trip"]  { color: var(--trip); background: var(--trip-soft); border-color: color-mix(in srgb, var(--trip) 40%, transparent); }
+  .verdict-text { font-size: 14px; color: var(--ink-soft); min-width: 0; }
+  .verdict-text strong { color: var(--ink); font-weight: 600; }
+  .counters { display: flex; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); white-space: nowrap; flex-wrap: wrap; }
+  .counters b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .meter-row { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; align-items: center; }
+  .meter { height: 10px; border-radius: 6px; background: linear-gradient(90deg, var(--clear), var(--warn) 55%, var(--trip)); position: relative; overflow: hidden; }
+  .meter::after { content: ""; position: absolute; inset: 0 0 0 var(--fill, 0%); background: var(--panel-2); border-left: 2px solid var(--ink); transition: inset .25s ease; }
+  .meter-num { font-family: var(--mono); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+  .meter-num small { color: var(--ink-faint); font-weight: 400; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.35fr); gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .panel-title { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+  .panel-body { padding: 16px; }
+
+  textarea { width: 100%; min-height: 150px; resize: vertical; font-family: var(--mono); font-size: 15px; line-height: 1.6; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px 13px; }
+  textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  textarea::placeholder { color: var(--ink-faint); }
+  .hint { margin: 12px 0 0; font-size: 13px; color: var(--ink-soft); }
+
+  .live-stats { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  @media (max-width: 420px) { .live-stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--panel); padding: 11px 12px; }
+  .stat .label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); font-family: var(--mono); }
+  .stat .value { font-family: var(--mono); font-size: 17px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stat .value small { font-size: 11px; color: var(--ink-faint); font-weight: 400; }
+
+  .btnrow { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  button.ctl { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.ctl:hover { border-color: var(--accent); color: var(--accent); }
+  button.ctl:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.ctl.danger:hover { border-color: var(--trip); color: var(--trip); }
+
+  ul.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  li.cat-head { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); padding: 14px 2px 6px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
+  li.cat-head:first-child { padding-top: 2px; }
+  li.cat-head .cat-note { color: var(--ink-faint); font-size: 10px; letter-spacing: .04em; text-transform: none; }
+  li.check { display: grid; grid-template-columns: 22px 1fr auto; gap: 3px 11px; padding: 11px 2px; border-bottom: 1px solid var(--line); align-items: start; }
+  .check-mark { grid-row: 1 / span 3; width: 18px; height: 18px; margin-top: 2px; border-radius: 5px; border: 1.5px solid var(--line-strong); display: grid; place-items: center; font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--watch); transition: background .15s, border-color .15s, color .15s; }
+  li.check[data-state="trip"] .check-mark { background: var(--trip); border-color: var(--trip); color: #fff; }
+  li.check[data-state="warn"] .check-mark { background: var(--warn); border-color: var(--warn); color: #fff; }
+  .check-name { font-size: 13.5px; font-weight: 600; color: var(--ink); display: flex; gap: 7px; align-items: baseline; flex-wrap: wrap; }
+  .check-id { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .03em; }
+  .wtag { font-family: var(--mono); font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-faint); letter-spacing: .02em; }
+  .wtag.hard { color: var(--trip); border-color: color-mix(in srgb, var(--trip) 30%, transparent); }
+  .check-desc { grid-column: 2 / span 2; font-size: 12px; color: var(--ink-soft); }
+  .check-detail { grid-column: 2 / span 2; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 2px; word-break: break-word; }
+  li.check[data-state="trip"] .check-detail { color: var(--trip); }
+  li.check[data-state="warn"] .check-detail { color: var(--warn); }
+  .check-status { justify-self: end; font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 20px; white-space: nowrap; color: var(--watch); background: var(--panel-2); border: 1px solid var(--line); }
+  li.check[data-state="trip"] .check-status { color: var(--trip); background: var(--trip-soft); border-color: color-mix(in srgb, var(--trip) 35%, transparent); }
+  li.check[data-state="warn"] .check-status { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+
+  .logwrap { margin-top: 20px; }
+  .log { font-family: var(--mono); font-size: 11.5px; line-height: 1.65; background: var(--panel-2); max-height: 280px; overflow: auto; padding: 10px 14px; margin: 0; color: var(--ink-soft); border-top: 1px solid var(--line); }
+  .log .row { white-space: pre-wrap; word-break: break-word; }
+  .log .t { color: var(--ink-faint); }
+  .log .ev-keydown { color: var(--accent); }
+  .log .ev-keyup   { color: var(--ink-soft); }
+  .log .ev-input   { color: var(--warn); }
+  .log .ev-paste, .log .ev-flag { color: var(--trip); font-weight: 600; }
+  .log .ev-env { color: var(--ink-faint); }
+  .log .k { color: var(--ink); }
+  .log-empty { color: var(--ink-faint); padding: 16px; font-family: var(--mono); font-size: 12px; }
+
+  footer { margin-top: 28px; font-size: 12px; color: var(--ink-faint); max-width: 76ch; }
+  footer code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-soft); }
+  a { color: var(--accent); }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker"><span class="dot"></span> Keystroke Forensics · live · 27 detectors</div>
+    <h1>Is a human typing, or a machine?</h1>
+    <p class="lede">Type into the field. Twenty-seven detectors across four layers examine every keystroke —
+      the events themselves, the rhythm, higher-order human patterns, and the browser environment.
+      Each names what it watches for and the weight it carries, and lights up the moment its signal appears.
+      Everything runs in your browser; nothing is sent anywhere.</p>
+  </header>
+
+  <div class="verdict" role="status" aria-live="polite">
+    <div class="verdict-top">
+      <div class="verdict-badge" id="badge" data-state="idle">AWAITING INPUT</div>
+      <div class="verdict-text" id="verdictText">Start typing to begin. Or press “Run a bot” to watch the detectors trip. Open DevTools and script key events for the real thing.</div>
+      <div class="counters">
+        <span>keydown <b id="cKeydown">0</b></span>
+        <span>keyup <b id="cKeyup">0</b></span>
+        <span>input <b id="cInput">0</b></span>
+        <span>flags <b id="cFlags">0</b></span>
+      </div>
+    </div>
+    <div class="meter-row">
+      <div class="meter" id="meter" style="--fill:0%"></div>
+      <div class="meter-num"><span id="riskNum">0</span><small> / 100 automation risk · </small><span id="trippedCount">0</span><small>/<span id="totalCount">27</span> tripped</small></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Subject input</span><span class="panel-title" id="envTag"></span></div>
+      <div class="panel-body">
+        <textarea id="field" spellcheck="false" autocomplete="off" autocapitalize="off"
+          placeholder="Type here like a human…&#10;&#10;Try some Capitals and symbols like ! @ #&#10;(or let something type for you)"></textarea>
+        <p class="hint">The clearest tells: a key that makes text with no physical scan code, a capital/symbol with no Shift held, or text that appears with no keystroke at all.</p>
+
+        <div class="live-stats">
+          <div class="stat"><div class="label">Last gap</div><div class="value" id="sGap">—<small> ms</small></div></div>
+          <div class="stat"><div class="label">Mean gap</div><div class="value" id="sMean">—<small> ms</small></div></div>
+          <div class="stat"><div class="label">Timing CV</div><div class="value" id="sCV">—</div></div>
+          <div class="stat"><div class="label">Entropy</div><div class="value" id="sEnt">—<small> bits</small></div></div>
+          <div class="stat"><div class="label">Mean dwell</div><div class="value" id="sDwell">—<small> ms</small></div></div>
+          <div class="stat"><div class="label">Mean flight</div><div class="value" id="sFlight">—<small> ms</small></div></div>
+        </div>
+
+        <div class="btnrow">
+          <button class="ctl" id="btnReset">Reset analysis</button>
+          <button class="ctl danger" id="btnDemo">Run a bot (naive)</button>
+          <button class="ctl danger" id="btnDemo2">Run a bot (humanized)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Detectors</span><span class="panel-title">hard tell = <span style="color:var(--trip)">■</span> · heuristic = <span style="color:var(--warn)">■</span></span></div>
+      <div class="panel-body" style="padding:4px 16px;">
+        <ul class="checks" id="checks"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel logwrap">
+    <div class="panel-head"><span class="panel-title">Raw event stream</span><span class="panel-title" id="logCount">0 events</span></div>
+    <pre class="log" id="log"><div class="log-empty">No events yet — focus the field and type.</div></pre>
+  </div>
+
+  <footer>
+    A demonstration of client-side automation detection. The <strong style="color:var(--trip)">hard tells</strong> (untrusted events, missing key code,
+    text without a keystroke, Shift mismatch, <code>navigator.webdriver</code>) catch autotypers and naive scripted input with near certainty — including the
+    Windows <code>SendInput</code>/VK_PACKET approach used by the autotyper in this repo. The <strong style="color:var(--warn)">heuristics</strong> (rhythm, entropy,
+    rollover, burst structure, environment fingerprint) catch a bot that forges clean events but can't fake how a human actually behaves.
+    None is proof on its own: a developer with DevTools open, an on-screen keyboard, IME composition, or assistive tech can trip a check, and a
+    well-built CDP framework can satisfy the event-level ones — which is why the risk score weights many independent signals rather than trusting any single one.
+  </footer>
+</div>
+
+
+
+<script>
+(function () {
+  "use strict";
+
+  // ===========================================================================
+  // DETECTOR CATALOGUE — grouped into four layers. `w` is the weight it adds to
+  // the 0-100 risk score when tripped. `sev`: 'trip' = hard tell, 'warn' = soft.
+  // ===========================================================================
+  const CATS = {
+    event:   { title: "Layer 1 · Event integrity",       note: "the event objects themselves" },
+    timing:  { title: "Layer 2 · Keystroke dynamics",     note: "the rhythm of typing" },
+    bio:     { title: "Layer 3 · Behavioral biometrics",  note: "higher-order human patterns" },
+    env:     { title: "Layer 4 · Environment fingerprint", note: "the browser & automation flags" }
+  };
+
+  const CHECKS = [
+    // ---- Layer 1: event integrity ----
+    { id:"untrusted", cat:"event", sev:"trip", w:45, name:"Untrusted events",
+      desc:"Real input has event.isTrusted === true. Events made by dispatchEvent() in page script are false." },
+    { id:"no-code", cat:"event", sev:"trip", w:40, name:"Missing physical key code",
+      desc:"A real keypress carries event.code (e.g. \"KeyA\"). Characters injected as Unicode (Windows VK_PACKET, keyCode 229/231) arrive with an empty code." },
+    { id:"ghost-input", cat:"event", sev:"trip", w:40, name:"Text with no keystroke",
+      desc:"An input event fired with no keydown just before it — text was inserted programmatically (insertText, execCommand, or .value =)." },
+    { id:"shift-mismatch", cat:"event", sev:"trip", w:35, name:"Shifted glyph, no Shift",
+      desc:"A symbol that requires Shift (!, @, #…) arrived while getModifierState('Shift') was false. Injected text skips the modifier." },
+    { id:"shift-soft", cat:"event", sev:"warn", w:12, name:"Capital, no Shift or CapsLock",
+      desc:"An uppercase letter with neither Shift held nor CapsLock on. Usually synthetic, but some remapped layouts do this." },
+    { id:"no-source", cat:"event", sev:"warn", w:14, name:"Null input-device source",
+      desc:"Chrome tags real key events with a sourceCapabilities object. Many synthetic events leave it null." },
+    { id:"no-keyup", cat:"event", sev:"warn", w:15, name:"Keydown without keyup",
+      desc:"Humans release every key. Keys pressed with no matching keyup within 1.5 s suggest injected keydown-only events." },
+    { id:"timestamp", cat:"event", sev:"warn", w:14, name:"Timestamp anomaly",
+      desc:"event.timeStamp should advance with performance.now(). A zero or frozen timestamp points to a hand-built event." },
+
+    // ---- Layer 2: keystroke dynamics ----
+    { id:"superhuman", cat:"timing", sev:"trip", w:35, name:"Super-human speed",
+      desc:"Repeated gaps below the human floor (~15 ms) or sustained bursts over ~22 keys/sec that no typist holds." },
+    { id:"metronome", cat:"timing", sev:"warn", w:20, name:"Metronomic rhythm",
+      desc:"Human timing is irregular (coefficient of variation usually > 0.35). Near-constant gaps (CV < 0.12) look machine-made." },
+    { id:"quantized", cat:"timing", sev:"warn", w:20, name:"Quantized timing",
+      desc:"Many gaps on the exact same millisecond value — the fingerprint of a fixed sleep/setInterval delay." },
+    { id:"timer-grid", cat:"timing", sev:"warn", w:22, name:"Timer-grid alignment",
+      desc:"Gaps that are all multiples of one base (10, 16.7, 50 ms…) — scheduled dispatch snapping to a timer." },
+    { id:"low-entropy", cat:"timing", sev:"warn", w:16, name:"Low timing entropy",
+      desc:"Shannon entropy of the gap distribution. Humans scatter widely (high bits); scripted delays collapse to a few values." },
+    { id:"uniform-dist", cat:"timing", sev:"warn", w:10, name:"Non-human distribution shape",
+      desc:"Human latencies are right-skewed (log-normal). Uniform jitter around a mean has skew ≈ 0 — a telltale of added randomness." },
+
+    // ---- Layer 3: behavioral biometrics ----
+    { id:"no-rollover", cat:"bio", sev:"warn", w:14, name:"No key rollover",
+      desc:"Fast typists overlap keys — the next key goes down before the last comes up (negative flight time). Strictly sequential keys never overlap." },
+    { id:"flat-dwell", cat:"bio", sev:"warn", w:18, name:"Uniform / zero hold time",
+      desc:"Dwell (keydown→keyup) near 0 ms, or identical on every key. Real fingers hold keys ~50–150 ms with natural spread." },
+    { id:"no-burst", cat:"bio", sev:"warn", w:14, name:"No word-burst structure",
+      desc:"Humans pause longer at spaces and punctuation than mid-word. Flat gaps across boundaries mean no linguistic rhythm." },
+    { id:"stationary", cat:"bio", sev:"warn", w:9, name:"No drift over time",
+      desc:"People speed up, slow down and fatigue. Timing whose statistics never drift across the passage is suspiciously stationary." },
+    { id:"no-layout", cat:"bio", sev:"warn", w:9, name:"Timing ignores keyboard layout",
+      desc:"Humans are slower on same-finger bigrams and faster alternating hands. Timing uncorrelated with finger travel suggests no real hands." },
+
+    // ---- Layer 4: environment fingerprint ----
+    { id:"webdriver", cat:"env", sev:"trip", w:45, name:"navigator.webdriver",
+      desc:"The browser advertises that it is under automation control. Checked on load." },
+    { id:"no-activation", cat:"env", sev:"trip", w:38, name:"No user activation",
+      desc:"A real keypress grants transient user activation (navigator.userActivation.isActive). Dispatched events never do." },
+    { id:"headless-ua", cat:"env", sev:"trip", w:35, name:"Headless signature",
+      desc:"\"HeadlessChrome\" in the UA, zero plugins, empty languages, or outerWidth 0 — classic headless-browser tells." },
+    { id:"headless-gpu", cat:"env", sev:"warn", w:25, name:"Software renderer",
+      desc:"WebGL reports SwiftShader / llvmpipe / Mesa OffScreen — no real GPU, typical of headless automation." },
+    { id:"inspector", cat:"env", sev:"warn", w:15, name:"Inspector / CDP attached",
+      desc:"A getter on a logged object fires only when a DevTools/CDP Runtime is serializing console output. Also trips with DevTools open." },
+    { id:"no-pointer", cat:"env", sev:"warn", w:9, name:"Never moved the pointer",
+      desc:"Text was typed but no genuine mouse/pointer movement has ever occurred. Automation often drives the keyboard with a dead cursor." },
+    { id:"paste", cat:"env", sev:"warn", w:10, name:"Paste instead of typing",
+      desc:"A paste event delivered the text wholesale. Not automation by itself, but it bypasses typing entirely." }
+  ];
+  const TOTAL = CHECKS.length;
+
+  const S = {};
+  CHECKS.forEach(c => S[c.id] = { el:null, statusEl:null, detailEl:null, tripped:false, hits:0 });
+
+  // runtime counters & buffers
+  let nKeydown=0, nKeyup=0, nInput=0, nFlags=0, nEvents=0;
+  const gaps=[], dwells=[], flights=[];
+  let lastKeydownT=null, lastKeyupT=null, lastKeydownForInput=null;
+  let prevGapT=null;
+  const downAt=new Map();                 // pending keydowns awaiting keyup
+  let pendingNoKeyup=0, fastStreak=0, sawPointer=false, charsTyped=0;
+  const boundaryGaps=[], midwordGaps=[];  // for burst structure
+  const bigrams=[];                        // {gap, cost} for layout correlation
+  let prevChar=null;
+
+  // ---- QWERTY finger/hand model for the layout-correlation check ----
+  const QW = {
+    row:{ q:0,w:0,e:0,r:0,t:0,y:0,u:0,i:0,o:0,p:0, a:1,s:1,d:1,f:1,g:1,h:1,j:1,k:1,l:1, z:2,x:2,c:2,v:2,b:2,n:2,m:2 },
+    col:{ q:0,a:0,z:0, w:1,s:1,x:1, e:2,d:2,c:2, r:3,f:3,v:3, t:3,g:3,b:3, y:6,h:6,n:6, u:6,j:6,m:6, i:7,k:7, o:8,l:8, p:9 },
+    hand:function(ch){ return "qwertasdfgzxcvb".indexOf(ch)>=0 ? "L" : ("yuiophjklnm".indexOf(ch)>=0 ? "R":null); },
+    finger:function(ch){ return this.col[ch]; }
+  };
+  function bigramCost(a,b){ // rough expected difficulty 0..1 (higher = slower for humans)
+    a=a.toLowerCase(); b=b.toLowerCase();
+    const ha=QW.hand(a), hb=QW.hand(b); if(ha===null||hb===null) return null;
+    if(ha!==hb) return 0.2;                       // alternating hands: fast
+    const fa=QW.finger(a), fb=QW.finger(b);
+    if(fa===fb) return 1.0;                        // same finger: slow
+    return 0.55;                                   // same hand, different finger
+  }
+
+  // ===========================================================================
+  // DOM build
+  // ===========================================================================
+  const checksUl=document.getElementById("checks");
+  let lastCat=null;
+  CHECKS.forEach(c=>{
+    if(c.cat!==lastCat){
+      lastCat=c.cat;
+      const h=document.createElement("li"); h.className="cat-head";
+      h.innerHTML='<span>'+CATS[c.cat].title+'</span><span class="cat-note">'+CATS[c.cat].note+'</span>';
+      checksUl.appendChild(h);
+    }
+    const li=document.createElement("li"); li.className="check"; li.dataset.state="watch";
+    const wtag = c.sev==="trip" ? '<span class="wtag hard">+'+c.w+'</span>' : '<span class="wtag">+'+c.w+'</span>';
+    li.innerHTML=
+      '<span class="check-mark">·</span>'+
+      '<span class="check-name">'+c.name+' '+wtag+' <span class="check-id">['+c.id+']</span></span>'+
+      '<span class="check-status">watching</span>'+
+      '<span class="check-desc">'+c.desc+'</span>'+
+      '<span class="check-detail" hidden></span>';
+    checksUl.appendChild(li);
+    S[c.id].el=li; S[c.id].statusEl=li.querySelector(".check-status"); S[c.id].detailEl=li.querySelector(".check-detail");
+  });
+  document.getElementById("totalCount").textContent=TOTAL;
+
+  const field=document.getElementById("field");
+  const logEl=document.getElementById("log");
+  const badge=document.getElementById("badge");
+  const vText=document.getElementById("verdictText");
+  const meter=document.getElementById("meter");
+  const riskNum=document.getElementById("riskNum");
+  const D={ gap:document.getElementById("sGap"), mean:document.getElementById("sMean"),
+            cv:document.getElementById("sCV"), ent:document.getElementById("sEnt"),
+            dwell:document.getElementById("sDwell"), flight:document.getElementById("sFlight") };
+
+  // ===========================================================================
+  // helpers
+  // ===========================================================================
+  const now=()=>performance.now();
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+  function std(a){ if(a.length<2)return 0; const m=mean(a); return Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/a.length); }
+  function skewness(a){ if(a.length<4)return 0; const m=mean(a), s=std(a); if(s===0)return 0;
+    return a.reduce((x,y)=>x+Math.pow((y-m)/s,3),0)/a.length; }
+  function entropyBits(a,bin){ if(a.length<2)return 0; const h={}; a.forEach(v=>{const b=Math.floor(v/bin); h[b]=(h[b]||0)+1;});
+    let H=0; const n=a.length; for(const k in h){ const p=h[k]/n; H-=p*Math.log2(p); } return H; }
+  function esc(v){ return String(v).replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+
+  function logLine(kind,msg){
+    nEvents++;
+    const empty=logEl.querySelector(".log-empty"); if(empty)empty.remove();
+    const row=document.createElement("div"); row.className="row";
+    row.innerHTML='<span class="t">'+(now()/1000).toFixed(3)+'s</span>  '+
+      '<span class="ev-'+kind+'">'+kind.toUpperCase().padEnd(7)+'</span> '+
+      '<span class="k">'+msg+'</span>';
+    logEl.appendChild(row);
+    while(logEl.childElementCount>320) logEl.firstElementChild.remove();
+    logEl.scrollTop=logEl.scrollHeight;
+    document.getElementById("logCount").textContent=nEvents+" events";
+  }
+
+  function trip(id,detail){
+    const c=CHECKS.find(x=>x.id===id), s=S[id];
+    s.hits++; nFlags++;
+    if(!s.tripped){ s.tripped=true; s.el.dataset.state=c.sev; s.statusEl.textContent=c.sev==="trip"?"TRIPPED":"flagged";
+      logLine("flag", id.toUpperCase()+" — "+(detail||c.name)); }
+    if(detail){ s.detailEl.hidden=false; s.detailEl.textContent=detail+(s.hits>1?"  ×"+s.hits:""); }
+    refreshVerdict();
+  }
+
+  function counters(){
+    document.getElementById("cKeydown").textContent=nKeydown;
+    document.getElementById("cKeyup").textContent=nKeyup;
+    document.getElementById("cInput").textContent=nInput;
+    document.getElementById("cFlags").textContent=nFlags;
+    document.getElementById("trippedCount").textContent=CHECKS.filter(c=>S[c.id].tripped).length;
+  }
+
+  function stats(){
+    if(gaps.length){ D.gap.innerHTML=Math.round(gaps[gaps.length-1])+'<small> ms</small>';
+      D.mean.innerHTML=Math.round(mean(gaps))+'<small> ms</small>'; }
+    if(gaps.length>=3){ D.cv.textContent=(std(gaps)/(mean(gaps)||1)).toFixed(3);
+      D.ent.innerHTML=entropyBits(gaps,15).toFixed(2)+'<small> bits</small>'; }
+    if(dwells.length) D.dwell.innerHTML=Math.round(mean(dwells))+'<small> ms</small>';
+    if(flights.length) D.flight.innerHTML=Math.round(mean(flights))+'<small> ms</small>';
+  }
+
+  function risk(){ let r=0; CHECKS.forEach(c=>{ if(S[c.id].tripped) r+=c.w; }); return Math.min(100,r); }
+
+  function refreshVerdict(){
+    counters();
+    const r=risk();
+    meter.style.setProperty("--fill",(100-r)+"%");
+    riskNum.textContent=r;
+    const hard=CHECKS.filter(c=>c.sev==="trip"&&S[c.id].tripped).length;
+    const soft=CHECKS.filter(c=>c.sev==="warn"&&S[c.id].tripped).length;
+    if(hard>0||r>=45){
+      badge.dataset.state="trip"; badge.textContent="AUTOMATION DETECTED";
+      vText.innerHTML="<strong>"+hard+" hard tell"+(hard!==1?"s":"")+"</strong> and "+soft+" heuristic"+(soft!==1?"s":"")+
+        " tripped (risk "+r+"/100). This input stream was almost certainly not produced by a person at a keyboard.";
+    } else if(r>=20){
+      badge.dataset.state="warn"; badge.textContent="SUSPICIOUS";
+      vText.innerHTML="<strong>"+soft+" heuristic"+(soft!==1?"s":"")+"</strong> tripped (risk "+r+"/100). The rhythm or environment looks off — possibly a bot tuned to mimic a human, possibly an unusual-but-real setup.";
+    } else if(r>0){
+      badge.dataset.state="warn"; badge.textContent="ONE WEAK FLAG";
+      vText.innerHTML="A low-weight signal tripped (risk "+r+"/100). On its own this is weak — plenty of real people trip it. Keep typing.";
+    } else if(nKeydown+nInput>0){
+      badge.dataset.state="clear"; badge.textContent="HUMAN-LIKE";
+      vText.innerHTML="No automation signals so far. Trusted events, physical key codes, irregular human timing. Some detectors need more keystrokes to be sure — keep going.";
+    }
+  }
+
+  // ===========================================================================
+  // event instrumentation
+  // ===========================================================================
+  const SHIFT_SYMBOLS='~!@#$%^&*()_+{}|:"<>?';
+  const SPECIAL=["Enter","Tab","Backspace","Shift","Control","Alt","Meta","CapsLock",
+                 "ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Dead","Process","Home","End","PageUp","PageDown","Delete","Escape"];
+
+  function describe(e){
+    return "key="+esc(e.key)+" code="+esc(e.code||"∅")+" keyCode="+e.keyCode+
+           " trusted="+e.isTrusted+" shift="+(e.getModifierState?e.getModifierState("Shift"):e.shiftKey)+
+           " srcCap="+(e.sourceCapabilities?"yes":"null")+" ts="+Math.round(e.timeStamp);
+  }
+
+  field.addEventListener("keydown",function(e){
+    nKeydown++; const t=now();
+    logLine("keydown",describe(e));
+
+    if(!e.isTrusted) trip("untrusted","isTrusted=false on '"+e.key+"'");
+
+    // missing physical code
+    if((!e.code||e.code==="")&&SPECIAL.indexOf(e.key)===-1){
+      trip("no-code","code='' keyCode="+e.keyCode+" for '"+e.key+"' (Unicode/VK_PACKET injection)");
+    } else if((e.keyCode===231||e.keyCode===229)&&e.key&&e.key.length===1){
+      trip("no-code","keyCode="+e.keyCode+" (VK_PACKET/IME-style) producing '"+e.key+"'");
+    }
+
+    // shift / modifier consistency
+    if(e.key&&e.key.length===1){
+      const shift=e.getModifierState?e.getModifierState("Shift"):e.shiftKey;
+      const caps=e.getModifierState?e.getModifierState("CapsLock"):false;
+      if(SHIFT_SYMBOLS.indexOf(e.key)!==-1 && !shift){
+        trip("shift-mismatch","'"+e.key+"' requires Shift but Shift=false");
+      } else if(/^[A-Z]$/.test(e.key) && !shift && !caps){
+        trip("shift-soft","'"+e.key+"' uppercase, Shift=false, CapsLock=false");
+      }
+    }
+
+    if(e.sourceCapabilities===null && e.isTrusted===false) trip("no-source","sourceCapabilities=null");
+
+    // timestamp sanity
+    if(e.timeStamp===0) trip("timestamp","event.timeStamp === 0");
+
+    // timing
+    if(lastKeydownT!==null){
+      const gap=t-lastKeydownT; gaps.push(gap); if(gaps.length>300)gaps.shift();
+      if(gap<15){ fastStreak++; if(fastStreak>=3) trip("superhuman","gap "+gap.toFixed(1)+" ms (< 15 ms floor) ×"+fastStreak); } else fastStreak=0;
+
+      // burst structure: classify this gap by what preceded it
+      if(prevChar===" "||".,;:!?".indexOf(prevChar)>=0){ boundaryGaps.push(gap); if(boundaryGaps.length>120)boundaryGaps.shift(); }
+      else if(prevChar&&/[a-z]/i.test(prevChar)){ midwordGaps.push(gap); if(midwordGaps.length>120)midwordGaps.shift(); }
+
+      // layout correlation sample
+      if(prevChar&&e.key&&e.key.length===1){ const cost=bigramCost(prevChar,e.key); if(cost!==null){ bigrams.push({gap,cost}); if(bigrams.length>200)bigrams.shift(); } }
+
+      checkMetronome(); checkQuantized(); checkTimerGrid(); checkEntropy(); checkShape(); checkBurst(); checkStationary(); checkLayout();
+    }
+    lastKeydownT=t; lastKeydownForInput=t;
+    if(e.key&&e.key.length===1) prevChar=e.key;
+    else if(e.key==="Enter") prevChar="\n";
+
+    // rollover: did the previous key's keyup already happen? track overlap
+    if(lastKeyupT!==null){ const flight=t-lastKeyupT; flights.push(flight); if(flights.length>200)flights.shift(); checkRollover(); }
+
+    downAt.set(e.code||e.key,t);
+    stats(); refreshVerdict();
+  },true);
+
+  field.addEventListener("keyup",function(e){
+    nKeyup++; const t=now(); lastKeyupT=t;
+    logLine("keyup",describe(e));
+    const k=e.code||e.key;
+    if(downAt.has(k)){ const dwell=t-downAt.get(k); downAt.delete(k); dwells.push(dwell); if(dwells.length>200)dwells.shift();
+      checkDwell(); }
+    stats(); refreshVerdict();
+  },true);
+
+  field.addEventListener("beforeinput",function(e){
+    logLine("input","beforeinput type="+esc(e.inputType)+" data="+esc(e.data));
+  },true);
+
+  field.addEventListener("input",function(e){
+    nInput++; const t=now(); const it=e.inputType||"(none)";
+    logLine("input","input type="+esc(it)+" data="+esc(e.data)+" trusted="+e.isTrusted);
+    if(e.data) charsTyped+=e.data.length;
+    if(!e.isTrusted) trip("untrusted","isTrusted=false on input event");
+    const insertKind=/^insert(Text|CompositionText|FromDrop|ReplacementText)$/.test(it);
+    const noRecentKey=lastKeydownForInput===null||(t-lastKeydownForInput)>60;
+    if(insertKind && it!=="insertFromPaste" && noRecentKey){
+      trip("ghost-input","'"+(e.data||"")+"' inserted, no keydown within 60 ms (Δ="+(lastKeydownForInput===null?"∞":(t-lastKeydownForInput).toFixed(0)+"ms")+")");
+    }
+    checkActivation(); checkPointer();
+    counters();
+  },true);
+
+  field.addEventListener("paste",function(e){
+    const txt=(e.clipboardData&&e.clipboardData.getData("text"))||"";
+    logLine("paste","paste "+txt.length+" chars");
+    trip("paste",txt.length+" chars pasted in one shot");
+  },true);
+
+  // genuine pointer movement anywhere on the page
+  function markPointer(e){ if(e.isTrusted) sawPointer=true; }
+  window.addEventListener("mousemove",markPointer,true);
+  window.addEventListener("pointermove",markPointer,true);
+
+  // ===========================================================================
+  // derived / statistical checks
+  // ===========================================================================
+  function checkMetronome(){
+    if(gaps.length<8)return; const r=gaps.slice(-20); const cv=std(r)/(mean(r)||1);
+    if(cv<0.12) trip("metronome","CV="+cv.toFixed(3)+" over last "+r.length+" gaps (human ≳ 0.35)");
+    const m=mean(r); if(r.length>=10&&m>0&&(1000/m)>22) trip("superhuman",(1000/m).toFixed(1)+" keys/sec sustained");
+  }
+  function checkQuantized(){
+    if(gaps.length<8)return; const b={}; gaps.slice(-30).forEach(g=>{const k=Math.round(g); b[k]=(b[k]||0)+1;});
+    let v=0,n=0; for(const k in b) if(b[k]>n){n=b[k];v=+k;}
+    if(n>=6) trip("quantized",n+" gaps all ≈ "+v+" ms (fixed delay)");
+  }
+  function checkTimerGrid(){
+    if(gaps.length<12)return; const r=gaps.slice(-40); const bases=[8,10,12.5,16.667,20,25,33.333,50];
+    for(const base of bases){ let hit=0; r.forEach(g=>{ const m=g/base; if(Math.abs(m-Math.round(m))*base<1.2 && g>=base*0.5) hit++; });
+      if(hit/r.length>0.82){ trip("timer-grid",(hit/r.length*100).toFixed(0)+"% of gaps snap to a "+base+" ms grid"); break; } }
+  }
+  function checkEntropy(){
+    if(gaps.length<18)return; const H=entropyBits(gaps.slice(-40),15);
+    if(H<1.6) trip("low-entropy","entropy "+H.toFixed(2)+" bits (human typically > 3)");
+  }
+  function checkShape(){
+    if(gaps.length<24)return; const sk=skewness(gaps.slice(-50));
+    if(Math.abs(sk)<0.15) trip("uniform-dist","skew "+sk.toFixed(2)+" ≈ 0 (human latency is right-skewed)");
+  }
+  function checkRollover(){
+    if(flights.length<12)return; const r=flights.slice(-30);
+    const anyNeg=r.some(f=>f<0); const meanF=mean(r);
+    // if keys are strictly sequential and fast, flight ≈ gap and never negative
+    if(!anyNeg && meanF>0 && gaps.length>=12 && mean(gaps.slice(-30))<180){
+      trip("no-rollover","no key overlap across "+r.length+" keys at "+Math.round(mean(gaps.slice(-30)))+" ms gaps");
+    }
+  }
+  function checkDwell(){
+    if(dwells.length<4)return;
+    if(mean(dwells)<2) trip("flat-dwell","mean dwell "+mean(dwells).toFixed(2)+" ms over "+dwells.length+" keys");
+    else if(dwells.length>=8){ const cv=std(dwells.slice(-20))/(mean(dwells.slice(-20))||1);
+      if(cv<0.05) trip("flat-dwell","dwell CV "+cv.toFixed(3)+" (identical hold on every key)"); }
+  }
+  function checkBurst(){
+    if(boundaryGaps.length<5||midwordGaps.length<10)return;
+    const ratio=mean(boundaryGaps)/(mean(midwordGaps)||1);
+    if(ratio<1.08&&ratio>0.92) trip("no-burst","boundary/mid-word gap ratio "+ratio.toFixed(2)+" (humans pause at word edges)");
+  }
+  function checkStationary(){
+    if(gaps.length<40)return; const r=gaps.slice(-40); const win=10; const means=[];
+    for(let i=0;i+win<=r.length;i+=win) means.push(mean(r.slice(i,i+win)));
+    if(means.length<3)return; const drift=std(means)/(mean(means)||1);
+    if(drift<0.04) trip("stationary","window-mean drift "+drift.toFixed(3)+" (no speed-up/slow-down)");
+  }
+  function checkLayout(){
+    if(bigrams.length<30)return; const g=bigrams.slice(-80).map(x=>x.gap), c=bigrams.slice(-80).map(x=>x.cost);
+    const mg=mean(g),mc=mean(c); let num=0,dg=0,dc=0;
+    for(let i=0;i<g.length;i++){ num+=(g[i]-mg)*(c[i]-mc); dg+=(g[i]-mg)**2; dc+=(c[i]-mc)**2; }
+    if(dg===0||dc===0)return; const rr=num/Math.sqrt(dg*dc);
+    if(Math.abs(rr)<0.08) trip("no-layout","timing↔finger-travel correlation r="+rr.toFixed(2)+" ≈ 0");
+  }
+  function checkActivation(){
+    if(!navigator.userActivation)return; // Safari etc. lack it — don't penalise
+    if(nInput>=4 && !navigator.userActivation.isActive) trip("no-activation","userActivation.isActive=false during input");
+  }
+  function checkPointer(){
+    if(charsTyped>=8 && !sawPointer) trip("no-pointer",charsTyped+" chars typed, zero pointer movement observed");
+  }
+
+  // reap keydowns that never got a keyup
+  setInterval(function(){
+    if(downAt.size===0)return; const t=now(); let reaped=0;
+    downAt.forEach((dt,k)=>{ if(t-dt>1500){ downAt.delete(k); reaped++; } });
+    if(reaped>0){ pendingNoKeyup+=reaped; trip("no-keyup",pendingNoKeyup+" keydown(s) with no keyup after 1.5 s"); }
+  },700);
+
+  // ===========================================================================
+  // load-time environment checks
+  // ===========================================================================
+  const envTag=document.getElementById("envTag");
+  (function envProbe(){
+    const tells=[];
+    try{ if(navigator.webdriver===true){ trip("webdriver","navigator.webdriver === true"); } }catch(e){}
+    try{
+      const ua=navigator.userAgent||"";
+      if(/HeadlessChrome/i.test(ua)) tells.push("UA:Headless");
+      const isChromium=/Chrome|Chromium|Edg/i.test(ua);
+      if(isChromium && navigator.plugins && navigator.plugins.length===0) tells.push("plugins:0");
+      if(!navigator.languages || navigator.languages.length===0) tells.push("languages:∅");
+      if(window.outerWidth===0 || window.outerHeight===0) tells.push("outer:0");
+      if(tells.length) trip("headless-ua",tells.join(" · "));
+      envTag.textContent="webdriver="+navigator.webdriver+" · plugins="+(navigator.plugins?navigator.plugins.length:"?");
+    }catch(e){ envTag.textContent="env probe failed"; }
+    // WebGL software renderer
+    try{
+      const cv=document.createElement("canvas"); const gl=cv.getContext("webgl")||cv.getContext("experimental-webgl");
+      if(gl){ const dbg=gl.getExtension("WEBGL_debug_renderer_info");
+        const rend=dbg?gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL):"";
+        if(/SwiftShader|llvmpipe|Mesa OffScreen|Software/i.test(rend)) trip("headless-gpu","renderer: "+rend); }
+    }catch(e){}
+    logLine("env","detectors armed: "+TOTAL+" · webdriver="+navigator.webdriver+" · ua="+(navigator.userAgent||"").slice(0,60));
+    nFlags=CHECKS.filter(c=>S[c.id].tripped).length; counters();
+  })();
+
+  // Inspector / CDP probe: a getter that fires only while a Runtime is serializing console output.
+  (function inspectorProbe(){
+    let fired=false;
+    function probe(){
+      try{
+        const bait={}; Object.defineProperty(bait,"id",{ get(){ fired=true; return "x"; } });
+        console.debug(bait); // no-op visually; serialized only by an attached inspector
+        if(fired) trip("inspector","console serialization getter fired (DevTools/CDP Runtime attached)");
+      }catch(e){}
+    }
+    probe(); setInterval(()=>{ if(!S["inspector"].tripped) probe(); },2500);
+  })();
+
+  // ===========================================================================
+  // controls
+  // ===========================================================================
+  function resetAll(){
+    CHECKS.forEach(c=>{ const s=S[c.id]; s.tripped=false; s.hits=0; s.el.dataset.state="watch";
+      s.statusEl.textContent="watching"; s.detailEl.hidden=true; s.detailEl.textContent=""; });
+    nKeydown=nKeyup=nInput=nFlags=nEvents=0;
+    gaps.length=dwells.length=flights.length=boundaryGaps.length=midwordGaps.length=bigrams.length=0;
+    lastKeydownT=lastKeyupT=lastKeydownForInput=prevGapT=null; prevChar=null;
+    downAt.clear(); pendingNoKeyup=0; fastStreak=0; charsTyped=0; sawPointer=false;
+    field.value="";
+    logEl.innerHTML='<div class="log-empty">Reset. Focus the field and type.</div>';
+    D.gap.innerHTML=D.mean.innerHTML=D.dwell.innerHTML=D.flight.innerHTML="—<small> ms</small>";
+    D.cv.textContent="—"; D.ent.innerHTML="—<small> bits</small>";
+    badge.dataset.state="idle"; badge.textContent="AWAITING INPUT";
+    vText.textContent="Analysis reset. Start typing to begin again.";
+    meter.style.setProperty("--fill","0%"); riskNum.textContent="0";
+    try{ if(navigator.webdriver===true) trip("webdriver","navigator.webdriver === true"); }catch(e){}
+    counters(); field.focus();
+  }
+  document.getElementById("btnReset").addEventListener("click",resetAll);
+
+  // naive bot: untrusted events, empty code, no keyup, fixed 40 ms cadence, a capital + symbol
+  document.getElementById("btnDemo").addEventListener("click",function(){
+    resetAll();
+    const text="The quick brown fox! 42"; let i=0; field.focus();
+    logLine("flag","DEMO(naive): dispatching "+text.length+" synthetic keys at fixed 40 ms");
+    const timer=setInterval(function(){
+      if(i>=text.length){ clearInterval(timer); return; }
+      const ch=text[i++];
+      field.dispatchEvent(new KeyboardEvent("keydown",{ key:ch, code:"", keyCode:0, bubbles:true, cancelable:true }));
+      field.value+=ch;
+      field.dispatchEvent(new InputEvent("input",{ inputType:"insertText", data:ch, bubbles:true }));
+    },40);
+  });
+
+  // humanized bot: adds log-normal-ish jitter and sends keyups with a dwell, to show
+  // the event-level tells (untrusted / no-code / shift / activation) still fire.
+  document.getElementById("btnDemo2").addEventListener("click",function(){
+    resetAll();
+    const text="The quick brown fox jumps over the lazy dog! 1234"; let i=0; field.focus();
+    logLine("flag","DEMO(humanized): synthetic keys with jittered timing + fake dwell");
+    (function next(){
+      if(i>=text.length)return; const ch=text[i++];
+      field.dispatchEvent(new KeyboardEvent("keydown",{ key:ch, code:"", keyCode:0, bubbles:true, cancelable:true }));
+      field.value+=ch;
+      field.dispatchEvent(new InputEvent("input",{ inputType:"insertText", data:ch, bubbles:true }));
+      setTimeout(()=>field.dispatchEvent(new KeyboardEvent("keyup",{ key:ch, code:"", keyCode:0, bubbles:true })), 40+Math.random()*50);
+      const gap=Math.max(30, 110*Math.exp((Math.random()-0.5)*0.9));
+      setTimeout(next,gap);
+    })();
+  });
+
+  field.focus(); counters();
+})();
+</script>
+</body>
+</html>
