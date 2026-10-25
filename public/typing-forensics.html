@@ -165,9 +165,9 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="kicker"><span class="dot"></span> Keystroke Forensics · live · 27 detectors</div>
+    <div class="kicker"><span class="dot"></span> Keystroke Forensics · live · 28 detectors</div>
     <h1>Is a human typing, or a machine?</h1>
-    <p class="lede">Type into the field. Twenty-seven detectors across four layers examine every keystroke —
+    <p class="lede">Type into the field. Twenty-eight detectors across four layers examine every keystroke —
       the events themselves, the rhythm, higher-order human patterns, and the browser environment.
       Each names what it watches for and the weight it carries, and lights up the moment its signal appears.
       Everything runs in your browser; nothing is sent anywhere.</p>
@@ -186,7 +186,7 @@
     </div>
     <div class="meter-row">
       <div class="meter" id="meter" style="--fill:0%"></div>
-      <div class="meter-num"><span id="riskNum">0</span><small> / 100 automation risk · </small><span id="trippedCount">0</span><small>/<span id="totalCount">27</span> tripped</small></div>
+      <div class="meter-num"><span id="riskNum">0</span><small> / 100 automation risk · </small><span id="trippedCount">0</span><small>/<span id="totalCount">28</span> tripped</small></div>
     </div>
   </div>
 
@@ -313,6 +313,8 @@
       desc:"A getter on a logged object fires only when a DevTools/CDP Runtime is serializing console output. Also trips with DevTools open." },
     { id:"no-pointer", cat:"env", sev:"warn", w:9, name:"Never moved the pointer",
       desc:"Text was typed but no genuine mouse/pointer movement has ever occurred. Automation often drives the keyboard with a dead cursor." },
+    { id:"hotkey-trigger", cat:"env", sev:"warn", w:16, name:"Hotkey-triggered run",
+      desc:"A typing run began right after an intercepted hotkey — an orphan keyup whose keydown the OS swallowed (e.g. an autotyper's F8 / Ctrl+Alt+V trigger). Catches hotkey-driven autotypers; can be fooled by an alt-tab back into the window." },
     { id:"paste", cat:"env", sev:"warn", w:10, name:"Paste instead of typing",
       desc:"A paste event delivered the text wholesale. Not automation by itself, but it bypasses typing entirely." }
   ];
@@ -328,6 +330,9 @@
   let prevGapT=null;
   const downAt=new Map();                 // pending keydowns awaiting keyup
   let pendingNoKeyup=0, fastStreak=0, sawPointer=false, charsTyped=0;
+  // hotkey-trigger correlation: an intercepted hotkey leaves an orphan keyup (its
+  // keydown was swallowed upstream); we remember it and see if a typing run follows.
+  let lastTriggerT=null, lastTriggerKey=null, lastRunT=null, runsTotal=0, runsAfterTrigger=0;
   const boundaryGaps=[], midwordGaps=[];  // for burst structure
   const bigrams=[];                        // {gap, cost} for layout correlation
   let prevChar=null;
@@ -532,6 +537,7 @@
     const k=e.code||e.key;
     if(downAt.has(k)){ const dwell=t-downAt.get(k); downAt.delete(k); dwells.push(dwell); if(dwells.length>200)dwells.shift();
       checkDwell(); }
+    else { noteOrphanKeyup(e,t); }
     stats(); refreshVerdict();
   },true);
 
@@ -549,7 +555,7 @@
     if(insertKind && it!=="insertFromPaste" && noRecentKey){
       trip("ghost-input","'"+(e.data||"")+"' inserted, no keydown within 60 ms (Δ="+(lastKeydownForInput===null?"∞":(t-lastKeydownForInput).toFixed(0)+"ms")+")");
     }
-    checkActivation(); checkPointer();
+    checkActivation(); checkPointer(); checkTrigger(t);
     counters();
   },true);
 
@@ -629,6 +635,28 @@
   function checkPointer(){
     if(charsTyped>=8 && !sawPointer) trip("no-pointer",charsTyped+" chars typed, zero pointer movement observed");
   }
+  // An orphan keyup (keyup with no matching keydown) means the keydown was
+  // intercepted before the page saw it — the signature of a global hotkey
+  // (RegisterHotKey) such as an autotyper's F8 cancel or Ctrl+Alt+V trigger.
+  // Remember a hotkey-shaped one so a typing run that follows can be tied to it.
+  function noteOrphanKeyup(e,t){
+    logLine("env","orphan keyup: "+esc(e.key)+" (no keydown reached the page — intercepted upstream)");
+    const hotkeyShaped = /^F\d{1,2}$/.test(e.key) || (e.key&&e.key.length>1) || e.ctrlKey || e.altKey || e.metaKey;
+    if(hotkeyShaped){ lastTriggerT=t; lastTriggerKey=e.key; }
+  }
+  // Correlate a preceding intercepted hotkey with the start of a typing run.
+  function checkTrigger(t){
+    const runStart = lastRunT===null || (t-lastRunT)>1500;
+    if(runStart){
+      runsTotal++;
+      if(lastTriggerT!==null && (t-lastTriggerT)<=4000){
+        runsAfterTrigger++;
+        trip("hotkey-trigger",runsAfterTrigger+"/"+runsTotal+" input runs began right after an intercepted hotkey (last: '"+esc(lastTriggerKey)+"' keyup, Δ"+((t-lastTriggerT)/1000).toFixed(1)+"s)");
+        lastTriggerT=null; // consume this trigger
+      }
+    }
+    lastRunT=t;
+  }
 
   // reap keydowns that never got a keyup
   setInterval(function(){
@@ -688,6 +716,7 @@
     gaps.length=dwells.length=flights.length=boundaryGaps.length=midwordGaps.length=bigrams.length=0;
     lastKeydownT=lastKeyupT=lastKeydownForInput=prevGapT=null; prevChar=null;
     downAt.clear(); pendingNoKeyup=0; fastStreak=0; charsTyped=0; sawPointer=false;
+    lastTriggerT=null; lastTriggerKey=null; lastRunT=null; runsTotal=0; runsAfterTrigger=0;
     field.value="";
     logEl.innerHTML='<div class="log-empty">Reset. Focus the field and type.</div>';
     D.gap.innerHTML=D.mean.innerHTML=D.dwell.innerHTML=D.flight.innerHTML="—<small> ms</small>";
