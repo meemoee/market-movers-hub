@@ -404,19 +404,20 @@ TRANSITION_WORDS = frozenset({
 # capture to re-personalise; set use_profile False (CLI --synthetic) to ignore it.
 # ---------------------------------------------------------------------------
 TYPING_PROFILE: dict[str, Any] = {
-    "meta": {"keystrokes": 247, "letter_transitions": 146, "wpm": 76.5},
-    "dwell_ms": {"mean_ms": 100.7, "cv": 0.21},
-    "shift_dwell_ms": {"mean_ms": 153.2, "cv": 0.413},
+    "meta": {"keystrokes": 176, "letter_transitions": 72, "wpm": 41.7},
+    "dwell_ms": {"mean_ms": 98.9, "cv": 0.213},
+    "shift_dwell_ms": {"mean_ms": 175.3, "cv": 0.714},
     "gaps_ms": {
-        "midword": {"mean_ms": 141.3, "cv": 1.122, "n": 191},
-        "after_space": {"mean_ms": 169.3, "cv": 0.579, "n": 44},
-        "after_comma": {"mean_ms": 143.5, "cv": 0.767, "n": 5},
-        "after_sentence": {"mean_ms": 75.9, "cv": 0.178, "n": 4},
+        "midword": {"mean_ms": 205.3, "cv": 1.184, "n": 132},
+        "after_space": {"mean_ms": 414.1, "cv": 0.837, "n": 30},
+        "after_comma": {"mean_ms": 671.2, "cv": 0.692, "n": 4},
+        "after_sentence": {"mean_ms": 439.3, "cv": 0.911, "n": 6},
         "after_newline": {"mean_ms": 0.0, "cv": 0.0, "n": 0},
     },
-    "bigram_mult": {"same_finger": 1.441, "same_hand": 1.154, "alt_hand": 0.844},
-    "rollover": {"rate": 0.493, "overlap_ms": {"mean_ms": 36.9, "cv": 0.656, "n": 68}},
-    "pauses": {"rate": 0.028, "mean_ms": 1150.5},
+    "bigram_mult": {"same_finger": 0.737, "same_hand": 0.426, "alt_hand": 0.497},
+    "reach_mult": {"digit": 1.45, "symbol": 2.838},
+    "rollover": {"rate": 0.514, "overlap_ms": {"mean_ms": 38.0, "cv": 0.673, "n": 36}},
+    "pauses": {"rate": 0.154, "mean_ms": 1040.4},
 }
 
 # QWERTY hand/finger model matching the profiler, for applying bigram_mult.

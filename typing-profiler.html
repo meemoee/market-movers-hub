@@ -189,13 +189,15 @@
 (function () {
   "use strict";
 
-  // --- target passage: pangram coverage + mixed case + lots of symbols and
-  //     digits, so the reach-to-symbol slowdown is actually measured ---
+  // --- target passage: a natural everyday message -- normal prose pace with a
+  //     realistic sprinkle of symbols and numbers, so one capture gives both the
+  //     true prose speed and the symbol-reach slowdown, measured together ---
   var PASSAGE =
-    "The quick brown fox jumps over the lazy dog. Email me at user@place.co, " +
-    "or call (555) 123-4567! Costs: $19.99 + 8% tax = about $21.60. " +
-    "Use #tags & \"smart quotes\"; it's ~100% ready. Why wait? 2 + 2 = 4, right? " +
-    "Type it the way you really do -- symbols, numbers, mistakes and all.";
+    "Hi Sam, thanks for the quick update! I went through the Q3 numbers you " +
+    "attached, and they look solid: revenue is up 12% and churn fell to 4.5%. " +
+    "Can we meet Tuesday at 2:30 to go over them? I'll send an invite shortly. " +
+    "One open question -- do we include the EMEA data (and the 2024 forecast) " +
+    "this time? Let me know what you think. Best, Alex";
   document.getElementById("prompt").textContent = PASSAGE;
 
   // --- QWERTY finger / hand model (matches the forensics console) ---
