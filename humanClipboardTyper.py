@@ -10,6 +10,13 @@ key distance delays, and local backspace editing.
 While typing, press F9 to pause at the current position and F9 again to resume
 from exactly where it left off; press F8 to stop.
 
+By default the timing is driven by a captured TYPING_PROFILE -- a real typist's
+hold-time, per-context gap, letter-pair and overlap statistics (produced by
+typing-profiler.html). Hold time and gap are independent, so key overlap
+(rollover) emerges as it does for real hands. Pass --synthetic to use the
+built-in model instead, --speed to scale the pace, or --pace-floor for a
+stealth speed cap.
+
 The script uses only the Python standard library. Try ``--help`` to change options.
 """
 
@@ -389,6 +396,65 @@ TRANSITION_WORDS = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# Captured typing profile. Produced by typing-profiler.html from a real typing
+# sample and pasted in here. In profile mode (the default) the typist's own
+# hold-time, per-context gap, letter-pair and overlap statistics drive the
+# timing, instead of the synthetic model below. Replace this block with a fresh
+# capture to re-personalise; set use_profile False (CLI --synthetic) to ignore it.
+# ---------------------------------------------------------------------------
+TYPING_PROFILE: dict[str, Any] = {
+    "meta": {"keystrokes": 247, "letter_transitions": 146, "wpm": 76.5},
+    "dwell_ms": {"mean_ms": 100.7, "cv": 0.21},
+    "shift_dwell_ms": {"mean_ms": 153.2, "cv": 0.413},
+    "gaps_ms": {
+        "midword": {"mean_ms": 141.3, "cv": 1.122, "n": 191},
+        "after_space": {"mean_ms": 169.3, "cv": 0.579, "n": 44},
+        "after_comma": {"mean_ms": 143.5, "cv": 0.767, "n": 5},
+        "after_sentence": {"mean_ms": 75.9, "cv": 0.178, "n": 4},
+        "after_newline": {"mean_ms": 0.0, "cv": 0.0, "n": 0},
+    },
+    "bigram_mult": {"same_finger": 1.441, "same_hand": 1.154, "alt_hand": 0.844},
+    "rollover": {"rate": 0.493, "overlap_ms": {"mean_ms": 36.9, "cv": 0.656, "n": 68}},
+    "pauses": {"rate": 0.028, "mean_ms": 1150.5},
+}
+
+# QWERTY hand/finger model matching the profiler, for applying bigram_mult.
+_PROFILE_HAND_L = set("qwertasdfgzxcvb")
+_PROFILE_HAND_R = set("yuiophjklnm")
+_PROFILE_COL: dict[str, int] = {}
+for _grp, _i in [("qaz", 0), ("wsx", 1), ("edc", 2), ("rfv", 3), ("tgb", 3),
+                 ("yhn", 6), ("ujm", 6), ("ik", 7), ("ol", 8), ("p", 9)]:
+    for _c in _grp:
+        _PROFILE_COL[_c] = _i
+
+
+def _profile_bigram_class(a: str, b: str) -> str | None:
+    """Classify a letter pair the way the profiler did: alternating hands,
+    same hand different finger, or same finger."""
+    a, b = a.lower(), b.lower()
+    ha = "L" if a in _PROFILE_HAND_L else ("R" if a in _PROFILE_HAND_R else None)
+    hb = "L" if b in _PROFILE_HAND_L else ("R" if b in _PROFILE_HAND_R else None)
+    if ha is None or hb is None:
+        return None
+    if ha != hb:
+        return "alt_hand"
+    return "same_finger" if _PROFILE_COL.get(a) == _PROFILE_COL.get(b) else "same_hand"
+
+
+def _profile_gap_context(c: str) -> str:
+    """Bucket a gap by the character that precedes it (matches the profiler)."""
+    if c == " ":
+        return "after_space"
+    if c in "\n\t":
+        return "after_newline"
+    if c in ",;:-":
+        return "after_comma"
+    if c in ".!?":
+        return "after_sentence"
+    return "midword"
+
+
 def get_key_mapping(character: str) -> tuple[int, int, bool] | None:
     """Return (virtual_key, scan_code, requires_shift) for character, or None if special."""
     if IS_WINDOWS and user32 is not None and hasattr(user32, "VkKeyScanW"):
@@ -453,7 +519,9 @@ class TypingSettings:
     thinking_pause_scale: float = 1.0
     dry_run: bool = False
     unicode_mode: str = "paste"
-    pace_floor: float = 0.22
+    pace_floor: float = 0.0
+    use_profile: bool = True
+    speed: float = 1.0
 
 
 def parse_hotkey(value: str, *, require_modifier: bool) -> Hotkey:
@@ -601,6 +669,37 @@ class HumanTyper:
         # down across a run of shifted characters (a long hold reads as a stuck key).
         self._shift_down_at: float = 0.0
 
+        # --- captured profile (profile mode) ---------------------------------
+        # Scheduled key releases: (vk, scan, is_extended, release_at_monotonic).
+        # In profile mode a key is pressed and its release scheduled at +dwell,
+        # while the next key fires at +gap, so hold time and gap are independent
+        # and key overlap (rollover) emerges whenever dwell > gap, as it does for
+        # real hands. Empty and unused in synthetic mode.
+        self._pending_ups: list[tuple[int, int, bool, float]] = []
+        self.profile = TYPING_PROFILE if (settings.use_profile and TYPING_PROFILE) else None
+        if self.profile:
+            g = self.profile["gaps_ms"]
+
+            def _dist_s(d, fallback):
+                if d and d.get("n", 0) >= 6 and d.get("mean_ms", 0) > 0:
+                    return (d["mean_ms"] / 1000.0, d.get("cv", 0.3))
+                return fallback
+
+            mid = _dist_s(g.get("midword"), (0.14, 1.0))
+            space = _dist_s(g.get("after_space"), mid)
+            self._gap_dist = {
+                "midword": mid,
+                "after_space": space,
+                "after_comma": _dist_s(g.get("after_comma"), space),
+                "after_sentence": _dist_s(g.get("after_sentence"), space),
+                "after_newline": _dist_s(g.get("after_newline"), space),
+            }
+            dw = self.profile["dwell_ms"]
+            self._dwell_dist = (dw["mean_ms"] / 1000.0, dw.get("cv", 0.2))
+            sd = self.profile.get("shift_dwell_ms") or dw
+            self._shift_dwell_dist = (sd["mean_ms"] / 1000.0, sd.get("cv", 0.3))
+            self._bigram_mult = {k: v for k, v in self.profile["bigram_mult"].items() if v}
+
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
 
@@ -670,12 +769,57 @@ class HumanTyper:
         self._send_input_events([_keyboard_event(virtual_key=virtual_key, scan_code=scan_code, flags=flags)])
 
     def _flush_pending_release(self) -> None:
-        """Release any pending held key from key rollover."""
+        """Release every key still held: the synthetic single-slot rollover key
+        and any profile-mode scheduled releases. Used before a blocking action
+        (paste, backspace, shift change) and whenever all keys must come up now."""
         if self.pending_key_release:
             vk, scan, is_ext = self.pending_key_release
             self.pending_key_release = None
             ext_flag = KEYEVENTF_EXTENDEDKEY if is_ext else 0
             self._press_key_event(vk, scan, ext_flag | KEYEVENTF_KEYUP)
+        if self._pending_ups:
+            for vk, scan, is_ext, _at in sorted(self._pending_ups, key=lambda p: p[3]):
+                self._emit_up(vk, scan, is_ext)
+            self._pending_ups = []
+
+    # --- profile-mode scheduled emission ------------------------------------
+    def _lognormal_from(self, mean_s: float, cv: float) -> float:
+        """Sample a lognormal with the given arithmetic mean (seconds) and
+        coefficient of variation -- the form the captured profile stores."""
+        if mean_s <= 0:
+            return 0.05
+        cv = max(0.05, min(1.6, cv))
+        sigma = math.sqrt(math.log(1.0 + cv * cv))
+        mu = math.log(mean_s) - sigma * sigma / 2.0
+        return math.exp(self.rng.normalvariate(mu, sigma))
+
+    def _emit_down(self, vk: int, scan: int, is_ext: bool) -> None:
+        self._press_key_event(vk, scan, KEYEVENTF_EXTENDEDKEY if is_ext else 0)
+
+    def _emit_up(self, vk: int, scan: int, is_ext: bool) -> None:
+        self._press_key_event(vk, scan, (KEYEVENTF_EXTENDEDKEY if is_ext else 0) | KEYEVENTF_KEYUP)
+
+    def _sample_dwell(self) -> float:
+        return min(0.40, max(0.03, self._lognormal_from(*self._dwell_dist)))
+
+    def _advance_to(self, target: float) -> bool:
+        """Sleep until monotonic time reaches target (cancel-aware)."""
+        dt = target - time.monotonic()
+        if dt > 0:
+            return self._sleep(dt)
+        return not self.cancel_event.is_set()
+
+    def _flush_due_ups(self, target: float) -> bool:
+        """Release each scheduled key-up whose time falls at or before target,
+        at its own time, in order. Leaves later releases pending (they outlast
+        the next keydown -> that is the key overlap)."""
+        self._pending_ups.sort(key=lambda p: p[3])
+        while self._pending_ups and self._pending_ups[0][3] <= target:
+            vk, scan, is_ext, at = self._pending_ups.pop(0)
+            if not self._advance_to(at):
+                return False
+            self._emit_up(vk, scan, is_ext)
+        return True
 
     def _press_and_release_key(
         self,
@@ -867,24 +1011,35 @@ class HumanTyper:
             return self._paste_text(character)
 
         vk, scan, req_shift = mapping
-
-        # Check if next character is candidate for key rollover (both letters)
-        next_is_letter = bool(next_character and next_character.isalpha())
-        cur_is_letter = character.isalpha()
-        rollover_candidate = cur_is_letter and next_is_letter
+        is_ext = vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_DELETE)
 
         if not self._set_shift_state(req_shift):
             return False
 
-        is_ext = vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_DELETE)
+        if self.profile is not None:
+            # A physical key can't be held and pressed again (e.g. a double
+            # letter): release any still-scheduled instance of this key first.
+            for i, (pvk, pscan, pext, _at) in enumerate(self._pending_ups):
+                if pvk == vk and pscan == scan:
+                    self._emit_up(pvk, pscan, pext)
+                    del self._pending_ups[i]
+                    break
+            # Press the key down and schedule its release at +dwell; the next key
+            # fires at +gap (in _interkey_sleep), so overlap emerges when dwell > gap.
+            self._emit_down(vk, scan, is_ext)
+            self._pending_ups.append((vk, scan, is_ext, time.monotonic() + self._sample_dwell()))
+            if self.shift_held and not requires_shift_state(next_character):
+                self._set_shift_state(False)
+            return True
+
+        # Synthetic mode: press, hold, release (with the single-slot rollover hack).
+        next_is_letter = bool(next_character and next_character.isalpha())
+        rollover_candidate = character.isalpha() and next_is_letter
         res = self._press_and_release_key(
             vk, scan, is_extended=is_ext, next_is_rollover_candidate=rollover_candidate
         )
-
-        # Release Shift immediately after character key press if next char does not require Shift
         if self.shift_held and not requires_shift_state(next_character):
             self._set_shift_state(False)
-
         return res
 
     def _backspace(self, count: int = 1) -> bool:
@@ -940,6 +1095,8 @@ class HumanTyper:
 
     def _get_thinking_delay(self, text: str, word_index: int, words: list[str]) -> float:
         """Content-aware hesitation before typing a word or clause."""
+        if self.profile is not None:
+            return 0.0  # profile mode: pauses already live in the captured gap spread
         if self.settings.thinking_pause_scale <= 0:
             return 0.0
 
@@ -974,8 +1131,26 @@ class HumanTyper:
         pause = self.rng.lognormvariate(mu_pause, 0.45)
         return min(8.0, max(0.20, pause))
 
+    def _profile_interkey_delay(self, current_char: str, next_char: str | None) -> float:
+        """Sample the keydown-to-keydown gap from the captured profile: the
+        bucket for this context, scaled by the letter-pair multiplier for a
+        letter->letter mid-word pair, then by the speed knob."""
+        ctx = _profile_gap_context(current_char)
+        mean_s, cv = self._gap_dist.get(ctx) or self._gap_dist["midword"]
+        if (ctx == "midword" and current_char.isalpha()
+                and next_char and next_char.isalpha()):
+            mult = self._bigram_mult.get(_profile_bigram_class(current_char, next_char))
+            if mult:
+                mean_s *= mult
+        speed = self.settings.speed if self.settings.speed > 0 else 1.0
+        delay = self._lognormal_from(mean_s / speed, cv)
+        return min(4.0, max(0.02, delay))
+
     def _next_interkey_delay(self, current_char: str, next_char: str | None, progress: float = 0.0) -> float:
         """Compute smooth, right-skewed log-normal delay with non-stationary passage pace drift."""
+        if self.profile is not None:
+            return self._apply_pace_guard(self._profile_interkey_delay(current_char, next_char))
+
         # Non-stationary cumulative passage-level pace drift + fatigue arc
         walk_step = self.rng.normalvariate(0.0, 0.03)
         self.pace_drift = max(0.50, min(2.50, self.pace_drift + walk_step))
@@ -1052,7 +1227,20 @@ class HumanTyper:
         non-trivial pause, and drop Shift before a longer one -- a human doesn't
         hold Shift through a pause, and the next shifted character re-presses it.
         Brief overlaps (<=120 ms) still keep their rollover.
+
+        In profile mode the gap advances a scheduled timeline instead: scheduled
+        key-ups due before the next keydown fire at their own times (later ones
+        stay down past it -- the overlap), and Shift is still dropped before a
+        long gap so it never looks stuck.
         """
+        if self.profile is not None:
+            target = time.monotonic() + seconds
+            if not self._flush_due_ups(target):
+                return False
+            if self.shift_held and (seconds > 0.30 or (time.monotonic() - self._shift_down_at) > 0.90):
+                self._set_shift_state(False)
+            return self._advance_to(target)
+
         if self.pending_key_release is not None and seconds > 0.12:
             self._flush_pending_release()
         if self.shift_held and (seconds > 0.30 or (time.monotonic() - self._shift_down_at) > 0.90):
@@ -1076,19 +1264,23 @@ class HumanTyper:
 
         index = 0
         total_len = len(text)
+        try:
+            return self._type_loop(text, words, index, word_idx, char_in_word, total_len)
+        finally:
+            # Whatever happened (done, cancelled, paused-then-cancelled, error),
+            # never leave a key physically down.
+            self._flush_pending_release()
+            if self.shift_held:
+                self._set_shift_state(False)
+
+    def _type_loop(self, text, words, index, word_idx, char_in_word, total_len) -> bool:
         while index < total_len:
             if self.cancel_event.is_set():
-                self._flush_pending_release()
-                if self.shift_held:
-                    self._set_shift_state(False)
                 return False
 
             # Pause checkpoint: hold here (with no key down) until resumed. Keeps
             # the current position, so resuming continues at this same character.
             if not self._wait_if_paused():
-                self._flush_pending_release()
-                if self.shift_held:
-                    self._set_shift_state(False)
                 return False
 
             progress = index / max(1, total_len)
@@ -1168,10 +1360,6 @@ class HumanTyper:
                 return False
 
             index += 1
-
-        self._flush_pending_release()
-        if self.shift_held:
-            self._set_shift_state(False)
 
         return True
 
@@ -1437,9 +1625,23 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pace-floor",
         type=nonnegative_float,
-        default=0.22,
+        default=0.0,
         help="minimum rolling mean (seconds) for the last 30 inter-keydown gaps; holds "
-             "fast runs above the no-rollover detector floor. 0 disables (default: 0.22)",
+             "fast runs above a speed-gating detector's no-rollover floor. 0 disables "
+             "(default: 0, i.e. replay at true recorded speed). Use ~0.22 for stealth "
+             "against detectors that flag raw speed.",
+    )
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="ignore the captured TYPING_PROFILE and use the built-in synthetic timing model",
+    )
+    parser.add_argument(
+        "--speed",
+        type=positive_float,
+        default=1.0,
+        help="in profile mode, scale typing speed vs the captured profile; >1 faster, "
+             "<1 slower (default: 1.0 = as recorded)",
     )
     parser.add_argument(
         "--seed",
@@ -1482,6 +1684,8 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         unicode_mode=args.unicode_mode,
         pace_floor=args.pace_floor,
+        use_profile=not args.synthetic,
+        speed=args.speed,
     )
     try:
         HotkeyApp(typing_hotkey, cancel_hotkey, pause_hotkey, settings).run()
