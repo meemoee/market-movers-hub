@@ -131,9 +131,10 @@
   <header>
     <p class="kicker"><span class="dot"></span> Keystroke instrument</p>
     <h1>Typing Rhythm Profiler</h1>
-    <p class="lede">Type the passage below at your normal pace, mistakes and all. This measures your own
-      hold times, inter-key gaps by context, letter-pair timing and key overlap, and exports a profile.
-      Everything stays in this browser — nothing is sent anywhere.</p>
+    <p class="lede">Type the passage below at your normal pace, mistakes and all — and don't skip the
+      symbols and numbers, that's how it learns your slow-down reaching for them. This measures your own
+      hold times, inter-key gaps by context, letter-pair and symbol-reach timing, and key overlap, then
+      exports a profile. Everything stays in this browser — nothing is sent anywhere.</p>
   </header>
 
   <div class="panel">
@@ -188,11 +189,13 @@
 (function () {
   "use strict";
 
-  // --- target passage: pangrams + punctuation + mixed case, no hard-to-type glyphs ---
+  // --- target passage: pangram coverage + mixed case + lots of symbols and
+  //     digits, so the reach-to-symbol slowdown is actually measured ---
   var PASSAGE =
-    "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. " +
-    "She sells seashells by the shore, and I buy them too. We tested quietly: zero errors, " +
-    "mixed case, normal speed. Type the way you really do, mistakes and all.";
+    "The quick brown fox jumps over the lazy dog. Email me at user@place.co, " +
+    "or call (555) 123-4567! Costs: $19.99 + 8% tax = about $21.60. " +
+    "Use #tags & \"smart quotes\"; it's ~100% ready. Why wait? 2 + 2 = 4, right? " +
+    "Type it the way you really do -- symbols, numbers, mistakes and all.";
   document.getElementById("prompt").textContent = PASSAGE;
 
   // --- QWERTY finger / hand model (matches the forensics console) ---
@@ -225,6 +228,7 @@
     S = {
       buckets: { midword: [], after_space: [], after_comma: [], after_sentence: [], after_newline: [] },
       byClass: { same_finger: [], same_hand: [], alt_hand: [] },
+      reach: { to_letter: [], to_digit: [], to_symbol: [] },  // gap INTO the next char, from an alnum prev
       dwells: [], shiftDwells: [], allGaps: [],
       rollCount: 0, letterTrans: 0, overlaps: [],
       charCount: 0, activeMs: 0
@@ -269,6 +273,14 @@
         if (isLetter(prevCharStr) && isLetter(ch)) {
           var cls = bigramClass(prevCharStr, ch);
           if (cls) S.byClass[cls].push(gap);
+        }
+        // reach to the next char, measured from a letter/digit (neutral mid-flow
+        // position) so a symbol's hunt-and-reach cost is isolated from word pauses
+        if (/[a-z0-9]/i.test(prevCharStr)) {
+          var tgt = /[a-z]/i.test(ch) ? "to_letter"
+                  : (/[0-9]/.test(ch) ? "to_digit"
+                  : ((ch !== " " && ch !== "\n" && ch !== "\t") ? "to_symbol" : null));
+          if (tgt) S.reach[tgt].push(gap);
         }
       }
       if (isLetter(prevCharStr) && isLetter(ch)) {
@@ -397,6 +409,10 @@
         same_finger: mult(S.byClass.same_finger),
         same_hand: mult(S.byClass.same_hand),
         alt_hand: mult(S.byClass.alt_hand)
+      },
+      reach_mult: {
+        digit: mult(S.reach.to_digit),     // gap into a digit, relative to mid-word mean
+        symbol: mult(S.reach.to_symbol)    // gap into a symbol (the reach you noticed)
       },
       rollover: {
         rate: S.letterTrans >= 5 ? r3(S.rollCount / S.letterTrans) : null,

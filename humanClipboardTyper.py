@@ -699,6 +699,9 @@ class HumanTyper:
             sd = self.profile.get("shift_dwell_ms") or dw
             self._shift_dwell_dist = (sd["mean_ms"] / 1000.0, sd.get("cv", 0.3))
             self._bigram_mult = {k: v for k, v in self.profile["bigram_mult"].items() if v}
+            # Reach multipliers for the gap INTO a digit or symbol, relative to the
+            # mid-word mean. Absent in older captures -> no slowdown (mult 1.0).
+            self._reach_mult = {k: v for k, v in (self.profile.get("reach_mult") or {}).items() if v}
 
     def _sleep(self, seconds: float) -> bool:
         return sleep_interruptibly(seconds, self.cancel_event)
@@ -1137,11 +1140,20 @@ class HumanTyper:
         letter->letter mid-word pair, then by the speed knob."""
         ctx = _profile_gap_context(current_char)
         mean_s, cv = self._gap_dist.get(ctx) or self._gap_dist["midword"]
-        if (ctx == "midword" and current_char.isalpha()
-                and next_char and next_char.isalpha()):
-            mult = self._bigram_mult.get(_profile_bigram_class(current_char, next_char))
-            if mult:
-                mean_s *= mult
+        if ctx == "midword" and next_char:
+            if current_char.isalpha() and next_char.isalpha():
+                mult = self._bigram_mult.get(_profile_bigram_class(current_char, next_char))
+                if mult:
+                    mean_s *= mult
+            elif next_char.isdigit():
+                m = self._reach_mult.get("digit")
+                if m:
+                    mean_s *= m
+            elif not next_char.isalnum() and next_char not in " \n\t":
+                # reaching for a symbol (usually a Shift combo) -- the slow part
+                m = self._reach_mult.get("symbol")
+                if m:
+                    mean_s *= m
         speed = self.settings.speed if self.settings.speed > 0 else 1.0
         delay = self._lognormal_from(mean_s / speed, cv)
         return min(4.0, max(0.02, delay))
