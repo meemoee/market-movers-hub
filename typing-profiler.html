@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Record your own typing rhythm and export it as a profile.">
+<title>Typing Rhythm Profiler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Companion to the keystroke-forensics console: a recording instrument.
+     Layout: single column -- prompt + capture field up top, live gauges, then
+     the exported profile. Cool graphite neutrals, one measured azure accent. */
+  :root {
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --panel-2: #f4f6f8;
+    --ink: #161a20;
+    --ink-soft: #515a66;
+    --ink-faint: #8b95a1;
+    --line: #d7dde3;
+    --line-strong: #c0c8d1;
+    --accent: #2d6ae0;
+    --accent-soft: #e2ebfb;
+    --good: #1f7a54;
+    --warn: #9a6b12;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(20,25,35,.05), 0 10px 28px rgba(20,25,35,.06);
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1016; --panel: #161b22; --panel-2: #11151b;
+      --ink: #e7ebf0; --ink-soft: #a3adba; --ink-faint: #6b7682;
+      --line: #252c35; --line-strong: #343d48;
+      --accent: #5b92f5; --accent-soft: #152338;
+      --good: #58c08b; --warn: #e0b553;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.4);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1016; --panel: #161b22; --panel-2: #11151b;
+    --ink: #e7ebf0; --ink-soft: #a3adba; --ink-faint: #6b7682;
+    --line: #252c35; --line-strong: #343d48;
+    --accent: #5b92f5; --accent-soft: #152338;
+    --good: #58c08b; --warn: #e0b553;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.4);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans);
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 28px max(16px, 4vw) 64px; }
+
+  header { margin-bottom: 20px; }
+  .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .kicker .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  h1 { font-size: clamp(24px, 4.5vw, 34px); margin: 0 0 8px; letter-spacing: -.02em; font-weight: 700; text-wrap: balance; }
+  .lede { color: var(--ink-soft); margin: 0; max-width: 62ch; font-size: 15px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .panel + .panel { margin-top: 18px; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius) var(--radius) 0 0; }
+  .panel-title { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+  .panel-body { padding: 16px; }
+
+  .prompt {
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.7; color: var(--ink-soft);
+    background: var(--panel-2); border: 1px dashed var(--line-strong); border-radius: 9px;
+    padding: 11px 13px; margin: 0 0 12px; user-select: all;
+  }
+  textarea {
+    width: 100%; min-height: 150px; resize: vertical; font-family: var(--mono);
+    font-size: 15px; line-height: 1.6; color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line-strong); border-radius: 9px; padding: 12px 13px;
+  }
+  textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  textarea::placeholder { color: var(--ink-faint); }
+
+  .btnrow { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  button {
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: .02em; font-weight: 500;
+    border-radius: 8px; padding: 9px 15px; cursor: pointer; border: 1px solid var(--line-strong);
+    color: var(--ink); background: var(--panel-2); transition: border-color .15s, color .15s, background .15s;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.07); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; border-color: var(--line-strong); color: var(--ink-faint); }
+
+  .gauges { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  @media (max-width: 560px) { .gauges { grid-template-columns: repeat(2, 1fr); } }
+  .gauge { background: var(--panel); padding: 12px 13px; }
+  .gauge .label { font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+  .gauge .value { font-family: var(--mono); font-size: 20px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .gauge .value small { font-size: 11px; color: var(--ink-faint); font-weight: 400; }
+
+  .readiness { margin-top: 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-soft); }
+  .bar { flex: 1; height: 8px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+  .bar > span { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .2s ease; }
+  .bar.ready > span { background: var(--good); }
+
+  canvas { width: 100%; height: 90px; display: block; margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+  .cap { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin: 6px 2px 0; }
+
+  pre.out { font-family: var(--mono); font-size: 12px; line-height: 1.55; margin: 0; padding: 14px; background: var(--panel-2); border-radius: 0 0 var(--radius) var(--radius); color: var(--ink-soft); overflow-x: auto; max-height: 360px; }
+  .out .k { color: var(--accent); }
+  .tabs { display: flex; gap: 6px; }
+  .tab { font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft); cursor: pointer; }
+  .tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .empty { padding: 22px 16px; color: var(--ink-faint); font-family: var(--mono); font-size: 12.5px; }
+  .note { font-size: 12.5px; color: var(--ink-faint); margin: 16px 2px 0; }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(16px); background: var(--ink); color: var(--bg); font-family: var(--mono); font-size: 12px; padding: 8px 14px; border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="kicker"><span class="dot"></span> Keystroke instrument</p>
+    <h1>Typing Rhythm Profiler</h1>
+    <p class="lede">Type the passage below at your normal pace, mistakes and all — and don't skip the
+      symbols and numbers, that's how it learns your slow-down reaching for them. This measures your own
+      hold times, inter-key gaps by context, letter-pair and symbol-reach timing, and key overlap, then
+      exports a profile. Everything stays in this browser — nothing is sent anywhere.</p>
+  </header>
+
+  <div class="panel">
+    <div class="panel-head"><span class="panel-title">Capture</span><span class="panel-title" id="recDot">ready</span></div>
+    <div class="panel-body">
+      <p class="prompt" id="prompt"></p>
+      <textarea id="field" spellcheck="false" autocomplete="off" autocapitalize="off"
+        placeholder="Type the passage here. Type it twice if you can — more keystrokes make the profile steadier."></textarea>
+      <div class="btnrow">
+        <button class="primary" id="btnGen" disabled>Generate profile</button>
+        <button id="btnReset">Reset</button>
+      </div>
+      <div class="readiness">
+        <span id="readyText">Type ~150 keystrokes for a steady read.</span>
+        <span class="bar" id="readyBar"><span></span></span>
+      </div>
+      <div class="gauges">
+        <div class="gauge"><div class="label">Keystrokes</div><div class="value" id="gKeys">0</div></div>
+        <div class="gauge"><div class="label">Speed</div><div class="value" id="gWpm">—<small> wpm</small></div></div>
+        <div class="gauge"><div class="label">Mean gap</div><div class="value" id="gGap">—<small> ms</small></div></div>
+        <div class="gauge"><div class="label">Mean hold</div><div class="value" id="gDwell">—<small> ms</small></div></div>
+        <div class="gauge"><div class="label">Rollover</div><div class="value" id="gRoll">—<small> %</small></div></div>
+      </div>
+      <canvas id="hist" width="820" height="90" aria-label="Distribution of your inter-key gaps"></canvas>
+      <p class="cap" id="histCap">Your inter-key gap distribution appears here as you type (a right-skewed shape is human).</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Exported profile</span>
+      <span class="tabs">
+        <span class="tab" id="tabPy" role="tab" aria-selected="true">Python</span>
+        <span class="tab" id="tabJson" role="tab" aria-selected="false">JSON</span>
+      </span>
+    </div>
+    <div id="outWrap">
+      <div class="empty" id="outEmpty">Generate a profile to see it here, then press Copy and paste it back into the chat.</div>
+      <pre class="out" id="out" hidden></pre>
+    </div>
+    <div class="panel-body" id="copyRow" hidden style="border-top:1px solid var(--line);">
+      <button id="btnCopy">Copy profile</button>
+    </div>
+  </div>
+
+  <p class="note">The profile is a statistical summary of your rhythm — hold-time and gap distributions, letter-pair
+    ratios, rollover rate. It contains no text you typed. Paste it back into the chat and it gets baked into the typer so it replays your pace.</p>
+</div>
+<div class="toast" id="toast">Copied</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // --- target passage: a natural everyday message -- normal prose pace with a
+  //     realistic sprinkle of symbols and numbers, so one capture gives both the
+  //     true prose speed and the symbol-reach slowdown, measured together ---
+  var PASSAGE =
+    "Hi Sam, thanks for the quick update! I went through the Q3 numbers you " +
+    "attached, and they look solid: revenue is up 12% and churn fell to 4.5%. " +
+    "Can we meet Tuesday at 2:30 to go over them? I'll send an invite shortly. " +
+    "One open question -- do we include the EMEA data (and the 2024 forecast) " +
+    "this time? Let me know what you think. Best, Alex";
+  document.getElementById("prompt").textContent = PASSAGE;
+
+  // --- QWERTY finger / hand model (matches the forensics console) ---
+  var ROW = {}, COL = {};
+  "qwertyuiop".split("").forEach(function (c) { ROW[c] = 0; });
+  "asdfghjkl".split("").forEach(function (c) { ROW[c] = 1; });
+  "zxcvbnm".split("").forEach(function (c) { ROW[c] = 2; });
+  [["qaz",0],["wsx",1],["edc",2],["rfv",3],["tgb",3],["yhn",6],["ujm",6],["ik",7],["ol",8],["p",9]]
+    .forEach(function (p) { p[0].split("").forEach(function (c) { COL[c] = p[1]; }); });
+  function hand(c) { return "qwertasdfgzxcvb".indexOf(c) >= 0 ? "L" : ("yuiophjklnm".indexOf(c) >= 0 ? "R" : null); }
+  function bigramClass(a, b) {
+    a = a.toLowerCase(); b = b.toLowerCase();
+    var ha = hand(a), hb = hand(b);
+    if (ha === null || hb === null) return null;
+    if (ha !== hb) return "alt_hand";
+    return (COL[a] === COL[b]) ? "same_finger" : "same_hand";
+  }
+  function isLetter(c) { return !!c && /^[a-z]$/i.test(c); }
+
+  // --- capture state ---
+  var downAt = {};        // code -> keydown time (pending keyup), for dwell
+  var held = {};          // code -> true while physically down, for rollover
+  var lastChar = null;    // {code, char, t} last character keydown (modifiers skipped)
+  var prevCharStr = null;
+  var pendingRoll = null; // {prevCode, nextDownT}
+  var S;                  // accumulators, see reset()
+  var MODS = { Shift: 1, Control: 1, Alt: 1, Meta: 1, CapsLock: 1 };
+
+  function reset() {
+    S = {
+      buckets: { midword: [], after_space: [], after_comma: [], after_sentence: [], after_newline: [] },
+      byClass: { same_finger: [], same_hand: [], alt_hand: [] },
+      reach: { to_letter: [], to_digit: [], to_symbol: [] },  // gap INTO the next char, from an alnum prev
+      dwells: [], shiftDwells: [], allGaps: [],
+      rollCount: 0, letterTrans: 0, overlaps: [],
+      charCount: 0, activeMs: 0
+    };
+    downAt = {}; held = {}; lastChar = null; prevCharStr = null; pendingRoll = null;
+  }
+  reset();
+
+  function charFor(e) {
+    if (e.key && e.key.length === 1) return e.key;
+    if (e.key === "Enter") return "\n";
+    return null; // Backspace, arrows, Tab, modifiers, etc. are not profiled as characters
+  }
+  function context(prev) {
+    if (prev === " ") return "after_space";
+    if (prev === "\n") return "after_newline";
+    if (",;:-".indexOf(prev) >= 0) return "after_comma";
+    if (".!?".indexOf(prev) >= 0) return "after_sentence";
+    return "midword";
+  }
+
+  var field = document.getElementById("field");
+
+  field.addEventListener("keydown", function (e) {
+    var t = performance.now();
+    if (!(e.code in downAt)) downAt[e.code] = t;   // ignore auto-repeat re-downs
+    held[e.code] = true;
+
+    if (e.key in MODS) return;                     // modifier: dwell only, no char chain
+    var ch = charFor(e);
+    if (ch === null) return;                       // control key: skip
+
+    S.charCount++;
+
+    if (lastChar) {
+      var gap = t - lastChar.t;
+      S.allGaps.push(gap);
+      if (gap < 3000) S.activeMs += gap;           // exclude long idle from the speed figure
+
+      if (gap <= 1500) {                           // cap outliers so means aren't skewed by pauses
+        S.buckets[context(prevCharStr)].push(gap);
+        if (isLetter(prevCharStr) && isLetter(ch)) {
+          var cls = bigramClass(prevCharStr, ch);
+          if (cls) S.byClass[cls].push(gap);
+        }
+        // reach to the next char, measured from a letter/digit (neutral mid-flow
+        // position) so a symbol's hunt-and-reach cost is isolated from word pauses
+        if (/[a-z0-9]/i.test(prevCharStr)) {
+          var tgt = /[a-z]/i.test(ch) ? "to_letter"
+                  : (/[0-9]/.test(ch) ? "to_digit"
+                  : ((ch !== " " && ch !== "\n" && ch !== "\t") ? "to_symbol" : null));
+          if (tgt) S.reach[tgt].push(gap);
+        }
+      }
+      if (isLetter(prevCharStr) && isLetter(ch)) {
+        S.letterTrans++;
+        if (held[lastChar.code]) {                 // previous key still down -> rollover (overlap)
+          S.rollCount++;
+          pendingRoll = { prevCode: lastChar.code, nextDownT: t };
+        }
+      }
+    }
+    lastChar = { code: e.code, char: ch, t: t };
+    prevCharStr = ch;
+    schedule();
+  }, true);
+
+  field.addEventListener("keyup", function (e) {
+    var t = performance.now();
+    if (e.code in downAt) {
+      var dwell = t - downAt[e.code];
+      delete downAt[e.code];
+      if (dwell > 0 && dwell < 1000) {
+        if (e.key === "Shift") S.shiftDwells.push(dwell);
+        else if (e.key && e.key.length === 1) S.dwells.push(dwell);
+      }
+    }
+    delete held[e.code];
+    if (pendingRoll && e.code === pendingRoll.prevCode) {
+      S.overlaps.push(t - pendingRoll.nextDownT);  // how long prev stayed down past next's down
+      pendingRoll = null;
+    }
+  }, true);
+
+  // --- stats helpers ---
+  function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : 0; }
+  function std(a) { if (a.length < 2) return 0; var m = mean(a); return Math.sqrt(a.reduce(function (x, y) { return x + (y - m) * (y - m); }, 0) / a.length); }
+  function cv(a) { var m = mean(a); return m > 0 ? std(a) / m : 0; }
+  function r1(x) { return Math.round(x * 10) / 10; }
+  function r3(x) { return Math.round(x * 1000) / 1000; }
+
+  // --- live gauges + histogram ---
+  var el = {
+    keys: document.getElementById("gKeys"), wpm: document.getElementById("gWpm"),
+    gap: document.getElementById("gGap"), dwell: document.getElementById("gDwell"),
+    roll: document.getElementById("gRoll"), readyText: document.getElementById("readyText"),
+    readyBar: document.getElementById("readyBar"), bar: document.querySelector("#readyBar > span"),
+    gen: document.getElementById("btnGen"), rec: document.getElementById("recDot")
+  };
+  var NEED = 150;
+  var raf = 0;
+  function schedule() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; refresh(); }); }
+
+  function wpm() {
+    if (S.activeMs <= 0) return 0;
+    return (S.charCount / 5) / (S.activeMs / 60000);
+  }
+  function refresh() {
+    el.keys.textContent = S.charCount;
+    el.wpm.innerHTML = (S.charCount > 5 ? r1(wpm()) : "—") + '<small> wpm</small>';
+    var mids = S.buckets.midword;
+    el.gap.innerHTML = (mids.length ? Math.round(mean(mids)) : "—") + '<small> ms</small>';
+    el.dwell.innerHTML = (S.dwells.length ? Math.round(mean(S.dwells)) : "—") + '<small> ms</small>';
+    el.roll.innerHTML = (S.letterTrans >= 5 ? Math.round(100 * S.rollCount / S.letterTrans) : "—") + '<small> %</small>';
+    var pct = Math.min(100, Math.round(100 * S.charCount / NEED));
+    el.bar.style.width = pct + "%";
+    if (S.charCount >= NEED) { el.readyBar.classList.add("ready"); el.readyText.textContent = "Good sample — generate any time (more is fine)."; }
+    else { el.readyBar.classList.remove("ready"); el.readyText.textContent = (NEED - S.charCount) + " more keystrokes for a steady read."; }
+    el.gen.disabled = S.charCount < 40;
+    el.rec.textContent = S.charCount ? "recording" : "ready";
+    el.rec.style.color = S.charCount ? "var(--accent)" : "var(--ink-faint)";
+    drawHist();
+  }
+
+  var cv2 = document.getElementById("hist"), ctx = cv2.getContext("2d");
+  function themeColor(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function drawHist() {
+    var W = cv2.width, H = cv2.height;
+    ctx.clearRect(0, 0, W, H);
+    var data = S.allGaps.filter(function (g) { return g <= 600; });
+    if (data.length < 4) return;
+    var bins = 40, binW = 600 / bins, counts = new Array(bins).fill(0);
+    data.forEach(function (g) { var b = Math.min(bins - 1, Math.floor(g / binW)); counts[b]++; });
+    var maxc = Math.max.apply(null, counts) || 1;
+    var acc = themeColor("--accent"), faint = themeColor("--ink-faint");
+    var bw = W / bins;
+    for (var i = 0; i < bins; i++) {
+      var h = (counts[i] / maxc) * (H - 16);
+      ctx.fillStyle = acc;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(i * bw + 1, H - h - 4, bw - 1.5, h);
+    }
+    ctx.globalAlpha = 1;
+    // median marker
+    var sorted = data.slice().sort(function (a, b) { return a - b; });
+    var med = sorted[Math.floor(sorted.length / 2)];
+    var x = (Math.min(600, med) / 600) * W;
+    ctx.strokeStyle = faint; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, 2); ctx.lineTo(x, H - 2); ctx.stroke(); ctx.setLineDash([]);
+    document.getElementById("histCap").textContent =
+      "Inter-key gaps 0–600 ms (" + data.length + " samples). Dashed line = median " + Math.round(med) + " ms.";
+  }
+
+  // --- profile build + output ---
+  var lastProfile = null;
+  function dist(a) { return { mean_ms: r1(mean(a)), cv: r3(cv(a)), n: a.length }; }
+  function buildProfile() {
+    var midMean = mean(S.buckets.midword) || 1;
+    function mult(a) { return a.length >= 4 ? r3((mean(a) || midMean) / midMean) : null; }
+    var prof = {
+      meta: {
+        generated: new Date().toISOString(),
+        keystrokes: S.charCount,
+        letter_transitions: S.letterTrans,
+        note: "Statistical typing-rhythm profile. No typed text is stored."
+      },
+      wpm: r1(wpm()),
+      dwell_ms: dist(S.dwells),
+      shift_dwell_ms: dist(S.shiftDwells),
+      gaps_ms: {
+        midword: dist(S.buckets.midword),
+        after_space: dist(S.buckets.after_space),
+        after_comma: dist(S.buckets.after_comma),
+        after_sentence: dist(S.buckets.after_sentence),
+        after_newline: dist(S.buckets.after_newline)
+      },
+      bigram_mult: {
+        same_finger: mult(S.byClass.same_finger),
+        same_hand: mult(S.byClass.same_hand),
+        alt_hand: mult(S.byClass.alt_hand)
+      },
+      reach_mult: {
+        digit: mult(S.reach.to_digit),     // gap into a digit, relative to mid-word mean
+        symbol: mult(S.reach.to_symbol)    // gap into a symbol (the reach you noticed)
+      },
+      rollover: {
+        rate: S.letterTrans >= 5 ? r3(S.rollCount / S.letterTrans) : null,
+        overlap_ms: dist(S.overlaps)
+      },
+      pauses: (function () {
+        var p = S.allGaps.filter(function (g) { return g > 600; });
+        return { rate: S.allGaps.length ? r3(p.length / S.allGaps.length) : 0, mean_ms: r1(mean(p)) };
+      })()
+    };
+    return prof;
+  }
+
+  function toPython(obj, indent) {
+    indent = indent || 0;
+    var pad = "    ".repeat(indent + 1), pad0 = "    ".repeat(indent);
+    if (obj === null) return "None";
+    if (typeof obj === "number") return String(obj);
+    if (typeof obj === "string") return JSON.stringify(obj);
+    if (Array.isArray(obj)) return "[" + obj.map(function (v) { return toPython(v, indent); }).join(", ") + "]";
+    var keys = Object.keys(obj);
+    if (!keys.length) return "{}";
+    return "{\n" + keys.map(function (k) {
+      return pad + JSON.stringify(k) + ": " + toPython(obj[k], indent + 1);
+    }).join(",\n") + "\n" + pad0 + "}";
+  }
+
+  var outEl = document.getElementById("out");
+  var outEmpty = document.getElementById("outEmpty");
+  var copyRow = document.getElementById("copyRow");
+  var mode = "py";
+  function renderOut() {
+    if (!lastProfile) return;
+    if (mode === "py") outEl.textContent = "TYPING_PROFILE = " + toPython(lastProfile);
+    else outEl.textContent = JSON.stringify(lastProfile, null, 2);
+  }
+  document.getElementById("btnGen").addEventListener("click", function () {
+    if (S.charCount < 40) return;
+    lastProfile = buildProfile();
+    outEmpty.hidden = true; outEl.hidden = false; copyRow.hidden = false;
+    renderOut();
+    outEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  document.getElementById("tabPy").addEventListener("click", function () { setTab("py"); });
+  document.getElementById("tabJson").addEventListener("click", function () { setTab("json"); });
+  function setTab(m) {
+    mode = m;
+    document.getElementById("tabPy").setAttribute("aria-selected", m === "py");
+    document.getElementById("tabJson").setAttribute("aria-selected", m === "json");
+    renderOut();
+  }
+
+  var toast = document.getElementById("toast");
+  function flash(msg) { toast.textContent = msg; toast.classList.add("show"); setTimeout(function () { toast.classList.remove("show"); }, 1400); }
+  document.getElementById("btnCopy").addEventListener("click", function () {
+    if (!lastProfile) return;
+    var text = outEl.textContent;
+    try {
+      navigator.clipboard.writeText(text).then(function () { flash("Copied — paste it into the chat"); },
+        function () { selectOut(); flash("Select all + copy"); });
+    } catch (err) { selectOut(); flash("Select all + copy"); }
+  });
+  function selectOut() {
+    var r = document.createRange(); r.selectNodeContents(outEl);
+    var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+
+  document.getElementById("btnReset").addEventListener("click", function () {
+    reset(); lastProfile = null;
+    outEmpty.hidden = false; outEl.hidden = true; copyRow.hidden = true;
+    field.value = ""; field.focus(); refresh();
+  });
+
+  refresh();
+  field.focus();
+})();
+</script>
+</body>
+</html>
